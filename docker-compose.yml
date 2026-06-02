@@ -1,0 +1,57 @@
+# Local development / simple single-host deploy.
+#   docker compose up --build
+#
+# The app runs standalone today. Postgres and Redis are scaffolded below (commented)
+# so you can uncomment them the moment you add a database or cache — wire the matching
+# env vars into env.validation.ts + configuration.ts at the same time.
+
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # DATABASE_URL: postgres://app:app@postgres:5432/app
+      # REDIS_URL: redis://redis:6379
+    env_file:
+      - .env
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3000/api/v1/health/live']
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+
+  # postgres:
+  #   image: postgres:17-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: app
+  #     POSTGRES_PASSWORD: app
+  #     POSTGRES_DB: app
+  #   ports:
+  #     - '5432:5432'
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ['CMD-SHELL', 'pg_isready -U app']
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   ports:
+  #     - '6379:6379'
+
+# volumes:
+#   pgdata:
