@@ -1,12 +1,15 @@
 # Commit Staged Changes
 
-Generate commit message and immediately propose the git commit command for user approval.
+**NEVER run `git commit` automatically. Always show the command and wait for explicit user approval first — the user must review changes before committing.**
+
+Generate a commit message and propose the git commit command for user approval.
 
 ## Prerequisites
 
 1. Run `git diff --cached --name-only`.
 2. If no staged changes → **STOP**: "No staged changes to commit".
 3. **DO NOT suggest `git add .` or any other git add commands.**
+4. Run `/verify-task-result` (format check, lint, type check, tests). Fix any failures before proposing the commit.
 
 ## Instructions
 

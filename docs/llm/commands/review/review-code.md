@@ -4,7 +4,7 @@ Review code changes using team CCR rules.
 
 ## What to Analyze
 
-All changes in branch vs `origin/main`:
+All changes in branch vs `origin/main`. **Always base the review on fresh `git diff` output — never review from memory.**
 
 ```bash
 git diff origin/main..HEAD --name-only
