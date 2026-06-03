@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+.git
+.github
+.vscode
+*.md
+.env
+.env.*
+!.env.example
+npm-debug.log
+.eslintcache
+test

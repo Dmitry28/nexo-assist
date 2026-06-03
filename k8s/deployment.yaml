@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexo-assist
+  labels:
+    app.kubernetes.io/name: nexo-assist
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexo-assist
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexo-assist
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: '/api/v1/metrics'
+        prometheus.io/port: '3000'
+    spec:
+      # Pod-level hardening.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # Writable scratch space — required because the container rootfs is read-only.
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: app
+          image: nexo-assist:latest # set by your CD pipeline (e.g. registry/nexo-assist:<sha>)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: nexo-assist-config
+            # - secretRef:
+            #     name: nexo-assist-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+          # Liveness: is the process alive? Restart on failure. Cheap, no deps.
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness: can we serve traffic? Checks dependencies. Removed from
+          # the Service endpoints (not restarted) while failing.
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Startup: gives slow boots room before liveness kicks in.
+          startupProbe:
+            httpGet:
+              path: /api/v1/health/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # Container-level hardening.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

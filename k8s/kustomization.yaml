@@ -1,0 +1,16 @@
+# Apply everything with:  kubectl apply -k k8s/
+# Override the image per environment:  kustomize edit set image nexo-assist=registry/nexo-assist:<sha>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+
+# Stamps every resource's metadata (not selectors — those are declared per-manifest).
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false

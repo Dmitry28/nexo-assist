@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexo-assist-config
+  labels:
+    app.kubernetes.io/name: nexo-assist
+data:
+  NODE_ENV: 'production'
+  PORT: '3000'
+  API_PREFIX: 'api'
+  API_VERSION: '1'
+  LOG_LEVEL: 'info'
+  # Restrict to your real origin(s) in production, e.g. 'https://app.example.com'.
+  CORS_ORIGIN: '*'
+  THROTTLE_TTL: '60'
+  THROTTLE_LIMIT: '100'
+  # Set to your collector to enable tracing (leave unset to disable):
+  # OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+  # OTEL_SERVICE_NAME: 'nexo-assist'
