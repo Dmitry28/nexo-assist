@@ -18,6 +18,8 @@ Rules and skills must be:
 
 ## Skill File Format (`.claude/skills/<name>/SKILL.md`)
 
+8–15 lines total.
+
 ```yaml
 ---
 name: skill-name
@@ -29,14 +31,39 @@ allowed-tools: Read
 Read and apply [topic] rules from [docs/llm/rules/topic.md](../../../docs/llm/rules/topic.md).
 ```
 
+### Frontmatter fields
+
+| Field                      | Required | Description                                                                                            |
+| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `name`                     | yes      | Skill identifier, used in `/name`.                                                                     |
+| `description`              | yes      | Trigger description, under 200 chars.                                                                  |
+| `user-invocable`           | no       | Show in `/` menu (default: `false`).                                                                   |
+| `disable-model-invocation` | no       | Only user can invoke (default: `false`).                                                               |
+| `context`                  | no       | `conversation` (default) — runs in current context; `fork` — runs in isolated context, returns summary. |
+| `argument-hint`            | no       | Placeholder hint shown after `/name` in menu.                                                          |
+| `allowed-tools`            | no       | Restrict available tools for this skill.                                                               |
+
+### Description rules
+
+- **Specific** — mention file types, features, or actions.
+- **Positive triggers** — "Use when working with…" (not "Do NOT use for…").
+- **Concise** — under 200 chars.
+- **Keyword-rich** — file extensions, domain terms, action verbs.
+
+Examples:
+
+- ✅ "Code review rules — CCR labels and checklist. Use when reviewing PRs."
+- ❌ "Use when writing code" (too broad).
+
 ## Skill Types
 
-| Type           | Config                           | When triggered                      |
-| -------------- | -------------------------------- | ----------------------------------- |
-| **Background** | `user-invocable: false`          | Auto-loaded by Claude when relevant |
-| **Command**    | `user-invocable: true` + `disable-model-invocation: true` | Only via `/skill-name` |
+| Type           | Config                                                       | When triggered                      |
+| -------------- | ------------------------------------------------------------ | ----------------------------------- |
+| **Background** | `user-invocable: false`                                      | Auto-loaded by Claude when relevant |
+| **Command**    | `user-invocable: true` + `disable-model-invocation: true`    | Only via `/skill-name`              |
+| **Hybrid**     | `user-invocable: true` + `disable-model-invocation: false`   | Both Claude and `/skill-name`       |
 
-Command skills with large output should use `context: fork`.
+Command skills with large output (diffs, reviews, PR descriptions) should use `context: fork` to avoid polluting the main conversation context.
 
 ## Adding a New Skill
 

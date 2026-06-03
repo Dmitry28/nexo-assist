@@ -5,6 +5,7 @@
 - DRY, KISS, SOLID
 - Type safety and static analysis
 - Always follow existing patterns and code style in the codebase
+- If the user's proposed approach has significant trade-offs or risks — raise them **before** implementing, not after
 
 ## Before Adding New Code — Check in This Order
 

@@ -16,6 +16,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - Implement → verify → report. **Commit only after explicit approval.**
 - After opening a PR, surface the URL so the user can review.
 - Reflect on what was learned — if new findings affect the solution, address them before moving on.
+- If you hit ambiguity or a blocking decision mid-task — **surface it immediately instead of guessing.**
 
 ## Git Workflow
 
@@ -30,11 +31,13 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - Confirm the plan step is fully realized (nothing skipped).
 - Run `/verify-task-result` on changed files.
 - Quick self-check: architecture, types, naming.
+- **Generation is fast; verification is the bottleneck — don't skip or rush this step.**
 
 ## 4. Fix
 
 - Address failures immediately — don't defer issues to later milestones.
 - Minor non-critical improvements can be left as `// TODO:` comments to address later.
+- If the same approach fails 2+ times — **stop, reflect on why, ask the user instead of retrying.**
 
 _(Repeat steps 2–4 for each milestone)_
 
@@ -47,6 +50,8 @@ _(Repeat steps 2–4 for each milestone)_
 3. Fix any issues found in 1–2.
 4. Cover critical logic with tests if not yet covered — only what matters.
 5. Update docs if architecture/patterns/logic changed.
+6. **Propose a TODO for any real issue you notice but don't fix in current scope** — pre-existing inconsistencies, dead code, optimization opportunities, edge cases. Verify it's real (read the code); don't TODO speculative concerns. Format: see [comment rules](code-style.md#comments).
+7. **Reflection** — review LLM instructions (`docs/llm/`): did any instruction mislead, miss a needed pattern, or fail to prevent a mistake you made? If yes — update it directly. Skip if nothing genuinely new.
 
 ---
 

@@ -35,13 +35,34 @@ function send(params: { message: string; channel: string; retries: number }) {}
 - Use `ConfigService.get('app.<key>', { infer: true })` — never `process.env` directly inside modules.
 - Use the `@/*` path alias for intra-`src` imports across folders.
 
+## Conditions
+
+Extract non-trivial conditions into named boolean variables:
+
+```typescript
+// ❌
+if (user.status === 'active' && user.subscription?.tier !== 'free' && !user.lockedAt) { … }
+
+// ✅
+const hasActivePaidAccess = user.status === 'active' && user.subscription?.tier !== 'free' && !user.lockedAt;
+if (hasActivePaidAccess) { … }
+```
+
 ## Comments
 
-- Prefixes: `TODO`, `FIXME`, `NOTE`.
+- Prefixes: `TODO`, `FIXME`, `NOTE` — **no other comment styles allowed**.
 - Always in English.
-- `TODO` / `FIXME` must include priority and clear description.
+- `TODO` and `FIXME` must include a priority `[H|M|L]` and clear description.
 - Default to writing no comments — only add when the WHY is non-obvious (a hidden constraint, subtle invariant, workaround).
 - Never narrate WHAT the code does (well-named identifiers do that).
+
+Format:
+
+```typescript
+// NOTE: explanation of non-obvious logic or context
+// TODO: what needs to be done [H|M|L]
+// FIXME: what is broken and why [H|M|L]
+```
 
 ## General
 

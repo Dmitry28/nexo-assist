@@ -24,6 +24,7 @@ docs/llm/
 │   ├── architecture.md            # Module structure, layer responsibilities
 │   ├── workflow.md                # Plan → Implement → Verify → Fix
 │   ├── code-review.md             # CCR labels [H][M][L][D][Q]
+│   ├── debugging.md               # Systematic debugging — Iron Law + 4 phases
 │   └── llm-skills-guide.md        # How to create/modify skills
 └── commands/
     ├── git/
@@ -46,6 +47,7 @@ docs/llm/
 | `typescript`             | background | Fixing type errors, working with types/interfaces     |
 | `architecture`           | background | Placing files, structuring new features               |
 | `code-review`            | background | Reviewing PRs, applying CCR labels                    |
+| `debugging`              | background | Investigating bugs, errors, unexpected behavior       |
 | `workflow`               | background | Planning tasks, structuring complex work              |
 | `llm-skills-guide`       | background | Creating or modifying skills                          |
 | `git-commit`             | command    | `/git-commit` — generate and propose commit           |

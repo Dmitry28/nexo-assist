@@ -51,5 +51,6 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Architecture           | [rules/architecture.md](rules/architecture.md) |
 | Development philosophy | [rules/development-philosophy.md](rules/development-philosophy.md) |
 | Code review            | [rules/code-review.md](rules/code-review.md) |
+| Debugging              | [rules/debugging.md](rules/debugging.md) |
 | Workflow               | [rules/workflow.md](rules/workflow.md) |
 | LLM skills             | [rules/llm-skills-guide.md](rules/llm-skills-guide.md) |
