@@ -19,7 +19,9 @@ services:
       # DATABASE_URL: postgres://app:app@postgres:5432/app
       # REDIS_URL: redis://redis:6379
     env_file:
-      - .env
+      # Optional: app boots on defaults from env.validation.ts without a .env file.
+      - path: .env
+        required: false
     healthcheck:
       test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3000/api/v1/health/live']
       interval: 30s

@@ -2,7 +2,7 @@
   "name": "nexo-assist",
   "version": "0.1.0",
   "description": "Production-ready NestJS skeleton",
-  "author": "",
+  "author": "NEXO",
   "private": true,
   "license": "UNLICENSED",
   "engines": {

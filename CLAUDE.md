@@ -34,6 +34,9 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **DTOs** use `class-validator` decorators for validation and `@ApiProperty` for OpenAPI.
   The global `ValidationPipe` (`whitelist + forbidNonWhitelisted + transform`) strips and
   rejects unknown fields — rely on it; don't hand-roll validation.
+- **List endpoints** return `PaginatedResponse<T>` and are documented with
+  `@ApiPaginatedResponse(Model)` (see `users.controller.ts`) — don't hand-write the
+  `{ data, meta }` schema per endpoint.
 - **Entities** in `entities/` are the API-facing shape. When a DB is added, keep these
   separate from persistence models and map between them — never leak ORM internals.
 - **Config**: read via `ConfigService.get('app.<key>', { infer: true })`. Add new env vars
