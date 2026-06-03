@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { LoggerModule } from 'nestjs-pino';
 
+import { CommonModule } from './common/common.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import configuration from './config/configuration';
 import { Environment } from './config/env.validation';
@@ -50,6 +51,8 @@ import { UsersModule } from './modules/users/users.module';
     }),
     // Prometheus metrics at GET /api/v1/metrics (+ default Node/process metrics).
     PrometheusModule.register({ defaultMetrics: { enabled: true } }),
+    // Shared infrastructure (SnapshotService, ...) — @Global, no per-module import needed.
+    CommonModule,
     HealthModule,
     UsersModule,
   ],

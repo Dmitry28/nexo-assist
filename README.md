@@ -90,14 +90,8 @@ docker-compose.yml           # Local stack
 
 ## Adding a new module
 
-Mirror `src/modules/users`:
-
-1. `nest g resource modules/<name>` (or copy the folder manually).
-2. Define request DTOs with `class-validator` decorators + `@ApiProperty`.
-3. Keep the API-facing entity separate from any future persistence model.
-4. Throw Nest HTTP exceptions (`NotFoundException`, etc.) — the global filter formats them.
-5. Register the module in `app.module.ts`.
-6. Add a `*.service.spec.ts` and extend the e2e suite.
+Mirror `src/modules/users/`. Full checklist (including the subscription-module
+pattern for diff/notify features): [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
 
 ## Configuration
 
