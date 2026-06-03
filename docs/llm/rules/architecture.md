@@ -64,6 +64,41 @@ process.env.PORT;
 5. Register the module in `src/app.module.ts`.
 6. Add a `*.service.spec.ts` (unit) and extend `test/app.e2e-spec.ts`.
 
+## CLI Scripts (`src/scripts/`)
+
+For seed scripts, one-shot migrations, admin tasks, or anything that needs the DI container without HTTP, use `NestFactory.createApplicationContext` instead of `NestFactory.create`:
+
+```typescript
+// src/scripts/<name>.ts
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../app.module';
+import { SomeService } from '../modules/<feature>/<feature>.service';
+
+async function main(): Promise<void> {
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['log', 'warn', 'error'],
+  });
+  try {
+    await app.get(SomeService).doSomething();
+  } finally {
+    await app.close();
+  }
+}
+
+void main();
+```
+
+Run via:
+
+```jsonc
+// package.json
+"scripts": {
+  "task:<name>": "ts-node -r tsconfig-paths/register src/scripts/<name>.ts"
+}
+```
+
+This keeps maintenance work in the same dependency graph as the app — no duplicated bootstrap, no out-of-band code.
+
 ## Adding a New Env Variable
 
 Update **all three** in lockstep:
