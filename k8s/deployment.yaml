@@ -25,6 +25,10 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Writable scratch space — required because the container rootfs is read-only.
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: app
           image: nexo-assist:latest # set by your CD pipeline (e.g. registry/nexo-assist:<sha>)
@@ -70,6 +74,9 @@ spec:
               port: http
             periodSeconds: 5
             failureThreshold: 12
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           # Container-level hardening.
           securityContext:
             allowPrivilegeEscalation: false

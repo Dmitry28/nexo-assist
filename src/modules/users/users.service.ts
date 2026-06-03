@@ -18,10 +18,7 @@ export class UsersService {
   private readonly store = new Map<string, User>();
 
   create(dto: CreateUserDto): User {
-    const exists = [...this.store.values()].some((u) => u.email === dto.email);
-    if (exists) {
-      throw new ConflictException(`User with email "${dto.email}" already exists`);
-    }
+    this.assertEmailAvailable(dto.email);
 
     const now = new Date();
     const user: User = {
@@ -54,6 +51,9 @@ export class UsersService {
 
   update(id: string, dto: UpdateUserDto): User {
     const user = this.findOne(id);
+    if (dto.email) {
+      this.assertEmailAvailable(dto.email, id);
+    }
     const updated: User = { ...user, ...dto, updatedAt: new Date() };
     this.store.set(id, updated);
     return updated;
@@ -62,6 +62,14 @@ export class UsersService {
   remove(id: string): void {
     if (!this.store.delete(id)) {
       throw new NotFoundException(`User "${id}" not found`);
+    }
+  }
+
+  /** Throws if `email` belongs to another user (ignores `exceptId`, e.g. on update). */
+  private assertEmailAvailable(email: string, exceptId?: string): void {
+    const taken = [...this.store.values()].some((u) => u.email === email && u.id !== exceptId);
+    if (taken) {
+      throw new ConflictException(`User with email "${email}" already exists`);
     }
   }
 }

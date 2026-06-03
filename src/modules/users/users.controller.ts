@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
+import { ApiPaginatedResponse } from '@/common/dto/api-paginated-response.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 
 import { CreateUserDto } from './dto/create-user.dto';
@@ -32,7 +33,7 @@ export class UsersController {
   }
 
   @Get()
-  @ApiOkResponse({ type: User, isArray: true })
+  @ApiPaginatedResponse(User)
   findAll(@Query() query: PaginationQueryDto) {
     return this.usersService.findAll(query);
   }

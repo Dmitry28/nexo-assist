@@ -59,6 +59,20 @@ describe('UsersService', () => {
     expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(created.createdAt.getTime());
   });
 
+  it('rejects updating to an email another user already has', () => {
+    const a = service.create({ email: 'a@example.com', name: 'A' });
+    service.create({ email: 'b@example.com', name: 'B' });
+
+    expect(() => service.update(a.id, { email: 'b@example.com' })).toThrow(ConflictException);
+  });
+
+  it('allows updating a user without changing their email', () => {
+    const created = service.create({ email: 'keep@example.com', name: 'Keep' });
+    const updated = service.update(created.id, { email: 'keep@example.com', name: 'Renamed' });
+
+    expect(updated.name).toBe('Renamed');
+  });
+
   it('removes a user', () => {
     const created = service.create({ email: 'bye@example.com', name: 'Bye' });
     service.remove(created.id);

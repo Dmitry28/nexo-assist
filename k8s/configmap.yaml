@@ -10,6 +10,7 @@ data:
   API_PREFIX: 'api'
   API_VERSION: '1'
   LOG_LEVEL: 'info'
+  # Restrict to your real origin(s) in production, e.g. 'https://app.example.com'.
   CORS_ORIGIN: '*'
   THROTTLE_TTL: '60'
   THROTTLE_LIMIT: '100'
