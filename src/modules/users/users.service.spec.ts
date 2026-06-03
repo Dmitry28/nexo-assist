@@ -16,8 +16,9 @@ describe('UsersService', () => {
     service = moduleRef.get(UsersService);
   });
 
+  // `new PaginationQueryDto()` carries the class-field defaults — never duplicate them here.
   const newQuery = (overrides: Partial<PaginationQueryDto> = {}): PaginationQueryDto =>
-    Object.assign(new PaginationQueryDto(), { page: 1, limit: 20 }, overrides);
+    Object.assign(new PaginationQueryDto(), overrides);
 
   it('creates a user', () => {
     const user = service.create({ email: 'ada@example.com', name: 'Ada' });
