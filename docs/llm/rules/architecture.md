@@ -10,12 +10,9 @@ src/
 ├── config/
 │   ├── configuration.ts   # registerAs('app', ...) — typed AppConfig + single validation point
 │   └── env.validation.ts  # class-validator schema; single source of defaults; fail-fast on boot
-├── common/
-│   ├── common.module.ts   # @Global module exposing shared infra (SnapshotService, ...)
-│   ├── snapshot.service.ts # Generic JSON-array snapshot persistence (for diff-based modules)
+├── common/                # Cross-cutting building blocks
 │   ├── filters/           # Global exception filters (consistent error JSON)
-│   ├── dto/               # Shared DTOs — PaginationQueryDto, PaginatedResponse, @ApiPaginatedResponse
-│   └── utils/             # Tiny generic helpers (sleep, ...)
+│   └── dto/               # Shared DTOs — PaginationQueryDto, PaginatedResponse, @ApiPaginatedResponse
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
 └── modules/
     └── <feature>/      # Feature module — copy the `users` shape
@@ -63,36 +60,6 @@ process.env.PORT;
 4. Throw Nest HTTP exceptions; the global `AllExceptionsFilter` formats them.
 5. Register the module in `src/app.module.ts`.
 6. Add a `*.service.spec.ts` (unit) and extend `test/app.e2e-spec.ts`.
-
-## Subscription Module Pattern
-
-This project's core domain is **subscribing to external sources and notifying on changes**. A subscription module fetches current state, diffs against the previous snapshot, dispatches notifications, and persists — in that order.
-
-```
-fetch current state  ──►  read previous snapshot  ──►  diff (new / removed / changed)
-                                                                │
-                                                                ▼
-                                                       send notifications
-                                                                │
-                                                                ▼
-                                                       persist new snapshot
-```
-
-### Invariants
-
-- **Notify before persist.** If notification fails, the snapshot must NOT be updated — items stay "new" and are retried next run. Missing a notification is a critical failure.
-- **One run at a time.** Guard the service entry with a boolean lock + watchdog timeout; throw `ConflictException` if already running.
-- **Dynamic cron via `SchedulerRegistry`.** The static `@Cron()` decorator is evaluated before `ConfigModule` loads, so cron strings can't come from config. Schedule in `onModuleInit` with `SchedulerRegistry.addCronJob`.
-- **State is typed.** Use `SnapshotService.read<T>(file, isT)` — the type guard catches schema drift on every read.
-
-### Notification channels
-
-A channel is anything that delivers a message externally (Telegram, Slack, webhook, email). Whatever channel you pick, implement these traits:
-
-- **Dry-run mode** when credentials are absent — log the message instead of sending it. Lets the app run locally without secrets.
-- **Per-recipient throttle** to respect provider rate limits.
-- **Retry on rate-limit responses** (vendor-typed 429) with the `retry_after` hint when provided; other errors fail fast.
-- **Typed error shape via type-guard** — never `as any` on a vendor error.
 
 ## CLI Scripts (`src/scripts/`)
 

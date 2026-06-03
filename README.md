@@ -90,8 +90,8 @@ docker-compose.yml           # Local stack
 
 ## Adding a new module
 
-Mirror `src/modules/users/`. Full checklist (including the subscription-module
-pattern for diff/notify features): [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
+Mirror `src/modules/users/`. Full checklist:
+[`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
 
 ## Configuration
 
