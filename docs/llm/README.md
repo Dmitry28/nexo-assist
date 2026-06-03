@@ -25,6 +25,7 @@ docs/llm/
 │   ├── workflow.md                # Plan → Implement → Verify → Fix
 │   ├── code-review.md             # CCR labels [H][M][L][D][Q]
 │   ├── debugging.md               # Systematic debugging — Iron Law + 4 phases
+│   ├── testing.md                 # AAA, fixtures, error paths, console rules
 │   └── llm-skills-guide.md        # How to create/modify skills
 └── commands/
     ├── git/
@@ -48,6 +49,7 @@ docs/llm/
 | `architecture`           | background | Placing files, structuring new features               |
 | `code-review`            | background | Reviewing PRs, applying CCR labels                    |
 | `debugging`              | background | Investigating bugs, errors, unexpected behavior       |
+| `testing`                | background | Writing or modifying *.spec.ts / *.e2e-spec.ts files  |
 | `workflow`               | background | Planning tasks, structuring complex work              |
 | `llm-skills-guide`       | background | Creating or modifying skills                          |
 | `git-commit`             | command    | `/git-commit` — generate and propose commit           |
