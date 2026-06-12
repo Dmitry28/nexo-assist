@@ -7,9 +7,9 @@ import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
 
 /**
- * HTTP pipeline shared by main.ts and the e2e suite, so tests exercise the same
- * middleware and routes (/api/v1/...) that production serves. Keep process-level
- * concerns (logger, swagger, shutdown hooks, fatal handlers) in main.ts.
+ * Shared by main.ts and the e2e suite so tests exercise the same middleware and
+ * routes that production serves. Keep process-level concerns (logger, swagger,
+ * shutdown hooks, fatal handlers) in main.ts.
  */
 export function configureApp(app: INestApplication): void {
   const appConfig = app.get<AppConfig>(configuration.KEY);

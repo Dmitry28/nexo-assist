@@ -7,8 +7,9 @@ import type { Response } from 'express';
 /**
  * Replaces the default PrometheusController so scrapes are exempt from the global
  * ThrottlerGuard — a tightened rate limit must never 429 the monitoring system.
- * The route stays /metrics (PrometheusModule stamps its `path` option onto this class).
  */
+// NOTE: leave @Controller() without a path — PrometheusModule.register() overwrites it
+// with its `path` option (default '/metrics').
 @ApiTags('metrics')
 @SkipThrottle()
 @Controller()

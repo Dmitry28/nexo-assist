@@ -2,7 +2,6 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -10,7 +9,7 @@ import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
 import { Environment } from './config/env.validation';
 import { HealthModule } from './health/health.module';
-import { MetricsController } from './metrics/metrics.controller';
+import { MetricsModule } from './metrics/metrics.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -48,10 +47,7 @@ import { UsersModule } from './modules/users/users.module';
       }),
     }),
     // Prometheus metrics at GET /api/v1/metrics (+ default Node/process metrics).
-    PrometheusModule.register({
-      defaultMetrics: { enabled: true },
-      controller: MetricsController,
-    }),
+    MetricsModule,
     HealthModule,
     UsersModule,
   ],

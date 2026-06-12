@@ -7,8 +7,8 @@ import { UsersService } from './users.service';
 describe('UsersService', () => {
   let service: UsersService;
 
-  // No dependencies — plain instantiation. Switch to Test.createTestingModule
-  // (see test/app.e2e-spec.ts) once the service grows injected providers.
+  // No dependencies — plain instantiation; use Test.createTestingModule once
+  // the service grows injected providers (see docs/llm/rules/testing.md).
   beforeEach(() => {
     service = new UsersService();
   });

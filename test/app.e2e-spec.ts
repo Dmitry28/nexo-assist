@@ -5,9 +5,11 @@ import type { App } from 'supertest/types';
 
 import { AppModule } from '@/app.module';
 import { configureApp } from '@/app.setup';
+import { EnvironmentVariables } from '@/config/env.validation';
 
-// Must match API_PREFIX / API_VERSION defaults — k8s probes target these exact paths.
-const PREFIX = '/api/v1';
+// Derived from the schema defaults — k8s probes target these exact paths.
+const defaults = new EnvironmentVariables();
+const PREFIX = `/${defaults.API_PREFIX}/v${defaults.API_VERSION}`;
 
 describe('App (e2e)', () => {
   let app: INestApplication<App>;
