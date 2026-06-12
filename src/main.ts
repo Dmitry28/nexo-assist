@@ -53,6 +53,8 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.port);
 
+  // Echo the effective (validated) config — AppConfig holds no secrets.
+  logger.log({ config: appConfig }, 'Bootstrap');
   logger.log(`Application listening on port ${appConfig.port}`, 'Bootstrap');
 }
 

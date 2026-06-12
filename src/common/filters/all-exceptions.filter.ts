@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Request, Response } from 'express';
 
 interface ErrorResponseBody {
@@ -47,6 +48,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (status >= 500) {
+      // Attach the exception to the active trace span (no-op when tracing is off)
+      // so error traces are searchable in the APM, not just in logs.
+      const span = trace.getActiveSpan();
+      if (span) {
+        span.recordException(exception instanceof Error ? exception : String(exception));
+        span.setStatus({ code: SpanStatusCode.ERROR });
+      }
       this.logger.error(
         `${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),

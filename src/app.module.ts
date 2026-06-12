@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { stdSerializers, stdTimeFunctions } from 'pino';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import type { AppConfig } from './config/configuration';
@@ -28,10 +29,21 @@ import { UsersModule } from './modules/users/users.module';
         const isProd = appConfig.env === Environment.Production;
         const isTest = appConfig.env === Environment.Test;
         return {
+          // trace_id/span_id are injected by instrumentation-pino (bundled in
+          // auto-instrumentations-node) when tracing is enabled — see src/tracing.ts.
           pinoHttp: {
             // Silent under jest — request logs would only pollute test output.
             level: isTest ? 'silent' : appConfig.logLevel,
-            transport: isProd || isTest ? undefined : { target: 'pino-pretty' },
+            timestamp: stdTimeFunctions.isoTime,
+            // Serialize the `error` key as a full Error — pino's default only handles `err`.
+            serializers: { error: stdSerializers.err },
+            transport:
+              isProd || isTest
+                ? undefined
+                : {
+                    target: 'pino-pretty',
+                    options: { translateTime: 'SYS:standard', ignore: 'pid,hostname' },
+                  },
             // Don't log request/response bodies by default — they may contain PII.
             redact: ['req.headers.authorization', 'req.headers.cookie'],
             autoLogging: true,
