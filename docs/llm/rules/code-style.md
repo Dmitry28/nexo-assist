@@ -38,7 +38,7 @@ function send(params: { message: string; channel: string; retries: number }) {}
 
 ## Conditions
 
-Silent guards (`if (!x) return;` with no log or side effect) need a `// NOTE:` explaining why the no-op is intentional — otherwise log it.
+Silent guards (`if (!x) return;` with no log or side effect) need a `//` comment explaining why the no-op is intentional — otherwise log it.
 
 Extract non-trivial conditions into named boolean variables:
 
@@ -53,9 +53,9 @@ if (hasActivePaidAccess) { … }
 
 ## Comments
 
-- Prefixes: `TODO`, `FIXME`, `NOTE` — **no other comment styles allowed**.
+- Plain `//` comments explain non-obvious WHY — the dominant codebase style (e.g. `src/app.setup.ts`, `src/main.ts`).
+- `TODO` and `FIXME` mark actionable items and must include a priority `[H|M|L]` and clear description.
 - Always in English.
-- `TODO` and `FIXME` must include a priority `[H|M|L]` and clear description.
 - Default to writing no comments — only add when the WHY is non-obvious (a hidden constraint, subtle invariant, workaround).
 - Never narrate WHAT the code does (well-named identifiers do that).
 - Never remove relevant existing comments.
@@ -63,7 +63,7 @@ if (hasActivePaidAccess) { … }
 Format:
 
 ```typescript
-// NOTE: explanation of non-obvious logic or context
+// Explanation of non-obvious logic or context.
 // TODO: what needs to be done [H|M|L]
 // FIXME: what is broken and why [H|M|L]
 ```

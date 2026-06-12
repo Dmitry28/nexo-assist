@@ -58,4 +58,8 @@ async function bootstrap(): Promise<void> {
   logger.log(`Application listening on port ${appConfig.port}`, 'Bootstrap');
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  // Bootstrap failed before pino was wired — console is the only logger left.
+  console.error(error);
+  process.exit(1);
+});

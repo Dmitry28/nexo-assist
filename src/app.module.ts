@@ -52,6 +52,8 @@ import { UsersModule } from './modules/users/users.module';
       },
     }),
     // Rate limiting — config-driven, applied globally via the guard below.
+    // Storage is in-memory (per process): with N replicas a client effectively gets
+    // N × THROTTLE_LIMIT. Switch to ThrottlerStorageRedisService when that matters.
     ThrottlerModule.forRootAsync({
       inject: [configuration.KEY],
       useFactory: (appConfig: AppConfig) => ({
@@ -70,8 +72,9 @@ import { UsersModule } from './modules/users/users.module';
       useValue: new ValidationPipe({
         whitelist: true,
         forbidNonWhitelisted: true,
+        // Conversions are explicit via @Type() in DTOs — implicit conversion is off
+        // because it coerces any non-empty string (even 'false') to boolean true.
         transform: true,
-        transformOptions: { enableImplicitConversion: true },
       }),
     },
     {

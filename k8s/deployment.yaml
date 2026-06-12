@@ -75,6 +75,12 @@ spec:
               port: http
             periodSeconds: 5
             failureThreshold: 12
+          # Delay SIGTERM: endpoint removal from the Service propagates asynchronously,
+          # so without this in-flight requests can land on a pod already shutting down.
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
           volumeMounts:
             - name: tmp
               mountPath: /tmp

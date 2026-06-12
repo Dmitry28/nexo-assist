@@ -17,6 +17,13 @@ interface ErrorResponseBody {
   path: string;
 }
 
+/** HttpException bodies carry `message` as a string (or string[] from ValidationPipe). */
+function isMessage(value: unknown): value is string | string[] {
+  return (
+    typeof value === 'string' || (Array.isArray(value) && value.every((v) => typeof v === 'string'))
+  );
+}
+
 /**
  * Catches every unhandled exception and returns a consistent JSON error shape.
  * Unknown errors are logged with a stack trace but never leak internals to clients.
@@ -41,9 +48,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (typeof res === 'string') {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
-        const body = res as Record<string, unknown>;
-        message = (body.message as string | string[]) ?? exception.message;
-        error = (body.error as string) ?? exception.name;
+        message = 'message' in res && isMessage(res.message) ? res.message : exception.message;
+        error = 'error' in res && typeof res.error === 'string' ? res.error : exception.name;
       }
     }
 
