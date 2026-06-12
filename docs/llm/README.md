@@ -39,11 +39,9 @@ docs/llm/
     ├── review/
     │   ├── review-code.md                # /review-code
     │   └── logic-review.md               # /logic-review
-    ├── check/
-    │   ├── verify-task-result.md         # /verify-task-result
-    │   └── refine.md                     # /refine
-    └── llm/
-        └── session-learnings.md          # /session-learnings (script: scripts/llm/)
+    └── check/
+        ├── verify-task-result.md         # /verify-task-result
+        └── refine.md                     # /refine
 ```
 
 ## MCP Servers
