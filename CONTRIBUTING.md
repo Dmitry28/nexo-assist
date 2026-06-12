@@ -22,7 +22,7 @@ Full loop (Plan → Implement → Verify → Fix): [`docs/llm/rules/workflow.md`
 
 ## Code rules
 
-- Architecture (module structure, subscription pattern, env vars): [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
+- Architecture (module structure, layer responsibilities, env vars): [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
 - Code style: [`docs/llm/rules/code-style.md`](docs/llm/rules/code-style.md).
 - TypeScript (strict, no `as`, `import type`): [`docs/llm/rules/typescript.md`](docs/llm/rules/typescript.md).
 - Review (CCR labels): [`docs/llm/rules/code-review.md`](docs/llm/rules/code-review.md).

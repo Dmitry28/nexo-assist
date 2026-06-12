@@ -66,7 +66,8 @@ npm run start:dev
 
 ```
 src/
-├── main.ts                  # Bootstrap: middleware, pipes, versioning, Swagger, throttler
+├── main.ts                  # Bootstrap: logger, Swagger, shutdown hooks, fatal handlers
+├── app.setup.ts             # configureApp(): helmet, CORS, prefix, versioning (shared with e2e)
 ├── tracing.ts               # OpenTelemetry init (imported first; opt-in via env)
 ├── app.module.ts            # Root module: config, logger, throttler, metrics, global filter
 ├── config/
@@ -76,6 +77,7 @@ src/
 │   ├── dto/                 # Pagination request/response DTOs
 │   └── filters/             # Global exception filter (consistent error JSON)
 ├── health/                  # Liveness + readiness probes (Terminus)
+├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
     └── users/               # Reference feature module (copy this shape)
         ├── dto/             # Request DTOs (create/update)
@@ -109,8 +111,8 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
 ## Rate limiting
 
 Global via `@nestjs/throttler` (`THROTTLE_TTL` / `THROTTLE_LIMIT`). Exempt a route or
-controller with `@SkipThrottle()` (health probes already are); tighten a specific route
-with `@Throttle({ default: { ttl, limit } })`.
+controller with `@SkipThrottle()` (health probes and `/metrics` already are); tighten a
+specific route with `@Throttle({ default: { ttl, limit } })`.
 
 ## Docker
 

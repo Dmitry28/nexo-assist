@@ -24,7 +24,8 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 ## Key Files
 
 - `package.json` — dependencies and scripts (NestJS 11, class-validator, helmet, throttler, swagger, terminus, pino, prometheus, opentelemetry).
-- `src/main.ts` — bootstrap (helmet, CORS, ValidationPipe, URI versioning, Swagger, shutdown hooks).
+- `src/main.ts` — bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen).
+- `src/app.setup.ts` — `configureApp()`: helmet, CORS, prefix, URI versioning; shared by `main.ts` and e2e.
 - `src/tracing.ts` — OpenTelemetry init (must stay the first import in `main.ts`).
 - `src/app.module.ts` — root module (Config, Logger, Throttler, Prometheus, Health, global filter + guard).
 - `src/config/configuration.ts` — typed `AppConfig` exposed under `app.*`.

@@ -4,7 +4,8 @@
 
 ```
 src/
-├── main.ts             # Bootstrap (helmet, CORS, ValidationPipe, versioning, Swagger, shutdown hooks)
+├── main.ts             # Bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen)
+├── app.setup.ts        # configureApp() — helmet, CORS, prefix, versioning; shared by main.ts and e2e
 ├── tracing.ts          # OpenTelemetry init (must stay the first import in main.ts)
 ├── app.module.ts       # Root module: Config, Logger, Throttler, Prometheus, global filter/guard
 ├── config/
@@ -14,6 +15,7 @@ src/
 │   ├── filters/           # Global exception filters (consistent error JSON)
 │   └── dto/               # Shared DTOs — PaginationQueryDto, PaginatedResponse, @ApiPaginatedResponse
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
+├── metrics/            # Prometheus controller override; @SkipThrottle()
 └── modules/
     └── <feature>/      # Feature module — copy the `users` shape
         ├── dto/
@@ -41,15 +43,25 @@ src/
 
 ## Config Access
 
-Always inject `ConfigService` — never use `process.env` directly inside modules:
+One style everywhere: inject the whole typed `AppConfig` by `configuration.KEY` — never use `process.env` directly inside modules, never read individual keys via `ConfigService.get('app.x')` string paths:
 
 ```typescript
-// ✅
-constructor(private readonly config: ConfigService) {}
-const port = this.config.get('app.port', { infer: true });
+// ✅ in services
+constructor(@Inject(configuration.KEY) private readonly appConfig: AppConfig) {}
+this.appConfig.port;
+
+// ✅ in module factories
+ThrottlerModule.forRootAsync({
+  inject: [configuration.KEY],
+  useFactory: (appConfig: AppConfig) => ({ ... }),
+});
+
+// ✅ in bootstrap / app.setup.ts
+const appConfig = app.get<AppConfig>(configuration.KEY);
 
 // ❌
 process.env.PORT;
+this.config.get('app.port');
 ```
 
 ## Adding a New Feature Module

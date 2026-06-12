@@ -1,5 +1,4 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 
@@ -8,12 +7,10 @@ import { UsersService } from './users.service';
 describe('UsersService', () => {
   let service: UsersService;
 
-  beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
-      providers: [UsersService],
-    }).compile();
-
-    service = moduleRef.get(UsersService);
+  // No dependencies — plain instantiation. Switch to Test.createTestingModule
+  // (see test/app.e2e-spec.ts) once the service grows injected providers.
+  beforeEach(() => {
+    service = new UsersService();
   });
 
   // `new PaginationQueryDto()` carries the class-field defaults — never duplicate them here.

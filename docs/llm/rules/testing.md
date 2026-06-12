@@ -33,6 +33,10 @@ describe('UsersService', () => {
 
 Globals wired through `APP_*` providers (`ValidationPipe`, `AllExceptionsFilter`, `ThrottlerGuard`, …) are picked up automatically by tests that import `AppModule`. **Don't re-register them** in `beforeAll` — it's drift waiting to happen.
 
+In e2e, apply `configureApp(app)` from `src/app.setup.ts` after `createNestApplication()` so tests hit the same `/api/v1/...` routes as production (and k8s probes). Don't duplicate prefix/versioning setup inline.
+
+For a unit with no injected dependencies, instantiate it directly (`new UsersService()`) — `Test.createTestingModule` earns its ceremony only once providers need wiring.
+
 ## Fixtures and Helpers
 
 When the same fixture is rebuilt in 2+ specs, extract it. Reuse generic helpers globally; override only when a specific test needs different behaviour.

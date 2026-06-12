@@ -32,7 +32,7 @@ function send(params: { message: string; channel: string; retries: number }) {}
 - DTOs use `class-validator` decorators (`@IsString()`, `@IsEmail()`, etc.) and `@ApiProperty` for OpenAPI.
 - Services contain business logic only — no HTTP concerns.
 - Controllers handle HTTP only — delegate to services; throw NestJS exceptions (`NotFoundException`, …).
-- Use `ConfigService.get('app.<key>', { infer: true })` — never `process.env` directly inside modules.
+- Config: inject the typed `AppConfig` via `@Inject(configuration.KEY)` (see [architecture.md](architecture.md#config-access)) — never `process.env` or string-path `ConfigService.get()` inside modules.
 - Use the `@/*` path alias for intra-`src` imports across folders.
 
 ## Conditions
