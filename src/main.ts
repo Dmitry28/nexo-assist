@@ -1,39 +1,27 @@
 // Must be first: starts OpenTelemetry before any instrumented module loads.
 import './tracing';
 
-import { VersioningType } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import compression from 'compression';
-import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
+import { configureApp } from './app.setup';
 import type { AppConfig } from './config/configuration';
+import configuration from './config/configuration';
 import { Environment } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
 
   // Use pino as the framework logger.
   app.useLogger(app.get(Logger));
 
-  const config = app.get(ConfigService);
-  const appConfig = config.getOrThrow<AppConfig>('app');
+  const appConfig = app.get<AppConfig>(configuration.KEY);
 
-  // Security & performance middleware.
-  app.use(helmet());
-  app.use(compression());
-  app.enableCors({
-    // '*' must stay a literal string; an array of origins is matched exactly.
-    origin:
-      appConfig.corsOrigin === '*' ? '*' : appConfig.corsOrigin.split(',').map((o) => o.trim()),
-  });
-
-  // Routing: /api/v1/...
-  app.setGlobalPrefix(appConfig.apiPrefix);
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: appConfig.apiVersion });
+  // Security middleware, CORS, prefix and versioning — shared with e2e tests.
+  configureApp(app);
 
   // ValidationPipe is registered globally via APP_PIPE in AppModule.
 
@@ -65,6 +53,8 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.port);
 
+  // Echo the effective (validated) config — AppConfig holds no secrets.
+  logger.log({ config: appConfig }, 'Bootstrap');
   logger.log(`Application listening on port ${appConfig.port}`, 'Bootstrap');
 }
 

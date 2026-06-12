@@ -1,20 +1,27 @@
-import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import type { App } from 'supertest/types';
 
 import { AppModule } from '@/app.module';
+import { configureApp } from '@/app.setup';
+import { EnvironmentVariables } from '@/config/env.validation';
+
+// Derived from the schema defaults — k8s probes target these exact paths.
+const defaults = new EnvironmentVariables();
+const PREFIX = `/${defaults.API_PREFIX}/v${defaults.API_VERSION}`;
 
 describe('App (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
+    app = moduleRef.createNestApplication<NestExpressApplication>();
+    // Same pipeline as production (prefix, versioning, CORS, helmet).
     // ValidationPipe is wired globally via APP_PIPE in AppModule — no extra setup needed.
-    app = moduleRef.createNestApplication();
+    configureApp(app);
     await app.init();
   });
 
@@ -22,30 +29,30 @@ describe('App (e2e)', () => {
     await app.close();
   });
 
-  it('GET /health/live -> 200', () => {
+  it(`GET ${PREFIX}/health/live -> 200`, () => {
     return request(app.getHttpServer())
-      .get('/health/live')
+      .get(`${PREFIX}/health/live`)
       .expect(200)
       .expect((res) => expect(res.body.status).toBe('ok'));
   });
 
-  it('GET /health/ready -> 200', () => {
+  it(`GET ${PREFIX}/health/ready -> 200`, () => {
     return request(app.getHttpServer())
-      .get('/health/ready')
+      .get(`${PREFIX}/health/ready`)
       .expect(200)
       .expect((res) => expect(res.body.status).toBe('ok'));
   });
 
-  it('GET /metrics exposes Prometheus metrics', () => {
+  it(`GET ${PREFIX}/metrics exposes Prometheus metrics`, () => {
     return request(app.getHttpServer())
-      .get('/metrics')
+      .get(`${PREFIX}/metrics`)
       .expect(200)
       .expect((res) => expect(res.text).toContain('process_cpu_seconds_total'));
   });
 
-  it('POST /users creates, GET /users/:id reads', async () => {
+  it(`POST ${PREFIX}/users creates, GET ${PREFIX}/users/:id reads`, async () => {
     const create = await request(app.getHttpServer())
-      .post('/users')
+      .post(`${PREFIX}/users`)
       .send({ email: 'e2e@example.com', name: 'E2E User' })
       .expect(201);
 
@@ -53,14 +60,14 @@ describe('App (e2e)', () => {
     expect(id).toBeDefined();
 
     await request(app.getHttpServer())
-      .get(`/users/${id}`)
+      .get(`${PREFIX}/users/${id}`)
       .expect(200)
       .expect((res) => expect(res.body.email).toBe('e2e@example.com'));
   });
 
-  it('POST /users rejects invalid payloads', () => {
+  it(`POST ${PREFIX}/users rejects invalid payloads`, () => {
     return request(app.getHttpServer())
-      .post('/users')
+      .post(`${PREFIX}/users`)
       .send({ email: 'not-an-email', name: 'x', extra: 'nope' })
       .expect(400);
   });

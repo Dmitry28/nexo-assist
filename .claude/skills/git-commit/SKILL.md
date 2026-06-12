@@ -5,7 +5,7 @@ argument-hint: '[optional: custom commit message]'
 context: fork
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: Bash(git *)
+allowed-tools: Bash(git *), Bash(npm *), Bash(npx *)
 ---
 
 Current branch: !`git branch --show-current`

@@ -3,6 +3,7 @@
 ## Naming
 
 - Descriptive variables with auxiliary verbs: `isLoading`, `hasError`, `hasPermission`.
+- Boolean flags follow **verb + noun** order with the resource explicit (`isUserCreationAllowed`), never noun + verb or a bare verb without a resource (`isCreating`).
 - NestJS file conventions: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
 - **Named exports** for all modules, services, utilities (no default exports except framework requirements).
 - File names: kebab-case (`users.service.ts`).
@@ -32,10 +33,12 @@ function send(params: { message: string; channel: string; retries: number }) {}
 - DTOs use `class-validator` decorators (`@IsString()`, `@IsEmail()`, etc.) and `@ApiProperty` for OpenAPI.
 - Services contain business logic only — no HTTP concerns.
 - Controllers handle HTTP only — delegate to services; throw NestJS exceptions (`NotFoundException`, …).
-- Use `ConfigService.get('app.<key>', { infer: true })` — never `process.env` directly inside modules.
+- Config: inject the typed `AppConfig` via `@Inject(configuration.KEY)` (see [architecture.md](architecture.md#config-access)) — never `process.env` or string-path `ConfigService.get()` inside modules.
 - Use the `@/*` path alias for intra-`src` imports across folders.
 
 ## Conditions
+
+Silent guards (`if (!x) return;` with no log or side effect) need a `// NOTE:` explaining why the no-op is intentional — otherwise log it.
 
 Extract non-trivial conditions into named boolean variables:
 
@@ -55,6 +58,7 @@ if (hasActivePaidAccess) { … }
 - `TODO` and `FIXME` must include a priority `[H|M|L]` and clear description.
 - Default to writing no comments — only add when the WHY is non-obvious (a hidden constraint, subtle invariant, workaround).
 - Never narrate WHAT the code does (well-named identifiers do that).
+- Never remove relevant existing comments.
 
 Format:
 
@@ -66,4 +70,5 @@ Format:
 
 ## General
 
-- Remove dead code when noticed.
+- Remove dead code when noticed (`npm run check:dead-code` finds unused files/exports/deps).
+- No `eslint-disable` / `@ts-expect-error` without a `TODO [H|M|L]` — fix the root cause instead of suppressing.

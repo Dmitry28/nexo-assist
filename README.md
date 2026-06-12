@@ -7,29 +7,29 @@ pipeline.
 
 ## Stack
 
-| Concern        | Choice                                              |
-| -------------- | --------------------------------------------------- |
-| Framework      | NestJS 11 (Express)                                 |
-| Language       | TypeScript 5 (strict)                               |
-| Config         | `@nestjs/config` + `class-validator` env validation |
-| Logging        | `nestjs-pino` (pretty in dev, JSON in prod)         |
-| Validation     | `class-validator` / `class-transformer`             |
-| API docs       | `@nestjs/swagger` (OpenAPI)                          |
-| Health         | `@nestjs/terminus` (liveness + readiness)           |
-| Rate limiting  | `@nestjs/throttler`                                 |
-| Metrics        | `@willsoto/nestjs-prometheus` (`/metrics`)          |
-| Tracing        | OpenTelemetry (OTLP, opt-in)                        |
-| Security       | `helmet`, CORS, `compression`                       |
-| Tests          | Jest (unit) + Supertest (e2e)                        |
-| Lint / Format  | ESLint 9 (flat config) + Prettier 3                 |
-| Git hooks      | Husky + lint-staged                                 |
-| CI             | GitHub Actions                                      |
-| Container      | Multi-stage Dockerfile + docker-compose             |
-| Orchestration  | Kubernetes manifests (Kustomize)                    |
+| Concern       | Choice                                              |
+| ------------- | --------------------------------------------------- |
+| Framework     | NestJS 11 (Express)                                 |
+| Language      | TypeScript 5 (strict)                               |
+| Config        | `@nestjs/config` + `class-validator` env validation |
+| Logging       | `nestjs-pino` (pretty in dev, JSON in prod)         |
+| Validation    | `class-validator` / `class-transformer`             |
+| API docs      | `@nestjs/swagger` (OpenAPI)                         |
+| Health        | `@nestjs/terminus` (liveness + readiness)           |
+| Rate limiting | `@nestjs/throttler`                                 |
+| Metrics       | `@willsoto/nestjs-prometheus` (`/metrics`)          |
+| Tracing       | OpenTelemetry (OTLP, opt-in)                        |
+| Security      | `helmet`, CORS, `compression`                       |
+| Tests         | Jest (unit) + Supertest (e2e)                       |
+| Lint / Format | ESLint 9 (flat config) + Prettier 3                 |
+| Git hooks     | Husky + lint-staged                                 |
+| CI            | GitHub Actions                                      |
+| Container     | Multi-stage Dockerfile + docker-compose             |
+| Orchestration | Kubernetes manifests (Kustomize)                    |
 
 ## Requirements
 
-- Node.js >= 20 (see `.nvmrc` → 22)
+- Node.js >= 22 (see `.nvmrc`)
 - npm
 
 ## Getting started
@@ -48,25 +48,26 @@ npm run start:dev
 
 ## Scripts
 
-| Script                 | Description                              |
-| ---------------------- | ---------------------------------------- |
-| `npm run start:dev`    | Run with watch mode                      |
-| `npm run start:prod`   | Run compiled output (`dist/main`)        |
-| `npm run build`        | Compile to `dist/`                       |
-| `npm run lint`         | ESLint (fails on warnings)               |
-| `npm run lint:fix`     | ESLint with autofix                      |
-| `npm run format`       | Prettier write                           |
-| `npm run format:check` | Prettier check (CI)                      |
-| `npm run typecheck`    | `tsc --noEmit`                           |
-| `npm test`             | Unit tests                               |
-| `npm run test:cov`     | Unit tests with coverage                 |
-| `npm run test:e2e`     | End-to-end tests                         |
+| Script                 | Description                       |
+| ---------------------- | --------------------------------- |
+| `npm run start:dev`    | Run with watch mode               |
+| `npm run start:prod`   | Run compiled output (`dist/main`) |
+| `npm run build`        | Compile to `dist/`                |
+| `npm run lint`         | ESLint (fails on warnings)        |
+| `npm run lint:fix`     | ESLint with autofix               |
+| `npm run format`       | Prettier write                    |
+| `npm run format:check` | Prettier check (CI)               |
+| `npm run typecheck`    | `tsc --noEmit`                    |
+| `npm test`             | Unit tests                        |
+| `npm run test:cov`     | Unit tests with coverage          |
+| `npm run test:e2e`     | End-to-end tests                  |
 
 ## Project structure
 
 ```
 src/
-├── main.ts                  # Bootstrap: middleware, pipes, versioning, Swagger, throttler
+├── main.ts                  # Bootstrap: logger, Swagger, shutdown hooks, fatal handlers
+├── app.setup.ts             # configureApp(): helmet, CORS, prefix, versioning (shared with e2e)
 ├── tracing.ts               # OpenTelemetry init (imported first; opt-in via env)
 ├── app.module.ts            # Root module: config, logger, throttler, metrics, global filter
 ├── config/
@@ -76,6 +77,7 @@ src/
 │   ├── dto/                 # Pagination request/response DTOs
 │   └── filters/             # Global exception filter (consistent error JSON)
 ├── health/                  # Liveness + readiness probes (Terminus)
+├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
     └── users/               # Reference feature module (copy this shape)
         ├── dto/             # Request DTOs (create/update)
@@ -104,13 +106,22 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
   metrics included). Add custom counters/histograms via `@willsoto/nestjs-prometheus`.
 - **Tracing** — OpenTelemetry, opt-in. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optionally
   `OTEL_SERVICE_NAME`) to start the SDK; auto-instruments HTTP/Express. See `src/tracing.ts`.
+  Control sampling without code changes via standard env: `OTEL_TRACES_SAMPLER=parentbased_traceidratio`
+  - `OTEL_TRACES_SAMPLER_ARG=0.1`. Unhandled 5xx exceptions are attached to the active span
+    by the global exception filter.
 - **Logs** — structured JSON via `nestjs-pino` (pretty in dev), with request correlation IDs.
+  When tracing is enabled, `trace_id`/`span_id` are injected into every log line, so logs
+  and traces cross-link in the APM.
 
 ## Rate limiting
 
 Global via `@nestjs/throttler` (`THROTTLE_TTL` / `THROTTLE_LIMIT`). Exempt a route or
-controller with `@SkipThrottle()` (health probes already are); tighten a specific route
-with `@Throttle({ default: { ttl, limit } })`.
+controller with `@SkipThrottle()` (health probes and `/metrics` already are); tighten a
+specific route with `@Throttle({ default: { ttl, limit } })`.
+
+Clients are keyed by `req.ip`; `trust proxy` is set to the first hop (see `app.setup.ts`)
+so the real client IP survives a k8s ingress / load balancer. Adjust it if you add more
+proxy layers (e.g. a CDN in front of the ingress).
 
 ## Docker
 

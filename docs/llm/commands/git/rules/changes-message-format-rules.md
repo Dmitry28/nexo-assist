@@ -20,6 +20,7 @@ Based on [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1
 - `build` — build system or dependencies
 - `ci` — CI/CD configuration
 - `chore` — maintenance tasks
+- `revert` — revert previous commit
 
 ## 1. Commit Message Format
 
@@ -57,5 +58,9 @@ test: add health endpoint e2e test
 ```
 
 **User impact** — visible changes: new features, UI/API changes, bug fixes affecting behaviour.
-**Technical impact** — internal changes: refactors, dependency updates, CI, tooling, performance, infrastructure.
+**Technical impact** — what other developers should know: breaking APIs, new shared services, measurable performance wins, infra/build changes, dependency migrations, architectural patterns to follow.
 Skip a section entirely if there's nothing to put there.
+
+**No change for the audience → no impact line.** Pure refactoring, formatting, comments, log tweaks, file moves, internal types, lockfile updates — all skipped. If a change _looks_ like a refactor but breaks an API others use — it's not a refactor; list it with a migration note.
+
+**Writing style (DRY):** combine related changes into single high-level statements; focus on outcome, not steps.

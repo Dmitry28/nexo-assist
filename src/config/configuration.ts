@@ -4,16 +4,19 @@ import type { Environment, LogLevel } from './env.validation';
 import { validateEnv } from './env.validation';
 
 /**
- * Typed, namespaced config object. Inject with:
- *   constructor(private readonly config: ConfigService) {}
- *   this.config.get('app.port', { infer: true })
+ * Typed, namespaced config object. Inject the whole object by token:
+ *   constructor(@Inject(configuration.KEY) private readonly appConfig: AppConfig) {}
+ * or in factories / bootstrap:
+ *   inject: [configuration.KEY]
+ *   app.get<AppConfig>(configuration.KEY)
  */
 export interface AppConfig {
   env: Environment;
   port: number;
   apiPrefix: string;
   apiVersion: string;
-  corsOrigin: string;
+  /** Ready for `enableCors`: '*' must stay a literal string; an array is matched exactly. */
+  corsOrigins: '*' | string[];
   logLevel: LogLevel;
   throttleTtl: number;
   throttleLimit: number;
@@ -31,7 +34,8 @@ export default registerAs('app', (): AppConfig => {
     port: env.PORT,
     apiPrefix: env.API_PREFIX,
     apiVersion: env.API_VERSION,
-    corsOrigin: env.CORS_ORIGIN,
+    corsOrigins:
+      env.CORS_ORIGIN === '*' ? '*' : env.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
     logLevel: env.LOG_LEVEL,
     throttleTtl: env.THROTTLE_TTL,
     throttleLimit: env.THROTTLE_LIMIT,

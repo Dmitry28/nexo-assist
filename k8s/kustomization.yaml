@@ -8,6 +8,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - hpa.yaml
+  - pdb.yaml
 
 # Stamps every resource's metadata (not selectors — those are declared per-manifest).
 labels:

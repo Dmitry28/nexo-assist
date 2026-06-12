@@ -5,10 +5,12 @@ LLM configuration and rules for nexo-assist — used by Claude Code and compatib
 ## How it works
 
 ```
-CLAUDE.md ─┐
-AGENTS.md ─┴─► docs/llm/ENTRY_POINT.md ─► .claude/skills/*  (rules)
-                                       ─► .claude/agents/*  (auto-triggered agents)
+CLAUDE.md / AGENTS.md ─► docs/llm/ENTRY_POINT.md   (always-loaded context)
+.claude/skills/*      ─► docs/llm/rules|commands/* (thin wrappers around these docs)
+.claude/agents/*      ─► .claude/skills/*          (isolated runners on cheap models)
 ```
+
+Single source of truth: content lives here in `docs/llm/`; skills and agents only point at it. Skill descriptions/triggers live in each `.claude/skills/<name>/SKILL.md` frontmatter — they are not duplicated here.
 
 ## Structure
 
@@ -17,58 +19,34 @@ docs/llm/
 ├── ENTRY_POINT.md           # Always-loaded context (project description, key commands)
 ├── README.md                # This file
 ├── mcp.example.json         # MCP servers reference (context7, github)
-├── rules/
+├── rules/                   # Background knowledge (one doc per topic, one skill per doc)
 │   ├── development-philosophy.md  # DRY, KISS, SOLID
 │   ├── code-style.md              # Naming, NestJS conventions
 │   ├── typescript.md              # Type safety rules
 │   ├── architecture.md            # Module structure, layer responsibilities
 │   ├── workflow.md                # Plan → Implement → Verify → Fix
-│   ├── code-review.md             # CCR labels [H][M][L][D][Q]
-│   ├── debugging.md               # Systematic debugging — Iron Law + 4 phases
+│   ├── code-review.md             # CCR labels, Pattern Check, triggers, process checks
+│   ├── logic-review.md            # Behavior vs task: AC traceability, edge cases
+│   ├── debugging.md               # Systematic debugging — Iron Law + 5 phases
 │   ├── testing.md                 # AAA, fixtures, error paths, console rules
 │   └── llm-skills-guide.md        # How to create/modify skills
-└── commands/
+└── commands/                # Instructions behind user-invocable skills
     ├── git/
-    │   ├── commit-local-changes.md
-    │   ├── generate-pr-description.md
+    │   ├── commit-local-changes.md       # /git-commit
+    │   ├── generate-pr-description.md    # /pr-description
     │   └── rules/
     │       └── changes-message-format-rules.md
     ├── review/
-    │   └── review-code.md
+    │   ├── review-code.md                # /review-code
+    │   └── logic-review.md               # /logic-review
     └── check/
-        └── verify-task-result.md
+        ├── verify-task-result.md         # /verify-task-result
+        └── refine.md                     # /refine
 ```
-
-## Skills
-
-| Skill                    | Type       | When                                                  |
-| ------------------------ | ---------- | ----------------------------------------------------- |
-| `development-philosophy` | background | Architectural decisions, designing features           |
-| `code-style`             | background | Formatting, renaming, naming conventions              |
-| `typescript`             | background | Fixing type errors, working with types/interfaces     |
-| `architecture`           | background | Placing files, structuring new features               |
-| `code-review`            | background | Reviewing PRs, applying CCR labels                    |
-| `debugging`              | background | Investigating bugs, errors, unexpected behavior       |
-| `testing`                | background | Writing or modifying *.spec.ts / *.e2e-spec.ts files  |
-| `workflow`               | background | Planning tasks, structuring complex work              |
-| `llm-skills-guide`       | background | Creating or modifying skills                          |
-| `git-commit`             | command    | `/git-commit` — generate and propose commit           |
-| `pr-description`         | command    | `/pr-description` — generate GitHub PR title + body   |
-| `verify-task-result`     | command    | `/verify-task-result` — lint + tsc + tests + build    |
-| `review-code`            | command    | `/review-code` — review all branch changes via CCR    |
-
-## Agents
-
-| Agent                | Model  | When auto-triggered                          |
-| -------------------- | ------ | -------------------------------------------- |
-| `verify-task-result` | haiku  | After completing any code changes            |
-| `review-code`        | sonnet | After completing a task, before creating PR  |
 
 ## MCP Servers
 
-See `mcp.example.json` for reference. Copy to `.mcp.json` in the project root and fill in tokens.
-
-Useful servers:
+See `mcp.example.json` for reference. Copy to `.mcp.json` in the project root (gitignored).
 
 - **context7** — library docs lookup (NestJS, TypeScript, etc.).
-- **github** — GitHub API (issues, PRs, repo info).
+- **github** — official hosted GitHub MCP server (OAuth on first use).

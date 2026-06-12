@@ -4,7 +4,8 @@
 
 ```
 src/
-├── main.ts             # Bootstrap (helmet, CORS, ValidationPipe, versioning, Swagger, shutdown hooks)
+├── main.ts             # Bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen)
+├── app.setup.ts        # configureApp() — helmet, CORS, prefix, versioning; shared by main.ts and e2e
 ├── tracing.ts          # OpenTelemetry init (must stay the first import in main.ts)
 ├── app.module.ts       # Root module: Config, Logger, Throttler, Prometheus, global filter/guard
 ├── config/
@@ -14,6 +15,7 @@ src/
 │   ├── filters/           # Global exception filters (consistent error JSON)
 │   └── dto/               # Shared DTOs — PaginationQueryDto, PaginatedResponse, @ApiPaginatedResponse
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
+├── metrics/            # MetricsModule + Prometheus controller override; @SkipThrottle()
 └── modules/
     └── <feature>/      # Feature module — copy the `users` shape
         ├── dto/
@@ -27,29 +29,40 @@ src/
 
 - Each feature = one NestJS module in `src/modules/<feature>/`.
 - A module exports only what other modules explicitly need.
+- Shared layers (`common/`, `config/`) never import from `modules/` — enforced by ESLint `import-x/no-restricted-paths`.
 - `@Global()` only for truly app-wide shared infrastructure.
 
 ## Layer Responsibilities
 
-| Layer      | Responsibility                                                  |
-| ---------- | --------------------------------------------------------------- |
-| Controller | HTTP only — parse request via DTOs, call service, shape response |
-| Service    | Business logic — no HTTP, no Express/req objects                 |
-| Module     | Wire dependencies, declare exports                               |
-| DTO        | Input validation via `class-validator` + `@ApiProperty`          |
+| Layer      | Responsibility                                                     |
+| ---------- | ------------------------------------------------------------------ |
+| Controller | HTTP only — parse request via DTOs, call service, shape response   |
+| Service    | Business logic — no HTTP, no Express/req objects                   |
+| Module     | Wire dependencies, declare exports                                 |
+| DTO        | Input validation via `class-validator` + `@ApiProperty`            |
 | Entity     | API-facing model (kept separate from any future persistence model) |
 
 ## Config Access
 
-Always inject `ConfigService` — never use `process.env` directly inside modules:
+One style everywhere: inject the whole typed `AppConfig` by `configuration.KEY` — never use `process.env` directly inside modules, never read individual keys via `ConfigService.get('app.x')` string paths:
 
 ```typescript
-// ✅
-constructor(private readonly config: ConfigService) {}
-const port = this.config.get('app.port', { infer: true });
+// ✅ in services
+constructor(@Inject(configuration.KEY) private readonly appConfig: AppConfig) {}
+this.appConfig.port;
+
+// ✅ in module factories
+ThrottlerModule.forRootAsync({
+  inject: [configuration.KEY],
+  useFactory: (appConfig: AppConfig) => ({ ... }),
+});
+
+// ✅ in bootstrap / app.setup.ts
+const appConfig = app.get<AppConfig>(configuration.KEY);
 
 // ❌
 process.env.PORT;
+this.config.get('app.port');
 ```
 
 ## Adding a New Feature Module
@@ -68,8 +81,9 @@ For seed scripts, one-shot migrations, admin tasks, or anything that needs the D
 ```typescript
 // src/scripts/<name>.ts
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../app.module';
-import { SomeService } from '../modules/<feature>/<feature>.service';
+
+import { AppModule } from '@/app.module';
+import { SomeService } from '@/modules/<feature>/<feature>.service';
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
@@ -85,7 +99,7 @@ async function main(): Promise<void> {
 void main();
 ```
 
-Run via:
+Run via (install `ts-node` + `tsconfig-paths` as devDependencies with the first script — they are intentionally absent until then):
 
 ```jsonc
 // package.json
@@ -98,8 +112,9 @@ This keeps maintenance work in the same dependency graph as the app — no dupli
 
 ## Adding a New Env Variable
 
-Update **all three** in lockstep:
+Update **all of these** in lockstep:
 
 1. `src/config/env.validation.ts` — declare on `EnvironmentVariables` with a validator + default (the single source of truth).
 2. `src/config/configuration.ts` — extend `AppConfig` and map it.
 3. `.env.example` — document it.
+4. `k8s/configmap.yaml` — add it when the production value must differ from the default.
