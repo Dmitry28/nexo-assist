@@ -1,5 +1,16 @@
 {
   "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "WebSearch",
+      "WebFetch(*)",
+      "Skill(*)",
+      "Bash(*)"
+    ],
     "ask": [
       "Bash(git commit *)",
       "Bash(git commit)",
