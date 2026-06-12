@@ -11,10 +11,23 @@
 
 Rules and skills must be:
 
+- **Correct** — verify every claim against current code; outdated guidance is worse than no guidance.
 - **Simple, clear, concise** — easy to understand at a glance.
+- **DRY** — state each rule in one canonical place; link to it from elsewhere instead of duplicating.
 - **Essential only** — no redundant explanations or excessive examples.
 - **Non-obvious only** — skip what an LLM can easily infer from the code.
 - **Actionable** — focus on what to do, not what not to do.
+
+## Cross-references
+
+Inside a rule body, reference other rules by **relative path** (`see ./debugging.md`), never by `@`-import — `@` is reserved for `CLAUDE.md`. This avoids cascading auto-imports and keeps each rule self-contained.
+
+## When NOT to Create a Skill
+
+A skill exists to give Claude **discoverability** (auto-load on triggers) or **a slash command**. If neither is needed, keep the markdown rule and skip the wrapper:
+
+- Content fits in `CLAUDE.md`/`ENTRY_POINT.md` (a few lines of project-wide context).
+- It's referenced from one place only — inline it there.
 
 ## Skill File Format (`.claude/skills/<name>/SKILL.md`)
 
@@ -69,3 +82,5 @@ Command skills with large output (diffs, reviews, PR descriptions) should use `c
 
 1. Create content file in `docs/llm/rules/` or `docs/llm/commands/`.
 2. Create skill wrapper in `.claude/skills/<name>/SKILL.md` — the frontmatter is the single source for the skill's description/triggers; no separate registration anywhere.
+3. **Final pass** — re-read the content file: correct (verified, no recall)? DRY (link instead of duplicate)? concise (cut what loses nothing)? clear to a new contributor? If any "no" — revise before committing. Sloppy skills compound — they get followed and copied.
+4. **Format check** — markdown skips lint-staged's ESLint, so run `npx prettier --check <file>` on every modified instruction file; fix with `--write`.

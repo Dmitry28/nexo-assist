@@ -8,6 +8,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - Describe the solution; for complex tasks add non-goals, milestones, acceptance criteria.
 - **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs?
 - For complex tasks, document key architectural decisions: what was chosen vs. rejected and why (prevents re-deliberation).
+- For medium/complex tasks a written plan is mandatory before code. "Too simple to need a plan" → scale the plan down, don't skip it.
 - Get user confirmation before implementing anything non-trivial.
 
 ## 2. Implement
@@ -31,7 +32,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 - Confirm the plan step is fully realized (nothing skipped).
 - Run `/verify-task-result` on changed files.
-- Quick self-check: architecture, types, naming.
+- Self-check: [philosophy questions](development-philosophy.md#self-check) (simple / clear / concise / DRY) + architecture, types, naming, edge cases.
 - **Generation is fast; verification is the bottleneck — don't skip or rush this step.**
 
 ## 4. Fix
@@ -44,16 +45,17 @@ _(Repeat steps 2–4 for each milestone)_
 
 ---
 
-**After all work is complete — run every step in order, do not skip:**
+**After all work is complete — run every step in order, do not skip.** "This change is too small" → scale the check down, don't skip it.
 
-1. Run `/verify-task-result` with full checks.
-2. Run `/review-code` over all branch changes.
-3. Fix any issues found in 1–2.
-4. Cover critical logic with tests if not yet covered — only what matters.
-5. Update docs if architecture/patterns/logic changed.
-6. **Propose a TODO for any real issue you notice but don't fix in current scope** — pre-existing inconsistencies, dead code, optimization opportunities, edge cases. Verify it's real (read the code); don't TODO speculative concerns. Format: see [comment rules](code-style.md#comments).
-7. **Reflection** — review LLM instructions (`docs/llm/`): did any instruction mislead, miss a needed pattern, or fail to prevent a mistake you made? If yes — update it directly. Skip if nothing genuinely new.
-8. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
+1. Run `/logic-review` — correctness review against the task / acceptance criteria / agreed plan. Fix gaps before moving on.
+2. Cover critical logic with tests if not yet covered — only what matters.
+3. Run `/verify-task-result` with full checks.
+4. Run `/review-code` over all branch changes.
+5. Fix any issues found in steps 1–4, then re-run the relevant review — repeat until clean.
+6. Update docs if architecture/patterns/logic changed.
+7. **Propose a TODO for any real issue you notice but don't fix in current scope** — pre-existing inconsistencies, dead code, optimization opportunities, edge cases. Verify it's real (read the code); don't TODO speculative concerns. Format: see [comment rules](code-style.md#comments).
+8. **Reflection** — improve **repo-tracked** instructions (`docs/llm/`, `.claude/skills/`) so the next contributor avoids the same friction. **Not personal memory — only files committed to the repo.** Edit when an instruction misled you, was easy to skip, or missed a pattern you used. Each edit: specific (cite file/section), minimal (one focused change). Skip if nothing came up — don't invent improvements to fill the slot.
+9. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
 
 ---
 

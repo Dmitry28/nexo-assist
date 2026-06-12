@@ -39,6 +39,8 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - Each solution: simple, clear, concise.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - Follow existing NestJS module structure — mirror the `users` module.
+- **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
+- Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 
 ## Workflow
@@ -54,6 +56,7 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Architecture           | [rules/architecture.md](rules/architecture.md) |
 | Development philosophy | [rules/development-philosophy.md](rules/development-philosophy.md) |
 | Code review            | [rules/code-review.md](rules/code-review.md) |
+| Logic review           | [rules/logic-review.md](rules/logic-review.md) |
 | Debugging              | [rules/debugging.md](rules/debugging.md) |
 | Testing                | [rules/testing.md](rules/testing.md) |
 | Workflow               | [rules/workflow.md](rules/workflow.md) |

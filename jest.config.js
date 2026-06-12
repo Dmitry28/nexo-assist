@@ -10,6 +10,7 @@ module.exports = {
   coveragePathIgnorePatterns: ['\\.module\\.ts$', 'main\\.ts$', '\\.dto\\.ts$'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  clearMocks: true,
   maxWorkers: '50%',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',

@@ -3,6 +3,7 @@
 ## Naming
 
 - Descriptive variables with auxiliary verbs: `isLoading`, `hasError`, `hasPermission`.
+- Boolean flags follow **verb + noun** order with the resource explicit (`isUserCreationAllowed`), never noun + verb or a bare verb without a resource (`isCreating`).
 - NestJS file conventions: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
 - **Named exports** for all modules, services, utilities (no default exports except framework requirements).
 - File names: kebab-case (`users.service.ts`).
@@ -57,6 +58,7 @@ if (hasActivePaidAccess) { … }
 - `TODO` and `FIXME` must include a priority `[H|M|L]` and clear description.
 - Default to writing no comments — only add when the WHY is non-obvious (a hidden constraint, subtle invariant, workaround).
 - Never narrate WHAT the code does (well-named identifiers do that).
+- Never remove relevant existing comments.
 
 Format:
 
