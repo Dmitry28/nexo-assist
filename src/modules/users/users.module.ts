@@ -6,6 +6,6 @@ import { UsersService } from './users.service';
 @Module({
   controllers: [UsersController],
   providers: [UsersService],
-  exports: [UsersService],
+  // No exports — add them only when another module actually injects UsersService.
 })
 export class UsersModule {}

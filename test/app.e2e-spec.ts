@@ -1,7 +1,6 @@
-import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import type { App } from 'supertest/types';
 
 import { AppModule } from '@/app.module';
 import { configureApp } from '@/app.setup';
@@ -12,14 +11,14 @@ const defaults = new EnvironmentVariables();
 const PREFIX = `/${defaults.API_PREFIX}/v${defaults.API_VERSION}`;
 
 describe('App (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication<NestExpressApplication>();
     // Same pipeline as production (prefix, versioning, CORS, helmet).
     // ValidationPipe is wired globally via APP_PIPE in AppModule — no extra setup needed.
     configureApp(app);

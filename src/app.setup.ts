@@ -1,5 +1,5 @@
-import type { INestApplication } from '@nestjs/common';
 import { VersioningType } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import compression from 'compression';
 import helmet from 'helmet';
 
@@ -11,8 +11,13 @@ import configuration from './config/configuration';
  * routes that production serves. Keep process-level concerns (logger, swagger,
  * shutdown hooks, fatal handlers) in main.ts.
  */
-export function configureApp(app: INestApplication): void {
+export function configureApp(app: NestExpressApplication): void {
   const appConfig = app.get<AppConfig>(configuration.KEY);
+
+  // Trust exactly one proxy hop (k8s ingress / LB) so req.ip is the real client —
+  // ThrottlerGuard keys rate limits by it and pino logs it. Never `true`: that
+  // would let any client spoof its IP via X-Forwarded-For.
+  app.set('trust proxy', 1);
 
   app.use(helmet());
   app.use(compression());

@@ -29,7 +29,7 @@ pipeline.
 
 ## Requirements
 
-- Node.js >= 20 (see `.nvmrc` → 22)
+- Node.js >= 22 (see `.nvmrc`)
 - npm
 
 ## Getting started
@@ -113,6 +113,10 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
 Global via `@nestjs/throttler` (`THROTTLE_TTL` / `THROTTLE_LIMIT`). Exempt a route or
 controller with `@SkipThrottle()` (health probes and `/metrics` already are); tighten a
 specific route with `@Throttle({ default: { ttl, limit } })`.
+
+Clients are keyed by `req.ip`; `trust proxy` is set to the first hop (see `app.setup.ts`)
+so the real client IP survives a k8s ingress / load balancer. Adjust it if you add more
+proxy layers (e.g. a CDN in front of the ingress).
 
 ## Docker
 

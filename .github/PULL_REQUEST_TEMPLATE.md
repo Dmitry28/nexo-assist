@@ -8,6 +8,12 @@
 
 ## Test plan
 
+<!-- What to test manually; edge cases to verify. -->
+
+- [ ]
+
+## Checklist
+
 - [ ] Code follows project conventions (`docs/llm/rules/`)
 - [ ] `npm run lint && npm run typecheck && npm test` pass locally
 - [ ] Tests added/updated
