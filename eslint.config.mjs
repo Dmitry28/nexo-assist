@@ -55,7 +55,8 @@ export default tseslint.config(
             {
               target: ['./src/common', './src/config'],
               from: './src/modules',
-              message: 'common/ and config/ are shared — they must not import from feature modules.',
+              message:
+                'common/ and config/ are shared — they must not import from feature modules.',
             },
           ],
         },

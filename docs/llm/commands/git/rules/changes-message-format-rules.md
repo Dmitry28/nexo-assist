@@ -61,6 +61,6 @@ test: add health endpoint e2e test
 **Technical impact** — what other developers should know: breaking APIs, new shared services, measurable performance wins, infra/build changes, dependency migrations, architectural patterns to follow.
 Skip a section entirely if there's nothing to put there.
 
-**No change for the audience → no impact line.** Pure refactoring, formatting, comments, log tweaks, file moves, internal types, lockfile updates — all skipped. If a change *looks* like a refactor but breaks an API others use — it's not a refactor; list it with a migration note.
+**No change for the audience → no impact line.** Pure refactoring, formatting, comments, log tweaks, file moves, internal types, lockfile updates — all skipped. If a change _looks_ like a refactor but breaks an API others use — it's not a refactor; list it with a migration note.
 
 **Writing style (DRY):** combine related changes into single high-level statements; focus on outcome, not steps.

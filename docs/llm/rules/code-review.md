@@ -58,7 +58,7 @@ Before emitting any `[M]` / `[L]` candidate, do a second-pass Pattern Check — 
 ## Process Checks
 
 | Topic           | Mode   | Rule                                                                                                                                           |
-| --------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Self-Check      | Both   | [development-philosophy.md § Self-Check](development-philosophy.md#self-check)                                                                 |
 | Commit messages | Both   | `docs/llm/commands/git/rules/changes-message-format-rules.md` § 1                                                                              |
 | PR title + body | Remote | `docs/llm/commands/git/rules/changes-message-format-rules.md` § 2                                                                              |

@@ -40,21 +40,20 @@ description: Brief description. Use when [specific triggers].
 user-invocable: false
 allowed-tools: Read
 ---
-
 Read and apply [topic] rules from [docs/llm/rules/topic.md](../../../docs/llm/rules/topic.md).
 ```
 
 ### Frontmatter fields
 
-| Field                      | Required | Description                                                                                            |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
-| `name`                     | yes      | Skill identifier, used in `/name`.                                                                     |
-| `description`              | yes      | Trigger description, under 200 chars.                                                                  |
-| `user-invocable`           | no       | Show in `/` menu (default: `false`).                                                                   |
-| `disable-model-invocation` | no       | Only user can invoke (default: `false`).                                                               |
+| Field                      | Required | Description                                                                                             |
+| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `name`                     | yes      | Skill identifier, used in `/name`.                                                                      |
+| `description`              | yes      | Trigger description, under 200 chars.                                                                   |
+| `user-invocable`           | no       | Show in `/` menu (default: `false`).                                                                    |
+| `disable-model-invocation` | no       | Only user can invoke (default: `false`).                                                                |
 | `context`                  | no       | `conversation` (default) — runs in current context; `fork` — runs in isolated context, returns summary. |
-| `argument-hint`            | no       | Placeholder hint shown after `/name` in menu.                                                          |
-| `allowed-tools`            | no       | Restrict available tools for this skill.                                                               |
+| `argument-hint`            | no       | Placeholder hint shown after `/name` in menu.                                                           |
+| `allowed-tools`            | no       | Restrict available tools for this skill.                                                                |
 
 ### Description rules
 
@@ -70,11 +69,11 @@ Examples:
 
 ## Skill Types
 
-| Type           | Config                                                       | When triggered                      |
-| -------------- | ------------------------------------------------------------ | ----------------------------------- |
-| **Background** | `user-invocable: false`                                      | Auto-loaded by Claude when relevant |
-| **Command**    | `user-invocable: true` + `disable-model-invocation: true`    | Only via `/skill-name`              |
-| **Hybrid**     | `user-invocable: true` + `disable-model-invocation: false`   | Both Claude and `/skill-name`       |
+| Type           | Config                                                     | When triggered                      |
+| -------------- | ---------------------------------------------------------- | ----------------------------------- |
+| **Background** | `user-invocable: false`                                    | Auto-loaded by Claude when relevant |
+| **Command**    | `user-invocable: true` + `disable-model-invocation: true`  | Only via `/skill-name`              |
+| **Hybrid**     | `user-invocable: true` + `disable-model-invocation: false` | Both Claude and `/skill-name`       |
 
 Command skills with large output (diffs, reviews, PR descriptions) should use `context: fork` to avoid polluting the main conversation context.
 

@@ -26,7 +26,7 @@ for (const section of SECTIONS) {
   if (!pkg[section]) continue;
 
   for (const [name, version] of Object.entries(pkg[section])) {
-    if (EXEMPT_PREFIXES.some(prefix => version.startsWith(prefix))) continue;
+    if (EXEMPT_PREFIXES.some((prefix) => version.startsWith(prefix))) continue;
     if (PINNED_ALLOWLIST.has(name)) continue;
     if (!version.startsWith('^')) {
       violations.push({ section, name, version });
@@ -56,5 +56,7 @@ for (const { section, name, version } of violations) {
   console.error(`  ${section} → ${name}: "${version}" → should be "^${version}"`);
 }
 
-console.error('\nRun with --fix to auto-fix, or add to PINNED_ALLOWLIST if intentionally pinned.\n');
+console.error(
+  '\nRun with --fix to auto-fix, or add to PINNED_ALLOWLIST if intentionally pinned.\n',
+);
 process.exit(1);

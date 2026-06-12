@@ -10,13 +10,13 @@ kubectl apply -k k8s/
 cd k8s && kustomize edit set image nexo-assist=registry/nexo-assist:<git-sha>
 ```
 
-| File             | Purpose                                                            |
-| ---------------- | ----------------------------------------------------------------- |
-| `configmap.yaml` | Non-secret env. Put credentials in a `Secret` (see commented ref).|
-| `deployment.yaml`| 2 replicas, liveness/readiness/startup probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
-| `service.yaml`   | ClusterIP on port 80 → container port 3000.                       |
-| `hpa.yaml`       | Autoscale 2→10 pods on CPU/memory.                                |
-| `pdb.yaml`       | Keep ≥1 pod up through voluntary disruptions (drains, upgrades).  |
+| File              | Purpose                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configmap.yaml`  | Non-secret env. Put credentials in a `Secret` (see commented ref).                                                                           |
+| `deployment.yaml` | 2 replicas, liveness/readiness/startup probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
+| `service.yaml`    | ClusterIP on port 80 → container port 3000.                                                                                                  |
+| `hpa.yaml`        | Autoscale 2→10 pods on CPU/memory.                                                                                                           |
+| `pdb.yaml`        | Keep ≥1 pod up through voluntary disruptions (drains, upgrades).                                                                             |
 
 ## Probes
 
