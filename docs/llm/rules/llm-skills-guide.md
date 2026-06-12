@@ -68,5 +68,4 @@ Command skills with large output (diffs, reviews, PR descriptions) should use `c
 ## Adding a New Skill
 
 1. Create content file in `docs/llm/rules/` or `docs/llm/commands/`.
-2. Create skill wrapper in `.claude/skills/<name>/SKILL.md`.
-3. Add to the skills table in `docs/llm/README.md`.
+2. Create skill wrapper in `.claude/skills/<name>/SKILL.md` — the frontmatter is the single source for the skill's description/triggers; no separate registration anywhere.

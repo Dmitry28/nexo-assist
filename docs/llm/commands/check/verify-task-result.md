@@ -12,7 +12,7 @@ git diff --cached --name-only
 
 Deduplicate and use the combined list.
 
-## Step 1 — Quick checks (no approval needed)
+## Step 1 — Quick checks (always)
 
 | Changed files | Command                                                                                     |
 | ------------- | ------------------------------------------------------------------------------------------- |
@@ -23,11 +23,9 @@ Deduplicate and use the combined list.
 
 Report ✅ pass or ❌ fail with relevant error output.
 
-## Step 2 — Full checks (ask approval first)
+## Step 2 — Full checks
 
-Ask: **"Run full lint and tests? This may take a moment."**
-
-If approved:
+All commands are read-only and safe — no approval needed. Run for the final verification of a task (workflow's completion checklist) or when asked for "full checks"; skip for quick mid-task iterations.
 
 1. `npm run typecheck`
 2. `npm run lint`
@@ -48,7 +46,7 @@ If approved:
 ✅ tsc
 ✅ tests (changed files)
 ✅ format:check
---- approved ---
+--- full ---
 ✅ typecheck
 ✅ lint
 ✅ unit
