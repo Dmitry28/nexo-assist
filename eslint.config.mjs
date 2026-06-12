@@ -1,5 +1,6 @@
 // @ts-check
 import eslint from '@eslint/js';
+import importX from 'eslint-plugin-import-x';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -25,7 +26,22 @@ export default tseslint.config(
     },
   },
   {
+    plugins: { 'import-x': importX },
     rules: {
+      // Import hygiene — enforces the grouping/ordering the codebase already follows.
+      'import-x/order': [
+        'error',
+        {
+          groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+          pathGroups: [{ pattern: '@/**', group: 'internal' }],
+          'newlines-between': 'always',
+          alphabetize: { order: 'asc', caseInsensitive: true },
+        },
+      ],
+      'import-x/no-duplicates': 'error',
+      'import-x/no-self-import': 'error',
+      'import-x/no-cycle': ['error', { maxDepth: 3 }],
+      'import-x/no-useless-path-segments': ['error', { noUselessIndex: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       // 'error' explicitly — `--max-warnings 0` would promote a warning anyway.

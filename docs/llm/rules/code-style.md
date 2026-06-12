@@ -37,6 +37,8 @@ function send(params: { message: string; channel: string; retries: number }) {}
 
 ## Conditions
 
+Silent guards (`if (!x) return;` with no log or side effect) need a `// NOTE:` explaining why the no-op is intentional — otherwise log it.
+
 Extract non-trivial conditions into named boolean variables:
 
 ```typescript
@@ -66,4 +68,5 @@ Format:
 
 ## General
 
-- Remove dead code when noticed.
+- Remove dead code when noticed (`npm run check:dead-code` finds unused files/exports/deps).
+- No `eslint-disable` / `@ts-expect-error` without a `TODO [H|M|L]` — fix the root cause instead of suppressing.

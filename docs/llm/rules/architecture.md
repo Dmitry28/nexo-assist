@@ -97,7 +97,7 @@ async function main(): Promise<void> {
 void main();
 ```
 
-Run via:
+Run via (install `ts-node` + `tsconfig-paths` as devDependencies with the first script — they are intentionally absent until then):
 
 ```jsonc
 // package.json

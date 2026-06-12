@@ -17,6 +17,7 @@ npm run format:check    # Prettier check (no writes)
 npm test                # unit tests
 npm run test:cov        # tests with coverage report
 npm run test:e2e        # e2e tests
+npm run check:dead-code # knip — unused files/exports/dependencies
 ```
 
 Before claiming a change is done, run: `npm run lint && npm run typecheck && npm test`.
@@ -38,6 +39,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - Each solution: simple, clear, concise.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - Follow existing NestJS module structure — mirror the `users` module.
+- Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 
 ## Workflow
 

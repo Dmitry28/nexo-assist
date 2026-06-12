@@ -37,6 +37,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Dead code check
+        run: npm run check:dead-code
+
       - name: Unit tests
         run: npm run test:cov
 

@@ -23,5 +23,27 @@
       "Bash(rm -rf *)",
       "Bash(sudo *)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "name=$(jq -r '.tool_input.skill // empty'); [ -n \"$name\" ] && grep -q 'context: fork' \".claude/skills/$name/SKILL.md\" 2>/dev/null && echo \"The '$name' skill ran in FORKED context - its step-by-step instructions are NOT in your context. If you continue its workflow manually (git/API/edits), first Read .claude/skills/$name/SKILL.md and the docs it references, then follow those steps exactly. Do not improvise the remaining steps from memory.\" >&2; exit 0"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | grep -E '(docs/llm/.*[.]md|[.]claude/skills/.*[.]md)$' >/dev/null && echo 'Re-read the diff you just wrote. Cut filler, restatements of rules already in the file, prescriptive lists with one obvious item, AI-tone phrasing. If a sentence does not change behaviour for the next reader - delete it. See docs/llm/rules/llm-skills-guide.md.' >&2; exit 0"
+          }
+        ]
+      }
+    ]
   }
 }
