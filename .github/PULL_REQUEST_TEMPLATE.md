@@ -1,20 +1,15 @@
-## What & why
+## Summary
 
-<!-- What does this PR change, and why? Link the issue: Closes #123 -->
+### User impact
+<!-- Visible changes: new features, API changes, bug fixes affecting behaviour. Skip if none. -->
 
-## Type of change
+### Technical impact
+<!-- Internal changes: refactors, dependency updates, CI, tooling, infrastructure. Skip if none. -->
 
-- [ ] feat — new feature
-- [ ] fix — bug fix
-- [ ] refactor / chore / docs
+## Test plan
 
-## Checklist
-
+- [ ] Code follows project conventions (`docs/llm/rules/`)
 - [ ] `npm run lint && npm run typecheck && npm test` pass locally
-- [ ] Added/updated unit tests (`*.service.spec.ts`) and e2e coverage
-- [ ] New env vars added to `env.validation.ts`, `.env.example`, and `configuration.ts`
-- [ ] No breaking API changes (or documented below)
-
-## Notes for reviewers
-
-<!-- Anything reviewers should focus on, trade-offs, follow-ups. -->
+- [ ] Tests added/updated
+- [ ] `.env.example` + `env.validation.ts` + `configuration.ts` updated if new env variables
+- [ ] No secrets or sensitive data committed

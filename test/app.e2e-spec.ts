@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
@@ -13,10 +13,8 @@ describe('App (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
+    // ValidationPipe is wired globally via APP_PIPE in AppModule — no extra setup needed.
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
     await app.init();
   });
 

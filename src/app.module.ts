@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { LoggerModule } from 'nestjs-pino';
@@ -16,6 +16,7 @@ import { UsersModule } from './modules/users/users.module';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      expandVariables: true,
       // `configuration` validates env via validateEnv and exposes it as `app.*`.
       load: [configuration],
       envFilePath: ['.env.local', '.env'],
@@ -53,6 +54,16 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
   ],
   providers: [
+    // Global request validation — single source of truth so tests inherit it automatically.
+    {
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    },
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,

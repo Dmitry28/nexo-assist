@@ -1,35 +1,34 @@
 # Contributing
 
+The canonical rules live in [`docs/llm/`](docs/llm/) — single source of truth for humans **and** AI agents. This page is the index.
+
 ## Workflow
 
-1. Branch off `main`: `git checkout -b feat/<short-name>`.
-2. Make your change. Mirror the `users` module for new features (see `CLAUDE.md`).
-3. Run the gate locally before pushing:
-   ```bash
-   npm run lint && npm run typecheck && npm test
-   ```
-4. Open a PR. CI must be green and the PR description filled in.
-
-## Commit messages
-
-Use [Conventional Commits](https://www.conventionalcommits.org):
-
-```
-feat(users): add email verification
-fix(health): correct readiness threshold
-chore(deps): bump nestjs to 11.1
+```bash
+git checkout -b feat/<short-name>
+# ...changes...
+npm run lint && npm run typecheck && npm test
+git push -u origin feat/<short-name>
+gh pr create
 ```
 
-Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`.
+CI must be green before merge. Default merge: `gh pr merge --squash --delete-branch`.
 
-## Code standards
+Full loop (Plan → Implement → Verify → Fix): [`docs/llm/rules/workflow.md`](docs/llm/rules/workflow.md).
 
-- Strict TypeScript; no `any`, no unused locals/params.
-- Prettier owns formatting; ESLint owns correctness — both run on pre-commit and in CI.
-- Every service gets a `*.service.spec.ts`; cover new endpoints in `test/app.e2e-spec.ts`.
+## Commit & PR messages
+
+[Conventional Commits](https://www.conventionalcommits.org). Types and PR description format: [`docs/llm/commands/git/rules/changes-message-format-rules.md`](docs/llm/commands/git/rules/changes-message-format-rules.md).
+
+## Code rules
+
+- Architecture (module structure, subscription pattern, env vars): [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
+- Code style: [`docs/llm/rules/code-style.md`](docs/llm/rules/code-style.md).
+- TypeScript (strict, no `as`, `import type`): [`docs/llm/rules/typescript.md`](docs/llm/rules/typescript.md).
+- Review (CCR labels): [`docs/llm/rules/code-review.md`](docs/llm/rules/code-review.md).
+
+## Tests
+
+- Every service gets `*.service.spec.ts` (unit).
+- Cover new endpoints in `test/app.e2e-spec.ts`.
 - Test error paths (404/409/429…), not just the happy path.
-
-## Adding env vars
-
-Update **all three**: `src/config/env.validation.ts` (schema), `.env.example`, and the
-`AppConfig` mapping in `src/config/configuration.ts`. The app fails to boot on invalid config.

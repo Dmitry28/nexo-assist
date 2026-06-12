@@ -1,7 +1,7 @@
 // Must be first: starts OpenTelemetry before any instrumented module loads.
 import './tracing';
 
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -35,17 +35,21 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix(appConfig.apiPrefix);
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: appConfig.apiVersion });
 
-  // Global request validation. whitelist strips unknown props; transform applies DTO types.
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
+  // ValidationPipe is registered globally via APP_PIPE in AppModule.
 
   app.enableShutdownHooks();
+
+  // Last-resort safety nets. Node's default behaviour leaves the process in an unknown
+  // state — log via pino, then exit so the orchestrator (k8s / docker) can restart us.
+  const logger = app.get(Logger);
+  process.on('uncaughtException', (error) => {
+    logger.fatal({ err: error }, 'uncaughtException — exiting');
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.fatal({ err: reason }, 'unhandledRejection — exiting');
+    process.exit(1);
+  });
 
   // Swagger / OpenAPI (disabled in production).
   if (appConfig.env !== Environment.Production) {
@@ -61,7 +65,7 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.port);
 
-  app.get(Logger).log(`Application listening on port ${appConfig.port}`, 'Bootstrap');
+  logger.log(`Application listening on port ${appConfig.port}`, 'Bootstrap');
 }
 
 void bootstrap();

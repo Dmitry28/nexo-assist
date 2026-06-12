@@ -1,6 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
-import { Environment, LogLevel, validateEnv } from './env.validation';
+import type { Environment, LogLevel } from './env.validation';
+import { validateEnv } from './env.validation';
 
 /**
  * Typed, namespaced config object. Inject with:

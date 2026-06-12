@@ -1,1 +1,1 @@
-See [CLAUDE.md](./CLAUDE.md) — same guidance, single source of truth.
+Read [docs/llm/ENTRY_POINT.md](docs/llm/ENTRY_POINT.md) before doing anything.

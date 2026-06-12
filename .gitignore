@@ -37,3 +37,10 @@ yarn-error.log*
 # Temp
 *.tsbuildinfo
 .eslintcache
+
+# Claude Code (local-only — project-shared settings live in .claude/settings.json)
+.claude/settings.local.json
+.claude/memory/
+.claude/worktrees/
+.mcp.json
+docs/llm/mcp.json
