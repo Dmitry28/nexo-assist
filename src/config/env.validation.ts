@@ -25,8 +25,9 @@ export class EnvironmentVariables {
   @IsOptional()
   NODE_ENV: Environment = Environment.Development;
 
+  // Min 1: PORT=0 would bind a random port and break every probe/healthcheck.
   @IsNumber()
-  @Min(0)
+  @Min(1)
   @Max(65535)
   @IsOptional()
   PORT: number = 3000;

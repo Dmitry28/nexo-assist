@@ -107,8 +107,8 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
 - **Tracing** — OpenTelemetry, opt-in. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optionally
   `OTEL_SERVICE_NAME`) to start the SDK; auto-instruments HTTP/Express. See `src/tracing.ts`.
   Control sampling without code changes via standard env: `OTEL_TRACES_SAMPLER=parentbased_traceidratio`
-  - `OTEL_TRACES_SAMPLER_ARG=0.1`. Unhandled 5xx exceptions are attached to the active span
-    by the global exception filter.
+  plus `OTEL_TRACES_SAMPLER_ARG=0.1`. Unhandled 5xx exceptions are attached to the active span
+  by the global exception filter.
 - **Logs** — structured JSON via `nestjs-pino` (pretty in dev), with request correlation IDs.
   When tracing is enabled, `trace_id`/`span_id` are injected into every log line, so logs
   and traces cross-link in the APM.
