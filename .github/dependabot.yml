@@ -10,6 +10,11 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Types must track the runtime major (.nvmrc / engines / Dockerfile) —
+      # bump @types/node together with Node, not on its own releases.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
