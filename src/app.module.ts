@@ -11,6 +11,7 @@ import configuration from './config/configuration';
 import { Environment } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -64,6 +65,7 @@ import { UsersModule } from './modules/users/users.module';
     MetricsModule,
     HealthModule,
     UsersModule,
+    TelegramModule,
   ],
   providers: [
     // Global request validation — single source of truth so tests inherit it automatically.

@@ -59,6 +59,11 @@ export class EnvironmentVariables {
   @Min(1)
   @IsOptional()
   THROTTLE_LIMIT: number = 100;
+
+  /** Telegram bot token from @BotFather. When unset, the bot stays disabled. */
+  @IsString()
+  @IsOptional()
+  TELEGRAM_BOT_TOKEN?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

@@ -20,6 +20,8 @@ export interface AppConfig {
   logLevel: LogLevel;
   throttleTtl: number;
   throttleLimit: number;
+  /** Telegram bot token; `undefined` keeps the bot disabled. */
+  telegramBotToken: string | undefined;
 }
 
 /**
@@ -39,5 +41,6 @@ export default registerAs('app', (): AppConfig => {
     logLevel: env.LOG_LEVEL,
     throttleTtl: env.THROTTLE_TTL,
     throttleLimit: env.THROTTLE_LIMIT,
+    telegramBotToken: env.TELEGRAM_BOT_TOKEN,
   };
 });
