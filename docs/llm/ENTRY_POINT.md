@@ -61,4 +61,5 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Debugging              | [rules/debugging.md](rules/debugging.md)                           |
 | Testing                | [rules/testing.md](rules/testing.md)                               |
 | Workflow               | [rules/workflow.md](rules/workflow.md)                             |
+| GitHub workflow        | [rules/github.md](rules/github.md)                                 |
 | LLM skills             | [rules/llm-skills-guide.md](rules/llm-skills-guide.md)             |
