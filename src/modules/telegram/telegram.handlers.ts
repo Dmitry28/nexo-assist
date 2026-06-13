@@ -3,7 +3,7 @@ import { InlineKeyboard } from 'grammy';
 import type { Bot, Context } from 'grammy';
 
 import type { SourceId } from '@/modules/subscriptions/entities/subscription.entity';
-import { detectSource, extractUrl } from '@/modules/subscriptions/source-detection';
+import { extractUrl, sourceOf } from '@/modules/subscriptions/source-detection';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
@@ -33,15 +33,20 @@ export class TelegramHandlers {
     const userId = ctx.from?.id;
     if (!text || userId === undefined) return;
 
-    const detected = detectSource(text);
-    if (!detected) {
-      await ctx.reply(extractUrl(text) ? `That source is not supported yet. ${PROMPT}` : PROMPT);
+    const url = extractUrl(text);
+    if (!url) {
+      await ctx.reply(PROMPT);
+      return;
+    }
+    const source = sourceOf(url);
+    if (!source) {
+      await ctx.reply(`That source is not supported yet. ${PROMPT}`);
       return;
     }
 
-    this.pending.set(userId, detected);
+    this.pending.set(userId, { source, url });
     const keyboard = new InlineKeyboard().text('Subscribe', 'subscribe').text('Cancel', 'cancel');
-    await ctx.reply(`Watch this ${detected.source} search?\n${detected.url}`, {
+    await ctx.reply(`Watch this ${source} search?\n${url}`, {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });
@@ -55,6 +60,7 @@ export class TelegramHandlers {
       return;
     }
 
+    // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
     this.subscriptions.add({ telegramUserId: userId, ...candidate });
     this.pending.delete(userId);
     await ctx.editMessageText(

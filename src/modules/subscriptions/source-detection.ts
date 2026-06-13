@@ -14,14 +14,10 @@ export function extractUrl(text: string): string | null {
 }
 
 /**
- * Detect a supported source from pasted text. Returns null when there is no URL
- * or the host is not supported. Host check only — full URL parsing lands with
- * the source adapters (Phase 2).
+ * Supported source for a URL, or null. Host check only — full URL parsing lands
+ * with the source adapters (Phase 2).
  */
-export function detectSource(text: string): { source: SourceId; url: string } | null {
-  const url = extractUrl(text);
-  if (!url) return null;
-
+export function sourceOf(url: string): SourceId | null {
   let hostname: string;
   try {
     hostname = new URL(url).hostname.replace(/^www\./, '');
@@ -31,9 +27,7 @@ export function detectSource(text: string): { source: SourceId; url: string } | 
 
   for (const { source, host } of SUPPORTED_SOURCES) {
     // NOTE: endsWith(".<host>") also matches subdomains like re.kufar.by.
-    if (hostname === host || hostname.endsWith(`.${host}`)) {
-      return { source, url };
-    }
+    if (hostname === host || hostname.endsWith(`.${host}`)) return source;
   }
   return null;
 }

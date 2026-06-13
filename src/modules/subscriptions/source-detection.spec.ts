@@ -1,4 +1,4 @@
-import { detectSource, extractUrl } from './source-detection';
+import { extractUrl, sourceOf } from './source-detection';
 
 describe('extractUrl', () => {
   it('pulls the first http(s) url from text', () => {
@@ -10,20 +10,20 @@ describe('extractUrl', () => {
   });
 });
 
-describe('detectSource', () => {
+describe('sourceOf', () => {
   it.each([
     ['https://www.kufar.by/l/r~minsk', 'kufar'],
     ['https://re.kufar.by/l/minsk', 'kufar'],
     ['https://realt.by/sale/flats/', 'realt'],
   ])('detects %s as %s', (url, source) => {
-    expect(detectSource(url)).toEqual({ source, url });
+    expect(sourceOf(url)).toBe(source);
   });
 
   it('returns null for an unsupported host', () => {
-    expect(detectSource('https://example.com/search')).toBeNull();
+    expect(sourceOf('https://example.com/search')).toBeNull();
   });
 
-  it('returns null when there is no url', () => {
-    expect(detectSource('just text')).toBeNull();
+  it('returns null for a non-url string', () => {
+    expect(sourceOf('just text')).toBeNull();
   });
 });

@@ -37,11 +37,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     this.handlers.register(bot);
     bot.catch((err) => this.logger.error('Bot handler error', err));
 
+    // NOTE: assign before start() so a shutdown mid-init can still stop the polling loop.
+    this.bot = bot;
     // NOTE: bot.start() runs the long-polling loop until stopped — do not await it here.
     void bot
       .start({ onStart: (me) => this.logger.log(`Bot @${me.username} started`) })
       .catch((err: unknown) => this.logger.error('Bot stopped with error', err));
-    this.bot = bot;
   }
 
   async onApplicationShutdown(): Promise<void> {
