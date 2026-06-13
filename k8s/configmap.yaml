@@ -6,7 +6,11 @@ metadata:
     app.kubernetes.io/name: nexo-assist
 data:
   NODE_ENV: 'production'
+  # Deployment stage — drives app behavior (set to 'staging' on the dev-branch deploy).
+  APP_ENV: 'production'
   PORT: '3000'
+  # Cron for the daily subscription check (09:00 UTC).
+  WATCH_CRON: '0 9 * * *'
   API_PREFIX: 'api'
   API_VERSION: '1'
   LOG_LEVEL: 'info'
