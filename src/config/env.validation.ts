@@ -92,9 +92,12 @@ export class EnvironmentVariables {
   @IsOptional()
   TELEGRAM_BOT_TOKEN?: string;
 
-  /** Cron expression for the daily subscription check. Boot validates the field count (5–6). */
+  /**
+   * Cron for the daily subscription check. 5 fields only (min hour dom mon dow);
+   * a 6th field would be seconds in the cron lib — avoided, we need daily granularity.
+   */
   @IsString()
-  @Matches(/^(\S+\s+){4,5}\S+$/, { message: 'WATCH_CRON must be a 5- or 6-field cron expression' })
+  @Matches(/^(\S+\s+){4}\S+$/, { message: 'WATCH_CRON must be a 5-field cron expression' })
   @IsOptional()
   WATCH_CRON: string = '0 9 * * *';
 }

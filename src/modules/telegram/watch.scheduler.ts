@@ -7,7 +7,7 @@ import configuration from '@/config/configuration';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { formatNewListings } from './telegram.format';
+import { DIGEST_LIMIT, formatNewListings } from './telegram.format';
 import { TelegramService } from './telegram.service';
 
 const JOB_NAME = 'daily-watch';
@@ -26,8 +26,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    // NOTE: skip under tests — the cron would fire real fetches and notifications.
-    if (this.appConfig.isTest) return;
+    // NOTE: skip under tests, and when the bot is disabled (no token) — nothing to
+    // deliver, and marking listings seen on a no-op notify would silently drop them.
+    if (this.appConfig.isTest || !this.appConfig.telegramBotToken) return;
 
     const job = new CronJob(this.appConfig.watchCron, () => void this.runDaily());
     this.scheduler.addCronJob(JOB_NAME, job);
@@ -46,8 +47,8 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         if (fresh.length > 0) {
           // TODO Phase 4: on a 403 (user blocked the bot), pause that user's subscriptions [M].
           await this.telegram.notify(sub.telegramUserId, formatNewListings(fresh));
-          // Mark seen only after a successful send — a failed notify retries next run.
-          this.watch.markSeen(sub, fresh);
+          // Mark only the delivered slice — overflow beyond the digest cap surfaces next run.
+          this.watch.markSeen(sub, fresh.slice(0, DIGEST_LIMIT));
         }
       } catch (err) {
         // NOTE: isolate failures — one bad subscription must not skip the rest.

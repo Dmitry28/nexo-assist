@@ -9,7 +9,7 @@ import { extractUrl, sourceOf } from '@/modules/subscriptions/source-detection';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { formatCurrentListings, formatNewListings } from './telegram.format';
+import { DIGEST_LIMIT, formatCurrentListings, formatNewListings } from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const NO_LINK_PREVIEW = { is_disabled: true } as const;
@@ -151,7 +151,7 @@ export class TelegramHandlers {
         if (fresh.length > 0) {
           foundAny = true;
           await ctx.reply(formatNewListings(fresh), { link_preview_options: NO_LINK_PREVIEW });
-          this.watch.markSeen(sub, fresh);
+          this.watch.markSeen(sub, fresh.slice(0, DIGEST_LIMIT));
         }
       } catch {
         await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
