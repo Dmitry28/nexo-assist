@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
-import type { Environment, LogLevel } from './env.validation';
-import { validateEnv } from './env.validation';
+import type { LogLevel } from './env.validation';
+import { AppEnv, Environment, validateEnv } from './env.validation';
 
 /**
  * Typed, namespaced config object. Inject the whole object by token:
@@ -11,7 +11,13 @@ import { validateEnv } from './env.validation';
  *   app.get<AppConfig>(configuration.KEY)
  */
 export interface AppConfig {
-  env: Environment;
+  /** Deployment stage — drives app behavior. */
+  appEnv: AppEnv;
+  /** Derived from `appEnv` — use these instead of comparing `appEnv` inline. */
+  isDevelopment: boolean;
+  isStaging: boolean;
+  isProduction: boolean;
+  isTest: boolean;
   port: number;
   apiPrefix: string;
   apiVersion: string;
@@ -33,8 +39,15 @@ export interface AppConfig {
  */
 export default registerAs('app', (): AppConfig => {
   const env = validateEnv(process.env);
+  // NOTE: APP_ENV is the deployment stage; default to test under jest, else development.
+  const appEnv =
+    env.APP_ENV ?? (env.NODE_ENV === Environment.Test ? AppEnv.Test : AppEnv.Development);
   return {
-    env: env.NODE_ENV,
+    appEnv,
+    isDevelopment: appEnv === AppEnv.Development,
+    isStaging: appEnv === AppEnv.Staging,
+    isProduction: appEnv === AppEnv.Production,
+    isTest: appEnv === AppEnv.Test,
     port: env.PORT,
     apiPrefix: env.API_PREFIX,
     apiVersion: env.API_VERSION,

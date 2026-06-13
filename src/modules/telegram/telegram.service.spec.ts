@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import type { AppConfig } from '@/config/configuration';
-import { Environment } from '@/config/env.validation';
+import { AppEnv } from '@/config/env.validation';
 import { KufarService } from '@/modules/kufar/kufar.service';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
@@ -30,7 +30,7 @@ describe('TelegramService', () => {
   });
 
   it('does not warn under tests', () => {
-    make({ env: Environment.Test, telegramBotToken: 'x' }).onModuleInit();
+    make({ appEnv: AppEnv.Test, telegramBotToken: 'x' }).onModuleInit();
 
     expect(warn).not.toHaveBeenCalled();
   });

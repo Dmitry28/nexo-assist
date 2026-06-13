@@ -10,8 +10,17 @@ import {
   validateSync,
 } from 'class-validator';
 
+/** Technical runtime mode (npm / framework optimizations, jest). Not for app logic. */
 export enum Environment {
   Development = 'development',
+  Production = 'production',
+  Test = 'test',
+}
+
+/** Deployment stage — the single source for app behavior. See APP_ENV. */
+export enum AppEnv {
+  Development = 'development',
+  Staging = 'staging',
   Production = 'production',
   Test = 'test',
 }
@@ -33,6 +42,15 @@ export class EnvironmentVariables {
   @IsEnum(Environment)
   @IsOptional()
   NODE_ENV: Environment = Environment.Development;
+
+  /**
+   * Deployment stage — drives app behavior (swagger, log level, Telegram chat,
+   * feature flags). Distinct from the technical NODE_ENV. Defaults to `test`
+   * under jest, else `development` — resolved in configuration.ts.
+   */
+  @IsEnum(AppEnv)
+  @IsOptional()
+  APP_ENV?: AppEnv;
 
   // Min 1: PORT=0 would bind a random port and break every probe/healthcheck.
   @IsNumber()

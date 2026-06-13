@@ -9,7 +9,6 @@ import { stdSerializers, stdTimeFunctions } from 'pino';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
-import { Environment } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { KufarModule } from './modules/kufar/kufar.module';
@@ -19,6 +18,8 @@ import { UsersModule } from './modules/users/users.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
+      // NOTE: isGlobal — inject config anywhere without re-importing this module;
+      // cache — read process.env once; expandVariables — allow ${VAR} refs in .env.
       isGlobal: true,
       cache: true,
       expandVariables: true,
@@ -29,8 +30,7 @@ import { UsersModule } from './modules/users/users.module';
     LoggerModule.forRootAsync({
       inject: [configuration.KEY],
       useFactory: (appConfig: AppConfig) => {
-        const isProd = appConfig.env === Environment.Production;
-        const isTest = appConfig.env === Environment.Test;
+        const { isProduction, isTest } = appConfig;
         return {
           // NOTE: override nestjs-pino's default `*` route — Express 5 needs a named
           // wildcard, otherwise Nest logs a LegacyRouteConverter warning at boot.
@@ -44,7 +44,7 @@ import { UsersModule } from './modules/users/users.module';
             // Serialize the `error` key as a full Error — pino's default only handles `err`.
             serializers: { error: stdSerializers.err },
             transport:
-              isProd || isTest
+              isProduction || isTest
                 ? undefined
                 : {
                     target: 'pino-pretty',

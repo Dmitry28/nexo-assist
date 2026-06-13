@@ -3,7 +3,6 @@ import { Bot } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import { Environment } from '@/config/env.validation';
 
 import { TelegramHandlers } from './telegram.handlers';
 
@@ -25,7 +24,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   onModuleInit(): void {
     // NOTE: skip under tests — bot.start() would open a long-polling network loop.
-    if (this.appConfig.env === Environment.Test) return;
+    if (this.appConfig.isTest) return;
 
     const token = this.appConfig.telegramBotToken;
     if (!token) {

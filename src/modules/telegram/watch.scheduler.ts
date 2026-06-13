@@ -4,7 +4,6 @@ import { CronJob } from 'cron';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import { Environment } from '@/config/env.validation';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
@@ -28,7 +27,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     // NOTE: skip under tests — the cron would fire real fetches and notifications.
-    if (this.appConfig.env === Environment.Test) return;
+    if (this.appConfig.isTest) return;
 
     const job = new CronJob(this.appConfig.watchCron, () => void this.runDaily());
     this.scheduler.addCronJob(JOB_NAME, job);

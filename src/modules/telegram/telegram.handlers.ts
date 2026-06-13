@@ -4,7 +4,6 @@ import type { Bot, Context } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import { Environment } from '@/config/env.validation';
 import type { SourceId } from '@/modules/subscriptions/entities/subscription.entity';
 import { extractUrl, sourceOf } from '@/modules/subscriptions/source-detection';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -32,7 +31,7 @@ export class TelegramHandlers {
     bot.command('start', (ctx) => ctx.reply(`Hi! ${PROMPT}`));
     bot.command('list', (ctx) => this.showList(ctx));
     // NOTE: /check is a manual test trigger — kept out of production.
-    if (this.appConfig.env !== Environment.Production) {
+    if (!this.appConfig.isProduction) {
       bot.command('check', (ctx) => this.onCheck(ctx));
     }
     // NOTE: register commands before message:text — grammY runs the first matching handler only.
