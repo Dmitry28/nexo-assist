@@ -17,7 +17,7 @@ src/
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
 ├── metrics/            # MetricsModule + Prometheus controller override; @SkipThrottle()
 └── modules/
-    └── <feature>/      # Feature module — copy the `users` shape
+    └── <feature>/      # Feature module — mirror an existing one (e.g. subscriptions)
         ├── dto/
         ├── entities/
         ├── <feature>.controller.ts
@@ -83,7 +83,7 @@ this.config.get('app.port');
 
 ## Adding a New Feature Module
 
-1. Create `src/modules/<feature>/` mirroring `users/`.
+1. Create `src/modules/<feature>/` mirroring an existing module (e.g. `subscriptions/`).
 2. DTOs in `src/modules/<feature>/dto/` with `class-validator` + `@ApiProperty`.
 3. Keep the entity API-facing — never leak ORM internals.
 4. Throw Nest HTTP exceptions; the global `AllExceptionsFilter` formats them.
