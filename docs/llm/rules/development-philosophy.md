@@ -10,7 +10,7 @@
 
 ## Self-Check
 
-Apply after every iteration and during code review:
+Apply after every iteration, after editing any `.md`, and during code review:
 
 - **Simple** — prefer the least complex approach that does the job.
 - **Clear** — next reader gets intent without a comment.

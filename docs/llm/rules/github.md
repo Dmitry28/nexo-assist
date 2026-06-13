@@ -28,3 +28,4 @@
 
 Commit, push, and merge only with explicit user approval — the owner reviews
 local diffs first (see [../commands/git/commit-local-changes.md](../commands/git/commit-local-changes.md)).
+A broad "do what you think is right" is not commit approval.
