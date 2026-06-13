@@ -3,9 +3,8 @@
 ## Language
 
 - **English** — everything on GitHub: PR titles/descriptions, commit messages,
-  issue titles/bodies, and code comments.
-- **Russian** — only owner-facing planning docs (`docs/PRODUCT.md`,
-  `docs/PRODUCT_PLAN.md`).
+  issue titles/bodies, code comments, and the product spec `docs/PRODUCT.md`.
+- **Russian** — only the owner-facing roadmap `docs/PRODUCT_PLAN.md`.
 
 ## Branch Flow
 
