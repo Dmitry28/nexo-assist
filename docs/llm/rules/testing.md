@@ -4,6 +4,7 @@
 
 - **Unit tests** — side-by-side `<file>.spec.ts` next to the source file.
 - **E2E tests** — under `test/` at the repo root (config in `test/jest-e2e.json`).
+- **Integration** — cover the app boot (full `AppModule`) and non-HTTP flows (e.g. the watch loop) with `Test.createTestingModule` + `overrideProvider`; keep them green as modules grow.
 - **Shared fixtures / helpers** — extract to `__tests__/fixtures/` or `__tests__/helpers/` when reused across multiple spec files.
 
 ## Test Structure (AAA)

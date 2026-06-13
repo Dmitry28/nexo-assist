@@ -22,16 +22,14 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 ## Git Workflow
 
-- Branch off `main`, PR to `main`.
-- Conventional Commits (see `docs/llm/commands/git/rules/changes-message-format-rules.md`).
+- Branch flow, language, and PR lifecycle → [github.md](github.md).
 - Pre-commit hook (husky + lint-staged) runs ESLint + Prettier on staged TS files.
-- CI must be green before merge.
-- Default merge: `gh pr merge --squash --delete-branch`.
 
 ## 3. Verify
 
 - Confirm the plan step is fully realized (nothing skipped).
 - Run `/verify-task-result` on changed files.
+- For behavioral changes, run the app and exercise the path (`/run`, `/verify`) — not only unit tests.
 - Self-check: [philosophy questions](development-philosophy.md#self-check) (simple / clear / concise / DRY) + architecture, types, naming, edge cases.
 - **Generation is fast; verification is the bottleneck — don't skip or rush this step.**
 

@@ -36,7 +36,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 
 ## Core Rules
 
-- Each solution: simple, clear, concise.
+- **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - Follow existing NestJS module structure — mirror the `users` module.
 - **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
@@ -61,4 +61,5 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Debugging              | [rules/debugging.md](rules/debugging.md)                           |
 | Testing                | [rules/testing.md](rules/testing.md)                               |
 | Workflow               | [rules/workflow.md](rules/workflow.md)                             |
+| GitHub workflow        | [rules/github.md](rules/github.md)                                 |
 | LLM skills             | [rules/llm-skills-guide.md](rules/llm-skills-guide.md)             |

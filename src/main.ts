@@ -10,7 +10,6 @@ import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
 import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
-import { Environment } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
@@ -40,7 +39,7 @@ async function bootstrap(): Promise<void> {
   });
 
   // Swagger / OpenAPI (disabled in production).
-  if (appConfig.env !== Environment.Production) {
+  if (!appConfig.isProduction) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('nexo-assist API')
       .setDescription('API documentation')
@@ -53,8 +52,12 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.port);
 
-  // Echo the effective (validated) config — AppConfig holds no secrets.
-  logger.log({ config: appConfig }, 'Bootstrap');
+  // Echo the effective (validated) config — mask secrets so they never hit logs.
+  const { telegramBotToken, ...safeConfig } = appConfig;
+  logger.log(
+    { config: { ...safeConfig, telegramBotToken: telegramBotToken ? '[set]' : undefined } },
+    'Bootstrap',
+  );
   logger.log(`Application listening on port ${appConfig.port}`, 'Bootstrap');
 }
 

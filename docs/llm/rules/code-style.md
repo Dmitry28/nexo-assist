@@ -53,17 +53,18 @@ if (hasActivePaidAccess) { … }
 
 ## Comments
 
-- Plain `//` comments explain non-obvious WHY — the dominant codebase style (e.g. `src/app.setup.ts`, `src/main.ts`).
+- Comments explain non-obvious WHY, never WHAT — well-named identifiers carry intent. Default to none.
+- `NOTE:` flags non-obvious logic or technical behavior — a hidden constraint, subtle invariant, workaround, or surprising API behavior; also on a method/field whose name doesn't fully convey its meaning (e.g. `getSeen`).
+- Plain `//` is fine for brief context (dominant style, e.g. `src/main.ts`, `src/app.module.ts`).
 - `TODO` and `FIXME` mark actionable items and must include a priority `[H|M|L]` and clear description.
 - Always in English.
-- Default to writing no comments — only add when the WHY is non-obvious (a hidden constraint, subtle invariant, workaround).
-- Never narrate WHAT the code does (well-named identifiers do that).
 - Never remove relevant existing comments.
 
 Format:
 
 ```typescript
-// Explanation of non-obvious logic or context.
+// Brief context.
+// NOTE: non-obvious logic or technical behavior.
 // TODO: what needs to be done [H|M|L]
 // FIXME: what is broken and why [H|M|L]
 ```

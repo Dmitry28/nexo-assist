@@ -10,12 +10,14 @@
 
 ## Self-Check
 
-Apply after every iteration and during code review:
+Apply after every iteration, after editing any `.md`, and during code review:
 
-- **Simple** — prefer the least complex approach that does the job.
+- **Simple (KISS)** — prefer the least complex approach that does the job.
 - **Clear** — next reader gets intent without a comment.
 - **Concise** — cut anything that doesn't add meaning.
 - **DRY** — single source for any duplicated logic, constant, or prose.
+- **Lean (YAGNI)** — no over-engineering; no abstraction before a second consumer (see § No Over-Engineering).
+- **Idiomatic** — follows established best practices, patterns and standards; matches peer code.
 
 ## Before Adding New Code — Check in This Order
 

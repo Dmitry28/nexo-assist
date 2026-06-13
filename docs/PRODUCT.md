@@ -1,77 +1,76 @@
-# Продукт — как работает
+# Product — how it works
 
-> Живой документ: устройство продукта (поведение + архитектура). Обновлять при
-> любом изменении. Дорожная карта — в [PRODUCT_PLAN.md](PRODUCT_PLAN.md).
+> Living doc: how the product is built (behavior + architecture). Keep it current
+> on any change. Roadmap lives in [PRODUCT_PLAN.md](PRODUCT_PLAN.md).
 
-## Что это
+## What it is
 
-Telegram-бот. Пользователь кидает ссылку на поиск с фильтрами (kufar/realt и
-далее), бот раз в день присылает по ней новые / изменившиеся / удалённые
-объявления.
+A Telegram bot. A user pastes a filtered search link (kufar/realt and more) and
+the bot sends new / changed / removed listings for it once a day.
 
-## Сценарий пользователя
+## User flow
 
-1. `/start` → приветствие и кнопки.
-2. Вставляет ссылку на поиск (единственный ввод текстом).
-3. Бот распознаёт источник:
-   - **Поддерживается** → превью + кнопки «Подписаться / Назвать / События / Отмена».
-   - **Нет** → просит описать, что отслеживать → заводит GitHub Issue → «добавим, уведомим».
-4. Дальше всё кнопками: список, пауза, удалить, настроить.
-5. Раз в день по каждой подписке — только изменения: новые (карточка: фото,
-   заголовок, цена, ссылка), опционально удалённые и изменения цены.
+1. `/start` → greeting and buttons.
+2. Paste a search link (the only text input).
+3. The bot recognizes the source:
+   - **Supported** → preview + buttons "Subscribe / Name / Events / Cancel".
+   - **Not supported** → asks what to track → opens a GitHub Issue → "we'll add it, you'll be notified".
+4. Everything else is buttons: list, pause, remove, configure.
+5. Once a day, per subscription — only changes: new items (card: photo, title,
+   price, link), optionally removed items and price changes.
 
-## Как работает внутри
+## How it works inside
 
-1. Планировщик раз в день запускает скрейп.
-2. Собираем уникальные нормализованные URL активных подписок (дедуп).
-3. На каждый URL адаптер тянет объявления **инкрементально** (сортировка
-   «сначала новые», стоп на уже виденных, лимит страниц) и нормализует их.
-4. Сравниваем с прошлым снимком источника → дельта (new / removed / price).
-5. На каждую подписку формируем доставку с учётом её baseline и уже доставленного.
-6. Персистим только реально отправленное (упало — повторим в следующий запуск,
-   не потеряем и не задублируем).
+1. The scheduler runs the scrape once a day.
+2. Collect the unique normalized URLs of active subscriptions (dedupe).
+3. For each URL the adapter fetches listings **incrementally** (newest-first,
+   stop at already-seen, page cap) and normalizes them.
+4. Diff against the source's previous snapshot → delta (new / removed / price).
+5. Per subscription, build the delivery using its baseline and what was already delivered.
+6. Persist only what was actually delivered (on failure, retry next run — no loss, no duplicates).
 
-**Два уровня «видели»:** дельта — на источник (нормализованный URL, дедуп);
-доставка — на подписку (новый подписчик получает baseline, а не лавину).
+**Two "seen" levels:** the delta is per source (normalized URL, dedupe); delivery
+is per subscription (a new subscriber gets a baseline, not a flood).
 
-## Объёмы и лимиты
+## Volume and limits
 
-- **Первая подписка:** берём baseline последних объявлений, ничего не шлём.
-- **Много нового за прогон:** шлём дайджестом — кап на число позиций + ссылка
-  «ещё N на сайте», не по сообщению на айтем.
-- **Telegram-лимиты:** рассылку троттлим через очередь; юзер заблокировал бота
-  (403) → его подписки на паузу.
-- **Источник без подписчиков:** перестаём скрейпить, чистим его данные.
+- **First subscription:** take a baseline of recent listings, send nothing.
+- **Many new at once:** send a digest — cap the item count + an "N more on the
+  site" link, not one message per item.
+- **Telegram limits:** throttle the fan-out through a queue; if a user blocked the
+  bot (403) → pause their subscriptions.
+- **Source with no subscribers:** stop scraping it and purge its data.
 
-## Архитектура
+## Architecture
 
-**Адаптер источника** — единственное место, знающее про конкретный сайт:
+**Source adapter** — the only place that knows about a specific site:
 
 ```ts
 interface SourceAdapter {
   id: string; // 'kufar', 'realt', ...
-  matches(url: string): boolean; // распознать ссылку
-  normalizeUrl(url: string): string; // канонический ключ для дедупа
+  matches(url: string): boolean; // recognize the link
+  normalizeUrl(url: string): string; // canonical key for dedupe
   capabilities: EventKind[]; // ['new','removed','price']
   fetch(url: string): Promise<RawListing[]>;
-  parse(raw: RawListing): NormalizedListing; // общие поля + extras (JSONB)
+  parse(raw: RawListing): NormalizedListing; // shared fields + extras (JSONB)
   format(listing: NormalizedListing, e: EventKind): TelegramMessage;
 }
 ```
 
-`SourceRegistry` выбирает адаптер по `matches()`. Ядро (fetch → diff → notify),
-бот и схема БД про конкретные сайты не знают. `parse` обязан вернуть стабильный
-`externalId` — на нём строятся диф и дедуп.
+`SourceRegistry` picks the adapter via `matches()`. The core (fetch → diff →
+notify), the bot, and the DB schema know nothing about specific sites. `parse`
+must return a stable `externalId` — the diff and dedupe key off it.
 
-**Данные (Postgres):** общие поля — колонки, специфика источника — JSONB.
+**Data (Postgres):** shared fields are columns, source-specific data is JSONB.
 
-- `users`, `sources` (нормализованный URL, adapter_id, расписание),
-  `subscriptions` (user↔source, имя, event-типы, статус).
-- `listings` — общие колонки + `extras` JSONB.
-- `source_snapshots` — снимок источника для дельты (уровень 1 «видели»).
-- `deliveries` — что доставлено по подписке + baseline (уровень 2 «видели»).
+- `users`, `sources` (normalized URL, adapter_id, schedule),
+  `subscriptions` (user↔source, name, event types, status).
+- `listings` — shared columns + `extras` JSONB.
+- `source_snapshots` — source snapshot for the delta (seen level 1).
+- `deliveries` — what was delivered per subscription + baseline (seen level 2).
 
-## Расширение
+## Extending
 
-Новый источник = новый адаптер по контракту; ядро, бот и схема БД не меняются.
-Неподдерживаемая ссылка → GitHub Issue → адаптер добавляется (в т.ч. через LLM).
+A new source = a new adapter implementing the contract; the core, the bot, and
+the DB schema stay unchanged. An unsupported link → GitHub Issue → the adapter is
+added (including with LLM help).

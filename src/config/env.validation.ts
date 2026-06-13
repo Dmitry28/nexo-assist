@@ -1,8 +1,26 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
+/** Technical runtime mode (npm / framework optimizations, jest). Not for app logic. */
 export enum Environment {
   Development = 'development',
+  Production = 'production',
+  Test = 'test',
+}
+
+/** Deployment stage — the single source for app behavior. See APP_ENV. */
+export enum AppEnv {
+  Development = 'development',
+  Staging = 'staging',
   Production = 'production',
   Test = 'test',
 }
@@ -24,6 +42,15 @@ export class EnvironmentVariables {
   @IsEnum(Environment)
   @IsOptional()
   NODE_ENV: Environment = Environment.Development;
+
+  /**
+   * Deployment stage — drives app behavior (swagger, log level, Telegram chat,
+   * feature flags). Distinct from the technical NODE_ENV. Defaults to `test`
+   * under jest, else `development` — resolved in configuration.ts.
+   */
+  @IsEnum(AppEnv)
+  @IsOptional()
+  APP_ENV?: AppEnv;
 
   // Min 1: PORT=0 would bind a random port and break every probe/healthcheck.
   @IsNumber()
@@ -59,6 +86,20 @@ export class EnvironmentVariables {
   @Min(1)
   @IsOptional()
   THROTTLE_LIMIT: number = 100;
+
+  /** Telegram bot token from @BotFather. When unset, the bot stays disabled. */
+  @IsString()
+  @IsOptional()
+  TELEGRAM_BOT_TOKEN?: string;
+
+  /**
+   * Cron for the daily subscription check. 5 fields only (min hour dom mon dow);
+   * a 6th field would be seconds in the cron lib — avoided, we need daily granularity.
+   */
+  @IsString()
+  @Matches(/^(\S+\s+){4}\S+$/, { message: 'WATCH_CRON must be a 5-field cron expression' })
+  @IsOptional()
+  WATCH_CRON: string = '0 9 * * *';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
