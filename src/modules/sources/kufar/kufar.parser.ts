@@ -1,3 +1,4 @@
+import { parseNextData } from '../next-data';
 import type { Listing } from '../source-adapter';
 
 /** Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read. */
@@ -13,31 +14,36 @@ interface RawKufarAd {
   account_parameters?: Array<{ p: string; v: unknown }>;
 }
 
-const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/list_thumbs_2x';
 
-/** Extract the ads array from a Kufar search page's `__NEXT_DATA__`. Returns [] on any parse failure. */
-export function extractAds(html: string): RawKufarAd[] {
-  // NOTE: positional slice, not regex — the JSON contains '<' (titles/descriptions) that would truncate a pattern.
-  const start = html.indexOf(NEXT_DATA_OPEN);
-  if (start === -1) return [];
-  const from = start + NEXT_DATA_OPEN.length;
-  const end = html.indexOf('</script>', from);
-  if (end === -1) return [];
+interface RawPagination {
+  label: string;
+  token: string | null;
+}
 
-  try {
-    const data = JSON.parse(html.slice(from, end)) as Record<string, unknown>;
-    const props = data.props as Record<string, unknown> | undefined;
-    const pageProps = props?.pageProps as Record<string, unknown> | undefined;
-    // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
-    const initialState = (pageProps?.initialState ?? props?.initialState) as
-      | Record<string, unknown>
-      | undefined;
-    const listing = initialState?.listing as Record<string, unknown> | undefined;
-    return (listing?.ads as RawKufarAd[] | undefined) ?? [];
-  } catch {
-    return [];
-  }
+/** One page of a Kufar search: ads + the cursor token for the next page (null = last). */
+export interface KufarPage {
+  ads: RawKufarAd[];
+  nextCursor: string | null;
+}
+
+/** Parse a Kufar search page's `__NEXT_DATA__`. Returns an empty page on any parse failure. */
+export function extractPage(html: string): KufarPage {
+  const empty: KufarPage = { ads: [], nextCursor: null };
+  const data = parseNextData(html);
+  if (!data) return empty;
+
+  const props = data.props as Record<string, unknown> | undefined;
+  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
+  const initialState = (pageProps?.initialState ?? props?.initialState) as
+    | Record<string, unknown>
+    | undefined;
+  const listing = initialState?.listing as Record<string, unknown> | undefined;
+  const ads = (listing?.ads as RawKufarAd[] | undefined) ?? [];
+  const pagination = (listing?.pagination as RawPagination[] | undefined) ?? [];
+  const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
+  return { ads, nextCursor };
 }
 
 /** Map a raw ad to a normalized listing. */

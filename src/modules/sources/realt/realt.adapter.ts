@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { fetchHtml } from '../http';
+import { paginate } from '../paginate';
 import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
+import { withParam } from '../url';
 
-import { extractObjects, mapObject } from './realt.parser';
+import { extractPage, mapObject } from './realt.parser';
 
 const HOST = 'realt.by';
 
@@ -24,10 +25,19 @@ export class RealtAdapter implements SourceAdapter {
   }
 
   async fetch(url: string): Promise<Listing[]> {
-    const html = await fetchHtml(url, this.logger);
-    if (!html) return [];
     const linkPath = this.linkPath(url);
-    return extractObjects(html).map((obj) => mapObject(obj, linkPath));
+    // NOTE: realt paginates by ?page=N; advance until pageSize × page covers totalCount.
+    let page = 1;
+    return paginate(
+      url,
+      (html) => {
+        const { objects, pagination } = extractPage(html);
+        const hasMore = pagination !== null && page * pagination.pageSize < pagination.totalCount;
+        const nextUrl = hasMore ? withParam(url, 'page', String(++page)) : null;
+        return { listings: objects.map((obj) => mapObject(obj, linkPath)), nextUrl };
+      },
+      this.logger,
+    );
   }
 
   // NOTE: object URLs are https://realt.by/<sale|rent>-<type>/object/<code>/ — derive the slug

@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { fetchHtml } from '../http';
+import { paginate } from '../paginate';
 import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
+import { withParam } from '../url';
 
-import { extractAds, mapAd } from './kufar.parser';
+import { extractPage, mapAd } from './kufar.parser';
 
 const HOST = 'kufar.by';
 
@@ -25,7 +26,17 @@ export class KufarAdapter implements SourceAdapter {
   }
 
   async fetch(url: string): Promise<Listing[]> {
-    const html = await fetchHtml(url, this.logger);
-    return html ? extractAds(html).map(mapAd) : [];
+    // NOTE: Kufar paginates by a cursor token appended to the original search URL.
+    return paginate(
+      url,
+      (html) => {
+        const { ads, nextCursor } = extractPage(html);
+        return {
+          listings: ads.map(mapAd),
+          nextUrl: nextCursor ? withParam(url, 'cursor', nextCursor) : null,
+        };
+      },
+      this.logger,
+    );
   }
 }

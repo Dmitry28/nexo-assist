@@ -1,32 +1,56 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extractAds, mapAd } from './kufar.parser';
+import { extractPage, mapAd } from './kufar.parser';
 
 const fixture = readFileSync(join(__dirname, '__tests__/fixtures/kufar-search.html'), 'utf8');
 
-describe('extractAds', () => {
-  it('reads ads from the __NEXT_DATA__ JSON', () => {
-    const ads = extractAds(fixture);
+describe('extractPage', () => {
+  it('reads ads from the __NEXT_DATA__ JSON (no next on the last page)', () => {
+    const { ads, nextCursor } = extractPage(fixture);
 
     expect(ads).toHaveLength(2);
     expect(ads[0].ad_id).toBe(1069720654);
+    expect(nextCursor).toBeNull();
   });
 
-  it('returns [] when __NEXT_DATA__ is absent', () => {
-    expect(extractAds('<html><body>no data</body></html>')).toEqual([]);
+  it('reads the next-page cursor token when present', () => {
+    const html =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({
+        props: {
+          pageProps: {
+            initialState: {
+              listing: {
+                ads: [],
+                pagination: [
+                  { label: 'self', token: 't0' },
+                  { label: 'next', token: 't1' },
+                ],
+              },
+            },
+          },
+        },
+      }) +
+      '</script>';
+
+    expect(extractPage(html).nextCursor).toBe('t1');
   });
 
-  it('returns [] on malformed JSON', () => {
+  it('returns an empty page when __NEXT_DATA__ is absent', () => {
+    expect(extractPage('<html><body>no data</body></html>')).toEqual({ ads: [], nextCursor: null });
+  });
+
+  it('returns an empty page on malformed JSON', () => {
     const broken = '<script id="__NEXT_DATA__" type="application/json">{ not json </script>';
 
-    expect(extractAds(broken)).toEqual([]);
+    expect(extractPage(broken)).toEqual({ ads: [], nextCursor: null });
   });
 });
 
 describe('mapAd', () => {
   it('maps the core fields and converts price from 1/100 units', () => {
-    const [ad] = extractAds(fixture);
+    const [ad] = extractPage(fixture).ads;
 
     const listing = mapAd(ad);
 

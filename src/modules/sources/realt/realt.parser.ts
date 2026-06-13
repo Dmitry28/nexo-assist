@@ -1,3 +1,4 @@
+import { parseNextData } from '../next-data';
 import type { Listing } from '../source-adapter';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
@@ -16,27 +17,32 @@ interface RawRealtObject {
   images?: string[];
 }
 
-const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 // realt.by priceRates currency codes (ISO 4217 numeric).
 const CURRENCY_USD = '840';
 const CURRENCY_BYN = '933';
 
-/** Extract the objects array from a realt search page's `__NEXT_DATA__`. Returns [] on any failure. */
-export function extractObjects(html: string): RawRealtObject[] {
-  const start = html.indexOf(NEXT_DATA_OPEN);
-  if (start === -1) return [];
-  const from = start + NEXT_DATA_OPEN.length;
-  const end = html.indexOf('</script>', from);
-  if (end === -1) return [];
+interface RawPagination {
+  pageSize: number;
+  totalCount: number;
+}
 
-  try {
-    const data = JSON.parse(html.slice(from, end)) as Record<string, unknown>;
-    const props = data.props as Record<string, unknown> | undefined;
-    const pageProps = props?.pageProps as Record<string, unknown> | undefined;
-    return (pageProps?.objects as RawRealtObject[] | undefined) ?? [];
-  } catch {
-    return [];
-  }
+/** One page of a realt search: objects + pagination block (null = unknown). */
+export interface RealtPage {
+  objects: RawRealtObject[];
+  pagination: RawPagination | null;
+}
+
+/** Parse a realt search page's `__NEXT_DATA__`. Returns an empty page on any failure. */
+export function extractPage(html: string): RealtPage {
+  const data = parseNextData(html);
+  if (!data) return { objects: [], pagination: null };
+
+  const props = data.props as Record<string, unknown> | undefined;
+  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  return {
+    objects: (pageProps?.objects as RawRealtObject[] | undefined) ?? [],
+    pagination: (pageProps?.pagination as RawPagination | undefined) ?? null,
+  };
 }
 
 /**

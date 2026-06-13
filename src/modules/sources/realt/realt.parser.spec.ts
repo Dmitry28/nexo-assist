@@ -1,26 +1,27 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extractObjects, mapObject } from './realt.parser';
+import { extractPage, mapObject } from './realt.parser';
 
 const fixture = readFileSync(join(__dirname, '__tests__/fixtures/realt-search.html'), 'utf8');
 
-describe('extractObjects', () => {
-  it('reads objects from the __NEXT_DATA__ JSON', () => {
-    const objects = extractObjects(fixture);
+describe('extractPage', () => {
+  it('reads objects and the pagination block', () => {
+    const { objects, pagination } = extractPage(fixture);
 
     expect(objects).toHaveLength(2);
     expect(objects[0].code).toBe(4152736);
+    expect(pagination?.totalCount).toBe(2);
   });
 
-  it('returns [] when __NEXT_DATA__ is absent', () => {
-    expect(extractObjects('<html>no data</html>')).toEqual([]);
+  it('returns an empty page when __NEXT_DATA__ is absent', () => {
+    expect(extractPage('<html>no data</html>')).toEqual({ objects: [], pagination: null });
   });
 });
 
 describe('mapObject', () => {
   it('maps fields, picks USD/BYN from priceRates, builds the object link', () => {
-    const [obj] = extractObjects(fixture);
+    const [obj] = extractPage(fixture).objects;
 
     const listing = mapObject(obj, 'sale-plots');
 
@@ -34,7 +35,7 @@ describe('mapObject', () => {
   });
 
   it('falls back to town + street when the title is empty', () => {
-    const [obj] = extractObjects(fixture);
+    const [obj] = extractPage(fixture).objects;
 
     expect(mapObject(obj, 'sale-plots').title).toBe('Кировск, Старосельская ул.');
   });
