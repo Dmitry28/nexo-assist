@@ -21,7 +21,7 @@ Apply after every iteration, after editing any `.md`, and during code review:
 
 ## Before Adding New Code — Check in This Order
 
-1. **Search the codebase** — reuse existing functionality (the `users` module is the reference shape).
+1. **Search the codebase** — reuse existing functionality (an existing module, e.g. `subscriptions`, is the reference shape).
 2. **Check `package.json`** — use already installed packages before adding new ones.
 3. **Search npm** — only if nothing fits internally.
 

@@ -2,7 +2,7 @@
 
 ## About
 
-**nexo-assist** — production-ready NestJS 11 skeleton for shipping pet-project modules to production. New features live in `src/modules/<feature>/`, mirroring the reference `users` module.
+**nexo-assist** — a Telegram listing-watch bot (kufar/realt and more) on a NestJS 11 base. New features live in `src/modules/<feature>/`, mirroring an existing module. Product spec: [docs/PRODUCT.md](../PRODUCT.md).
 
 ## Key Commands
 
@@ -31,14 +31,14 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - `src/app.module.ts` — root module (Config, Logger, Throttler, Prometheus, Health, global filter + guard).
 - `src/config/configuration.ts` — typed `AppConfig` exposed under `app.*`.
 - `src/config/env.validation.ts` — class-validator schema; single source of defaults; fail-fast on boot.
-- `src/modules/users/` — reference feature module; copy its shape.
-- `src/common/dto/` — pagination DTOs + `@ApiPaginatedResponse` decorator.
+- `src/modules/sources/` — source-plugin layer (`SourceAdapter` + `SourceRegistry`).
+- `src/modules/subscriptions/`, `src/modules/telegram/` — domain + bot feature modules.
 
 ## Core Rules
 
 - **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
-- Follow existing NestJS module structure — mirror the `users` module.
+- Follow existing NestJS module structure — mirror an existing module (`subscriptions`, `telegram`).
 - **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
 - Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.

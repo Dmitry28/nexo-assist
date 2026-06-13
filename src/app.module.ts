@@ -12,7 +12,6 @@ import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
-import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -70,7 +69,6 @@ import { UsersModule } from './modules/users/users.module';
     // Prometheus metrics at GET /api/v1/metrics (+ default Node/process metrics).
     MetricsModule,
     HealthModule,
-    UsersModule,
     TelegramModule,
   ],
   providers: [

@@ -49,38 +49,4 @@ describe('App (e2e)', () => {
       .expect(200)
       .expect((res) => expect(res.text).toContain('process_cpu_seconds_total'));
   });
-
-  it(`POST ${PREFIX}/users creates, GET ${PREFIX}/users/:id reads`, async () => {
-    const create = await request(app.getHttpServer())
-      .post(`${PREFIX}/users`)
-      .send({ email: 'e2e@example.com', name: 'E2E User' })
-      .expect(201);
-
-    const { id } = create.body;
-    expect(id).toBeDefined();
-
-    await request(app.getHttpServer())
-      .get(`${PREFIX}/users/${id}`)
-      .expect(200)
-      .expect((res) => expect(res.body.email).toBe('e2e@example.com'));
-  });
-
-  // Pins the explicit @Type() coercion path — implicit conversion is off in the pipe.
-  it(`GET ${PREFIX}/users honors pagination query params`, () => {
-    return request(app.getHttpServer())
-      .get(`${PREFIX}/users?page=1&limit=5`)
-      .expect(200)
-      .expect((res) => expect(res.body.meta.limit).toBe(5));
-  });
-
-  it(`GET ${PREFIX}/users rejects a non-numeric limit`, () => {
-    return request(app.getHttpServer()).get(`${PREFIX}/users?limit=abc`).expect(400);
-  });
-
-  it(`POST ${PREFIX}/users rejects invalid payloads`, () => {
-    return request(app.getHttpServer())
-      .post(`${PREFIX}/users`)
-      .send({ email: 'not-an-email', name: 'x', extra: 'nope' })
-      .expect(400);
-  });
 });
