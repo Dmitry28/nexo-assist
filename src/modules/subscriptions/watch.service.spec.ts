@@ -15,7 +15,7 @@ describe('WatchService', () => {
     subs = new SubscriptionsService();
     kufar = new KufarAdapter();
     fetchSpy = jest.spyOn(kufar, 'fetch');
-    watch = new WatchService(subs, new SourceRegistry(kufar));
+    watch = new WatchService(subs, new SourceRegistry([kufar]));
   });
 
   const addKufar = () =>

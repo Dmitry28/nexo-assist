@@ -16,7 +16,7 @@ import { WatchScheduler } from './watch.scheduler';
 const build = () => {
   const config = makeAppConfig();
   const subscriptions = new SubscriptionsService();
-  const registry = new SourceRegistry(new KufarAdapter());
+  const registry = new SourceRegistry([new KufarAdapter()]);
   const watch = new WatchService(subscriptions, registry);
   const telegram = new TelegramService(
     config,

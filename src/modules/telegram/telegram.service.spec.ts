@@ -15,7 +15,7 @@ import { TelegramService } from './telegram.service';
 const make = (overrides: Partial<AppConfig> = {}): TelegramService => {
   const config = makeAppConfig(overrides);
   const subscriptions = new SubscriptionsService();
-  const registry = new SourceRegistry(new KufarAdapter());
+  const registry = new SourceRegistry([new KufarAdapter()]);
   const watch = new WatchService(subscriptions, registry);
   return new TelegramService(config, new TelegramHandlers(config, subscriptions, watch, registry));
 };
