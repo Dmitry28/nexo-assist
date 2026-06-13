@@ -1,5 +1,8 @@
 import type { Listing } from '@/modules/sources/source-adapter';
 
+/** Reusable "no link preview" message option. */
+export const NO_LINK_PREVIEW = { is_disabled: true } as const;
+
 // Telegram caps a message at 4096 chars — cap the digest and link to the rest.
 // Exported so callers mark only the delivered slice as seen (overflow surfaces next run).
 export const DIGEST_LIMIT = 10;

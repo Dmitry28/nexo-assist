@@ -10,10 +10,14 @@ import { extractUrl } from '@/modules/sources/url';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { DIGEST_LIMIT, formatCurrentListings, formatNewListings } from './telegram.format';
+import {
+  DIGEST_LIMIT,
+  NO_LINK_PREVIEW,
+  formatCurrentListings,
+  formatNewListings,
+} from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
-const NO_LINK_PREVIEW = { is_disabled: true } as const;
 
 /** Bot conversation: turn a pasted link into a subscription via inline buttons. */
 @Injectable()
