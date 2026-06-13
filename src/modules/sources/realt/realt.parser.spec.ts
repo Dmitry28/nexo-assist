@@ -1,0 +1,42 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { extractPage, mapObject } from './realt.parser';
+
+const fixture = readFileSync(join(__dirname, '__tests__/fixtures/realt-search.html'), 'utf8');
+
+describe('extractPage', () => {
+  it('reads objects and the pagination block', () => {
+    const { objects, pagination } = extractPage(fixture);
+
+    expect(objects).toHaveLength(2);
+    expect(objects[0].code).toBe(4152736);
+    expect(pagination?.totalCount).toBe(2);
+  });
+
+  it('returns an empty page when __NEXT_DATA__ is absent', () => {
+    expect(extractPage('<html>no data</html>')).toEqual({ objects: [], pagination: null });
+  });
+});
+
+describe('mapObject', () => {
+  it('maps fields, picks USD/BYN from priceRates, builds the object link', () => {
+    const [obj] = extractPage(fixture).objects;
+
+    const listing = mapObject(obj, 'sale-plots');
+
+    expect(listing).toMatchObject({
+      externalId: '4152736',
+      link: 'https://realt.by/sale-plots/object/4152736/',
+      priceUsd: 7000,
+      priceByn: 19401,
+      address: 'Кировск Старосельская ул. 14',
+    });
+  });
+
+  it('falls back to town + street when the title is empty', () => {
+    const [obj] = extractPage(fixture).objects;
+
+    expect(mapObject(obj, 'sale-plots').title).toBe('Кировск, Старосельская ул.');
+  });
+});

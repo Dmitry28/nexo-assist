@@ -1,28 +1,21 @@
-import type { KufarListing } from '@/modules/kufar/entities/kufar-listing.entity';
-import { KufarService } from '@/modules/kufar/kufar.service';
+import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
+import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import { SubscriptionsService } from './subscriptions.service';
 import { WatchService } from './watch.service';
 
-const listing = (adId: number): KufarListing => ({
-  adId,
-  link: `https://re.kufar.by/vi/${adId}`,
-  title: `t${adId}`,
-  listTime: '2026-01-01T00:00:00Z',
-  images: [],
-});
-
 describe('WatchService', () => {
   let subs: SubscriptionsService;
-  let kufar: KufarService;
+  let kufar: KufarAdapter;
   let watch: WatchService;
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
     subs = new SubscriptionsService();
-    kufar = new KufarService();
+    kufar = new KufarAdapter();
     fetchSpy = jest.spyOn(kufar, 'fetch');
-    watch = new WatchService(subs, kufar);
+    watch = new WatchService(subs, new SourceRegistry([kufar]));
   });
 
   const addKufar = () =>
@@ -47,19 +40,19 @@ describe('WatchService', () => {
 
     const fresh = await watch.check(sub);
 
-    expect(fresh.map((l) => l.adId)).toEqual([2]);
+    expect(fresh.map((l) => l.externalId)).toEqual(['2']);
   });
 
   it('check is read-only — only markSeen dedups later checks', async () => {
     const sub = addKufar();
     fetchSpy.mockResolvedValue([listing(1), listing(2)]);
 
-    expect((await watch.check(sub)).map((l) => l.adId)).toEqual([1, 2]);
+    expect((await watch.check(sub)).map((l) => l.externalId)).toEqual(['1', '2']);
     // No markSeen yet → the same items are still fresh.
-    expect((await watch.check(sub)).map((l) => l.adId)).toEqual([1, 2]);
+    expect((await watch.check(sub)).map((l) => l.externalId)).toEqual(['1', '2']);
 
     watch.markSeen(sub, [listing(1)]);
-    expect((await watch.check(sub)).map((l) => l.adId)).toEqual([2]);
+    expect((await watch.check(sub)).map((l) => l.externalId)).toEqual(['2']);
   });
 
   it('returns current listings read-only — a later check still sees them as new', async () => {
@@ -69,11 +62,11 @@ describe('WatchService', () => {
     const current = await watch.current(sub);
     const fresh = await watch.check(sub);
 
-    expect(current.map((l) => l.adId)).toEqual([1]);
-    expect(fresh.map((l) => l.adId)).toEqual([1]);
+    expect(current.map((l) => l.externalId)).toEqual(['1']);
+    expect(fresh.map((l) => l.externalId)).toEqual(['1']);
   });
 
-  it('treats realt as unsupported without fetching', async () => {
+  it('treats an unregistered source as unsupported without fetching', async () => {
     const sub = subs.add({ telegramUserId: 1, source: 'realt', url: 'https://realt.by/x' });
 
     expect(await watch.baseline(sub)).toEqual({ supported: false, count: 0 });

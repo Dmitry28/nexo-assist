@@ -1,29 +1,21 @@
 import { Test } from '@nestjs/testing';
 
-import type { KufarListing } from '@/modules/kufar/entities/kufar-listing.entity';
-import { KufarService } from '@/modules/kufar/kufar.service';
+import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-const listing = (adId: number): KufarListing => ({
-  adId,
-  link: `https://re.kufar.by/vi/${adId}`,
-  title: `t${adId}`,
-  listTime: '2026-01-01T00:00:00Z',
-  images: [],
-});
-
-// Wires the real SubscriptionsModule + KufarModule graph (Kufar fetch stubbed) and
+// Wires the real SubscriptionsModule + SourcesModule graph (kufar fetch stubbed) and
 // drives baseline → check through DI — the daily watch path minus the network.
 describe('Watch flow (integration)', () => {
   let subscriptions: SubscriptionsService;
   let watch: WatchService;
-  const kufar = new KufarService();
+  const kufar = new KufarAdapter();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [SubscriptionsModule] })
-      .overrideProvider(KufarService)
+      .overrideProvider(KufarAdapter)
       .useValue(kufar)
       .compile();
     subscriptions = moduleRef.get(SubscriptionsService);
@@ -45,6 +37,6 @@ describe('Watch flow (integration)', () => {
     const fresh = await watch.check(sub);
 
     expect(seeded).toEqual({ supported: true, count: 1 });
-    expect(fresh.map((l) => l.adId)).toEqual([2]);
+    expect(fresh.map((l) => l.externalId)).toEqual(['2']);
   });
 });

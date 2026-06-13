@@ -4,15 +4,20 @@ import type { Bot, Context } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import type { SourceId } from '@/modules/subscriptions/entities/subscription.entity';
-import { extractUrl, sourceOf } from '@/modules/subscriptions/source-detection';
+import type { SourceId } from '@/modules/sources/source-adapter';
+import { SourceRegistry } from '@/modules/sources/source-registry';
+import { extractUrl } from '@/modules/sources/url';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { DIGEST_LIMIT, formatCurrentListings, formatNewListings } from './telegram.format';
+import {
+  DIGEST_LIMIT,
+  NO_LINK_PREVIEW,
+  formatCurrentListings,
+  formatNewListings,
+} from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
-const NO_LINK_PREVIEW = { is_disabled: true } as const;
 
 /** Bot conversation: turn a pasted link into a subscription via inline buttons. */
 @Injectable()
@@ -25,6 +30,7 @@ export class TelegramHandlers {
     @Inject(configuration.KEY) private readonly appConfig: AppConfig,
     private readonly subscriptions: SubscriptionsService,
     private readonly watch: WatchService,
+    private readonly registry: SourceRegistry,
   ) {}
 
   register(bot: Bot): void {
@@ -52,15 +58,15 @@ export class TelegramHandlers {
       await ctx.reply(PROMPT);
       return;
     }
-    const source = sourceOf(url);
-    if (!source) {
+    const adapter = this.registry.match(url);
+    if (!adapter) {
       await ctx.reply(`That source is not supported yet. ${PROMPT}`);
       return;
     }
 
-    this.pending.set(userId, { source, url });
+    this.pending.set(userId, { source: adapter.id, url });
     const keyboard = new InlineKeyboard().text('Subscribe', 'subscribe').text('Cancel', 'cancel');
-    await ctx.reply(`Watch this ${source} search?\n${url}`, {
+    await ctx.reply(`Watch this ${adapter.id} search?\n${url}`, {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });

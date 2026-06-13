@@ -4,6 +4,7 @@ import { Bot } from 'grammy';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 
+import { NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
 
 /**
@@ -50,6 +51,6 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   /** Send a message to a chat. No-op when the bot is disabled (no token / tests). */
   async notify(chatId: number, text: string): Promise<void> {
-    await this.bot?.api.sendMessage(chatId, text, { link_preview_options: { is_disabled: true } });
+    await this.bot?.api.sendMessage(chatId, text, { link_preview_options: NO_LINK_PREVIEW });
   }
 }

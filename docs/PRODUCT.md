@@ -23,8 +23,9 @@ the bot sends new / changed / removed listings for it once a day.
 
 1. The scheduler runs the scrape once a day.
 2. Collect the unique normalized URLs of active subscriptions (dedupe).
-3. For each URL the adapter fetches listings **incrementally** (newest-first,
-   stop at already-seen, page cap) and normalizes them.
+3. For each URL the adapter fetches listings **page by page** (newest-first, capped
+   at a few pages) and normalizes them. (Early stop-on-already-seen is a later
+   optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.
 6. Persist only what was actually delivered (on failure, retry next run — no loss, no duplicates).
@@ -47,19 +48,20 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 
 ```ts
 interface SourceAdapter {
-  id: string; // 'kufar', 'realt', ...
-  matches(url: string): boolean; // recognize the link
-  normalizeUrl(url: string): string; // canonical key for dedupe
-  capabilities: EventKind[]; // ['new','removed','price']
-  fetch(url: string): Promise<RawListing[]>;
-  parse(raw: RawListing): NormalizedListing; // shared fields + extras (JSONB)
-  format(listing: NormalizedListing, e: EventKind): TelegramMessage;
+  readonly id: SourceId; // 'kufar' | 'realt'
+  matches(url: string): boolean; // recognize the link (host check)
+  fetch(url: string): Promise<Listing[]>; // fetch + parse → normalized listings
 }
 ```
 
-`SourceRegistry` picks the adapter via `matches()`. The core (fetch → diff →
-notify), the bot, and the DB schema know nothing about specific sites. `parse`
-must return a stable `externalId` — the diff and dedupe key off it.
+`SourceRegistry` picks the adapter via `matches()` (or by id). The core (fetch →
+diff → notify), the bot, and the DB schema know nothing about specific sites.
+`fetch` returns `Listing`s with a stable `externalId` — the diff/dedup key.
+
+Deferred until needed (kept out of the contract for now): `normalizeUrl` (URL
+dedupe — Phase 3), `capabilities: EventKind[]` (with removed/price events).
+Parsing is an adapter-internal detail; message formatting lives in the telegram
+layer, not the adapter.
 
 **Data (Postgres):** shared fields are columns, source-specific data is JSONB.
 

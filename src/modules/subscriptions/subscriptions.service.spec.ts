@@ -39,9 +39,9 @@ describe('SubscriptionsService', () => {
 
   it('tracks seen ids and clears them on remove', () => {
     const sub = service.add({ telegramUserId: 1, source: 'kufar', url: 'https://kufar.by/l/a' });
-    service.markSeen(sub.id, [10, 20]);
+    service.markSeen(sub.id, ['10', '20']);
 
-    expect([...service.getSeen(sub.id)]).toEqual([10, 20]);
+    expect([...service.getSeen(sub.id)]).toEqual(['10', '20']);
 
     service.remove(sub.id, 1);
     expect(service.getSeen(sub.id).size).toBe(0);
