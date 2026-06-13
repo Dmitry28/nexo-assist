@@ -11,6 +11,7 @@ import configuration from './config/configuration';
 import { Environment } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { KufarModule } from './modules/kufar/kufar.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -66,6 +67,7 @@ import { UsersModule } from './modules/users/users.module';
     HealthModule,
     UsersModule,
     TelegramModule,
+    KufarModule,
   ],
   providers: [
     // Global request validation — single source of truth so tests inherit it automatically.
