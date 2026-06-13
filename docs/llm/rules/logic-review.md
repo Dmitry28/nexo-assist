@@ -8,7 +8,7 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 
 ## How to Review
 
-1. Get the list of changed files and the task source: linked GitHub issue, PR description, or the plan agreed in conversation.
+1. Get the list of changed files and the task source: linked GitHub issue, PR description, the plan agreed in conversation, or — the canonical source for this repo — the product spec [`docs/PRODUCT.md`](../../PRODUCT.md) and roadmap [`docs/PRODUCT_PLAN.md`](../../PRODUCT_PLAN.md).
 2. Extract the **acceptance criteria** (AC) from the task source as an explicit list. No written AC → reconstruct them from the agreed plan and confirm the list before reviewing.
 3. For each AC — grep / read the diff to locate its implementation. Record `file:line`. Missing → `[H]`; ambiguous → `[M]`.
 4. Walk the **Logic Checklist** below against the diff and the task.

@@ -44,6 +44,20 @@ src/
 | DTO        | Input validation via `class-validator` + `@ApiProperty`            |
 | Entity     | API-facing model (kept separate from any future persistence model) |
 
+## Environments
+
+Two separate vars — never branch app logic on `NODE_ENV`:
+
+| Stage      | `APP_ENV`     | Where         | `NODE_ENV` (technical) |
+| ---------- | ------------- | ------------- | ---------------------- |
+| local      | `development` | your machine  | development            |
+| staging    | `staging`     | `dev` branch  | production             |
+| production | `production`  | `main` branch | production             |
+| test       | `test`        | jest          | test                   |
+
+- **`APP_ENV`** is the single source for app behavior. Branch via the derived flags `appConfig.isProduction` / `isStaging` / `isDevelopment` / `isTest`, not inline comparisons.
+- **`NODE_ENV`** stays technical (framework/tooling optimizations). `APP_ENV` defaults to `test` under jest, else `development`.
+
 ## Config Access
 
 One style everywhere: inject the whole typed `AppConfig` by `configuration.KEY` — never use `process.env` directly inside modules, never read individual keys via `ConfigService.get('app.x')` string paths:
