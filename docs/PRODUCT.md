@@ -23,8 +23,9 @@ the bot sends new / changed / removed listings for it once a day.
 
 1. The scheduler runs the scrape once a day.
 2. Collect the unique normalized URLs of active subscriptions (dedupe).
-3. For each URL the adapter fetches listings **incrementally** (newest-first,
-   stop at already-seen, page cap) and normalizes them.
+3. For each URL the adapter fetches listings **page by page** (newest-first, capped
+   at a few pages) and normalizes them. (Early stop-on-already-seen is a later
+   optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.
 6. Persist only what was actually delivered (on failure, retry next run — no loss, no duplicates).
