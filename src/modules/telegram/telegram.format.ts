@@ -1,21 +1,21 @@
-import type { KufarListing } from '@/modules/kufar/entities/kufar-listing.entity';
+import type { Listing } from '@/modules/sources/source-adapter';
 
 // Telegram caps a message at 4096 chars — cap the digest and link to the rest.
 // Exported so callers mark only the delivered slice as seen (overflow surfaces next run).
 export const DIGEST_LIMIT = 10;
 
-function price(listing: KufarListing): string {
+function price(listing: Listing): string {
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
   if (listing.priceByn !== undefined) return `${listing.priceByn} BYN`;
   return 'price n/a';
 }
 
-function formatOne(listing: KufarListing): string {
+function formatOne(listing: Listing): string {
   return `${listing.title}\n${price(listing)}\n${listing.link}`;
 }
 
 /** A listings digest under `header`, capped with a "…and N more" footer. */
-function digest(listings: KufarListing[], header: string): string {
+function digest(listings: Listing[], header: string): string {
   const shown = listings.slice(0, DIGEST_LIMIT);
   const lines = shown.map(formatOne).join('\n\n');
   const more = listings.length - shown.length;
@@ -23,8 +23,8 @@ function digest(listings: KufarListing[], header: string): string {
   return `${header}\n\n${lines}${footer}`;
 }
 
-export const formatNewListings = (listings: KufarListing[]): string =>
+export const formatNewListings = (listings: Listing[]): string =>
   digest(listings, `🆕 ${listings.length} new`);
 
-export const formatCurrentListings = (listings: KufarListing[]): string =>
+export const formatCurrentListings = (listings: Listing[]): string =>
   digest(listings, `📋 ${listings.length} current`);

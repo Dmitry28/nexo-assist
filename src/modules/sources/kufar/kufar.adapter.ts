@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import type { KufarListing } from './entities/kufar-listing.entity';
+import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
+
 import { extractAds, mapAd } from './kufar.parser';
 
+const HOST = 'kufar.by';
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
 const MAX_HTML_LENGTH = 5 * 1024 * 1024;
@@ -14,12 +16,24 @@ const HEADERS = {
   'Accept-Language': 'ru-RU,ru;q=0.9',
 };
 
-/** Fetches and parses the first page of a Kufar search. Pagination lands with the diff step. */
+/** Kufar source adapter — fetches and parses the first page of a search. */
 @Injectable()
-export class KufarService {
-  private readonly logger = new Logger(KufarService.name);
+export class KufarAdapter implements SourceAdapter {
+  readonly id: SourceId = 'kufar';
+  private readonly logger = new Logger(KufarAdapter.name);
 
-  async fetch(url: string): Promise<KufarListing[]> {
+  matches(url: string): boolean {
+    let hostname: string;
+    try {
+      hostname = new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return false;
+    }
+    // NOTE: endsWith(".kufar.by") also matches subdomains like re.kufar.by.
+    return hostname === HOST || hostname.endsWith(`.${HOST}`);
+  }
+
+  async fetch(url: string): Promise<Listing[]> {
     const html = await this.fetchHtml(url);
     return html ? extractAds(html).map(mapAd) : [];
   }

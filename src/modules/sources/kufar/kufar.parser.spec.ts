@@ -31,7 +31,7 @@ describe('mapAd', () => {
     const listing = mapAd(ad);
 
     expect(listing).toMatchObject({
-      adId: 1069720654,
+      externalId: '1069720654',
       link: 'https://re.kufar.by/vi/1069720654',
       priceByn: 13850,
       priceUsd: 5000,

@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 
-import type { KufarListing } from '@/modules/kufar/entities/kufar-listing.entity';
-import { KufarService } from '@/modules/kufar/kufar.service';
+import type { Listing } from '@/modules/sources/source-adapter';
+import { SourceRegistry } from '@/modules/sources/source-registry';
 
-import type { SourceId, Subscription } from './entities/subscription.entity';
+import type { Subscription } from './entities/subscription.entity';
 import { SubscriptionsService } from './subscriptions.service';
 
 /**
@@ -16,44 +16,37 @@ import { SubscriptionsService } from './subscriptions.service';
 export class WatchService {
   constructor(
     private readonly subscriptions: SubscriptionsService,
-    private readonly kufar: KufarService,
+    private readonly registry: SourceRegistry,
   ) {}
 
   /** Seed the seen set with current listings without notifying. */
   async baseline(sub: Subscription): Promise<{ supported: boolean; count: number }> {
-    if (!this.isSupported(sub.source)) return { supported: false, count: 0 };
-    const listings = await this.fetch(sub);
+    const adapter = this.registry.get(sub.source);
+    if (!adapter) return { supported: false, count: 0 };
+    const listings = await adapter.fetch(sub.url);
     this.markSeen(sub, listings);
     return { supported: true, count: listings.length };
   }
 
   /** Fetch current listings and return those not seen before. Read-only. */
-  async check(sub: Subscription): Promise<KufarListing[]> {
-    if (!this.isSupported(sub.source)) return [];
-    const listings = await this.fetch(sub);
+  async check(sub: Subscription): Promise<Listing[]> {
+    const adapter = this.registry.get(sub.source);
+    if (!adapter) return [];
+    const listings = await adapter.fetch(sub.url);
     const seen = this.subscriptions.getSeen(sub.id);
-    return listings.filter((l) => !seen.has(l.adId));
+    return listings.filter((l) => !seen.has(l.externalId));
   }
 
   /** Current listings for a subscription, read-only (does not touch the seen set). */
-  current(sub: Subscription): Promise<KufarListing[]> {
-    return this.isSupported(sub.source) ? this.fetch(sub) : Promise.resolve([]);
+  current(sub: Subscription): Promise<Listing[]> {
+    return this.registry.get(sub.source)?.fetch(sub.url) ?? Promise.resolve([]);
   }
 
   /** Mark listings as delivered so they are not sent again — call after a successful send. */
-  markSeen(sub: Subscription, listings: KufarListing[]): void {
+  markSeen(sub: Subscription, listings: Listing[]): void {
     this.subscriptions.markSeen(
       sub.id,
-      listings.map((l) => l.adId),
+      listings.map((l) => l.externalId),
     );
-  }
-
-  // NOTE: only kufar has a fetcher today; realt gains one in a later step.
-  private isSupported(source: SourceId): boolean {
-    return source === 'kufar';
-  }
-
-  private fetch(sub: Subscription): Promise<KufarListing[]> {
-    return this.kufar.fetch(sub.url);
   }
 }

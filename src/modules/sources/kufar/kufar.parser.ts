@@ -1,4 +1,17 @@
-import type { KufarListing, RawKufarAd } from './entities/kufar-listing.entity';
+import type { Listing } from '../source-adapter';
+
+/** Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read. */
+interface RawKufarAd {
+  ad_id: number;
+  ad_link?: string;
+  subject: string;
+  body_short?: string;
+  price_byn?: string;
+  price_usd?: string;
+  list_time: string;
+  images?: Array<{ path: string }>;
+  account_parameters?: Array<{ p: string; v: unknown }>;
+}
 
 const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/list_thumbs_2x';
@@ -27,10 +40,10 @@ export function extractAds(html: string): RawKufarAd[] {
   }
 }
 
-/** Map a raw ad to a parsed listing. */
-export function mapAd(ad: RawKufarAd): KufarListing {
+/** Map a raw ad to a normalized listing. */
+export function mapAd(ad: RawKufarAd): Listing {
   return {
-    adId: ad.ad_id,
+    externalId: String(ad.ad_id),
     link: ad.ad_link ?? `https://re.kufar.by/vi/${ad.ad_id}`,
     title: ad.subject,
     description: ad.body_short?.trim() || undefined,

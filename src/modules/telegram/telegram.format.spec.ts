@@ -1,15 +1,6 @@
-import type { KufarListing } from '@/modules/kufar/entities/kufar-listing.entity';
+import { makeListing as listing } from '@/__tests__/helpers/listing';
 
 import { formatCurrentListings, formatNewListings } from './telegram.format';
-
-const listing = (adId: number, over: Partial<KufarListing> = {}): KufarListing => ({
-  adId,
-  link: `https://re.kufar.by/vi/${adId}`,
-  title: `t${adId}`,
-  listTime: '2026-01-01T00:00:00Z',
-  images: [],
-  ...over,
-});
 
 describe('formatNewListings', () => {
   it('shows the count header and listing fields', () => {

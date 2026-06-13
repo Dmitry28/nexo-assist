@@ -2,18 +2,16 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 
-import type { SourceId, Subscription } from './entities/subscription.entity';
+import type { SourceId } from '@/modules/sources/source-adapter';
 
-/**
- * Reference store backed by an in-memory Map.
- * Swap for a repository when the DB lands — callers stay unchanged.
- */
+import type { Subscription } from './entities/subscription.entity';
+
 // NOTE: Phase 1 — everything is in-memory and unbounded; the DB slice replaces this store.
 @Injectable()
 export class SubscriptionsService {
   private readonly store = new Map<string, Subscription>();
   // Listing ids already delivered per subscription — the "seen" level of the diff.
-  private readonly seen = new Map<string, Set<number>>();
+  private readonly seen = new Map<string, Set<string>>();
 
   add(input: { telegramUserId: number; source: SourceId; url: string }): Subscription {
     const subscription: Subscription = { id: randomUUID(), createdAt: new Date(), ...input };
@@ -38,13 +36,13 @@ export class SubscriptionsService {
   }
 
   // NOTE: "seen" = listing ids already delivered for a subscription; the diff skips them.
-  getSeen(subscriptionId: string): ReadonlySet<number> {
-    return this.seen.get(subscriptionId) ?? new Set<number>();
+  getSeen(subscriptionId: string): ReadonlySet<string> {
+    return this.seen.get(subscriptionId) ?? new Set<string>();
   }
 
-  markSeen(subscriptionId: string, adIds: number[]): void {
-    const set = this.seen.get(subscriptionId) ?? new Set<number>();
-    for (const id of adIds) set.add(id);
+  markSeen(subscriptionId: string, externalIds: string[]): void {
+    const set = this.seen.get(subscriptionId) ?? new Set<string>();
+    for (const id of externalIds) set.add(id);
     this.seen.set(subscriptionId, set);
   }
 }

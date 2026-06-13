@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 
-import { KufarModule } from '@/modules/kufar/kufar.module';
+import { SourcesModule } from '@/modules/sources/sources.module';
 
 import { SubscriptionsService } from './subscriptions.service';
 import { WatchService } from './watch.service';
 
 @Module({
-  imports: [KufarModule],
+  imports: [SourcesModule],
   providers: [SubscriptionsService, WatchService],
   exports: [SubscriptionsService, WatchService],
 })
