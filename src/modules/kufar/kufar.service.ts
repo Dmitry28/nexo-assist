@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import type { KufarListing } from './entities/kufar-listing';
+import type { KufarListing } from './entities/kufar-listing.entity';
 import { extractAds, mapAd } from './kufar.parser';
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -39,7 +39,7 @@ export class KufarService {
       }
       return html;
     } catch (err) {
-      this.logger.error(`Failed to fetch ${url}`, err);
+      this.logger.error({ err }, `Failed to fetch ${url}`);
       return null;
     } finally {
       clearTimeout(timer);

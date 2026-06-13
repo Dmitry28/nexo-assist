@@ -1,5 +1,14 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 export enum Environment {
   Development = 'development',
@@ -64,6 +73,12 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   TELEGRAM_BOT_TOKEN?: string;
+
+  /** Cron expression for the daily subscription check. Boot validates the field count (5–6). */
+  @IsString()
+  @Matches(/^(\S+\s+){4,5}\S+$/, { message: 'WATCH_CRON must be a 5- or 6-field cron expression' })
+  @IsOptional()
+  WATCH_CRON: string = '0 9 * * *';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

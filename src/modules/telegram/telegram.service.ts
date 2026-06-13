@@ -35,17 +35,22 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
     const bot = new Bot(token);
     this.handlers.register(bot);
-    bot.catch((err) => this.logger.error('Bot handler error', err));
+    bot.catch((err) => this.logger.error({ err }, 'Bot handler error'));
 
     // NOTE: assign before start() so a shutdown mid-init can still stop the polling loop.
     this.bot = bot;
     // NOTE: bot.start() runs the long-polling loop until stopped — do not await it here.
     void bot
       .start({ onStart: (me) => this.logger.log(`Bot @${me.username} started`) })
-      .catch((err: unknown) => this.logger.error('Bot stopped with error', err));
+      .catch((err: unknown) => this.logger.error({ err }, 'Bot stopped with error'));
   }
 
   async onApplicationShutdown(): Promise<void> {
     await this.bot?.stop();
+  }
+
+  /** Send a message to a chat. No-op when the bot is disabled (no token / tests). */
+  async notify(chatId: number, text: string): Promise<void> {
+    await this.bot?.api.sendMessage(chatId, text, { link_preview_options: { is_disabled: true } });
   }
 }

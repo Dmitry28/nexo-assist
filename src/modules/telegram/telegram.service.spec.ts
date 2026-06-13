@@ -1,28 +1,22 @@
 import { Logger } from '@nestjs/common';
 
+import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import type { AppConfig } from '@/config/configuration';
-import { Environment, LogLevel } from '@/config/env.validation';
+import { Environment } from '@/config/env.validation';
+import { KufarService } from '@/modules/kufar/kufar.service';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { TelegramHandlers } from './telegram.handlers';
 import { TelegramService } from './telegram.service';
 
 // Only the disabled paths are covered — starting grammY would hit the network.
-const makeConfig = (overrides: Partial<AppConfig> = {}): AppConfig => ({
-  env: Environment.Development,
-  port: 3000,
-  apiPrefix: 'api',
-  apiVersion: '1',
-  corsOrigins: '*',
-  logLevel: LogLevel.Info,
-  throttleTtl: 60,
-  throttleLimit: 100,
-  telegramBotToken: undefined,
-  ...overrides,
-});
-
-const make = (overrides: Partial<AppConfig> = {}): TelegramService =>
-  new TelegramService(makeConfig(overrides), new TelegramHandlers(new SubscriptionsService()));
+const make = (overrides: Partial<AppConfig> = {}): TelegramService => {
+  const config = makeAppConfig(overrides);
+  const subscriptions = new SubscriptionsService();
+  const watch = new WatchService(subscriptions, new KufarService());
+  return new TelegramService(config, new TelegramHandlers(config, subscriptions, watch));
+};
 
 describe('TelegramService', () => {
   let warn: jest.SpyInstance;

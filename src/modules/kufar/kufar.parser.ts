@@ -1,4 +1,4 @@
-import type { KufarListing, RawKufarAd } from './entities/kufar-listing';
+import type { KufarListing, RawKufarAd } from './entities/kufar-listing.entity';
 
 const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/list_thumbs_2x';

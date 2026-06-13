@@ -22,6 +22,8 @@ export interface AppConfig {
   throttleLimit: number;
   /** Telegram bot token; `undefined` keeps the bot disabled. */
   telegramBotToken: string | undefined;
+  /** Cron expression for the daily subscription check. */
+  watchCron: string;
 }
 
 /**
@@ -42,5 +44,6 @@ export default registerAs('app', (): AppConfig => {
     throttleTtl: env.THROTTLE_TTL,
     throttleLimit: env.THROTTLE_LIMIT,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+    watchCron: env.WATCH_CRON,
   };
 });

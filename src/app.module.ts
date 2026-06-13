@@ -1,6 +1,7 @@
-import { Module, ValidationPipe } from '@nestjs/common';
+import { Module, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { stdSerializers, stdTimeFunctions } from 'pino';
@@ -31,6 +32,9 @@ import { UsersModule } from './modules/users/users.module';
         const isProd = appConfig.env === Environment.Production;
         const isTest = appConfig.env === Environment.Test;
         return {
+          // NOTE: override nestjs-pino's default `*` route — Express 5 needs a named
+          // wildcard, otherwise Nest logs a LegacyRouteConverter warning at boot.
+          forRoutes: [{ path: '{*splat}', method: RequestMethod.ALL }],
           // trace_id/span_id are injected by instrumentation-pino (bundled in
           // auto-instrumentations-node) when tracing is enabled — see src/tracing.ts.
           pinoHttp: {
@@ -62,6 +66,8 @@ import { UsersModule } from './modules/users/users.module';
         throttlers: [{ ttl: appConfig.throttleTtl * 1000, limit: appConfig.throttleLimit }],
       }),
     }),
+    // Cron scheduler for the daily subscription check.
+    ScheduleModule.forRoot(),
     // Prometheus metrics at GET /api/v1/metrics (+ default Node/process metrics).
     MetricsModule,
     HealthModule,
