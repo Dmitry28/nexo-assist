@@ -28,6 +28,8 @@ src/
 ## Module Rules
 
 - Each feature = one NestJS module in `src/modules/<feature>/`.
+- A module without HTTP (bot, background worker, domain service) omits the controller — e.g. `telegram`, `subscriptions`.
+- Split a growing service into focused collaborators (e.g. `telegram.service.ts` lifecycle + `telegram.handlers.ts` logic); keep files small.
 - A module exports only what other modules explicitly need.
 - Shared layers (`common/`, `config/`) never import from `modules/` — enforced by ESLint `import-x/no-restricted-paths`.
 - `@Global()` only for truly app-wide shared infrastructure.
