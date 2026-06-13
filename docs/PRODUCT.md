@@ -47,19 +47,20 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 
 ```ts
 interface SourceAdapter {
-  id: string; // 'kufar', 'realt', ...
-  matches(url: string): boolean; // recognize the link
-  normalizeUrl(url: string): string; // canonical key for dedupe
-  capabilities: EventKind[]; // ['new','removed','price']
-  fetch(url: string): Promise<RawListing[]>;
-  parse(raw: RawListing): NormalizedListing; // shared fields + extras (JSONB)
-  format(listing: NormalizedListing, e: EventKind): TelegramMessage;
+  readonly id: SourceId; // 'kufar' | 'realt'
+  matches(url: string): boolean; // recognize the link (host check)
+  fetch(url: string): Promise<Listing[]>; // fetch + parse → normalized listings
 }
 ```
 
-`SourceRegistry` picks the adapter via `matches()`. The core (fetch → diff →
-notify), the bot, and the DB schema know nothing about specific sites. `parse`
-must return a stable `externalId` — the diff and dedupe key off it.
+`SourceRegistry` picks the adapter via `matches()` (or by id). The core (fetch →
+diff → notify), the bot, and the DB schema know nothing about specific sites.
+`fetch` returns `Listing`s with a stable `externalId` — the diff/dedup key.
+
+Deferred until needed (kept out of the contract for now): `normalizeUrl` (URL
+dedupe — Phase 3), `capabilities: EventKind[]` (with removed/price events).
+Parsing is an adapter-internal detail; message formatting lives in the telegram
+layer, not the adapter.
 
 **Data (Postgres):** shared fields are columns, source-specific data is JSONB.
 
