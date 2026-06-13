@@ -9,8 +9,8 @@ const URL_PATTERN = /https?:\/\/\S+/i;
 
 /** First http(s) URL found in the text, or null. */
 export function extractUrl(text: string): string | null {
-  // NOTE: greedy \S+ may keep trailing punctuation glued to the URL — harmless for host detection.
-  return text.match(URL_PATTERN)?.[0] ?? null;
+  // NOTE: strip trailing punctuation glued by the greedy \S+ (e.g. "url).") — the URL is persisted.
+  return text.match(URL_PATTERN)?.[0].replace(/[.,;:!?)\]}>]+$/, '') ?? null;
 }
 
 /**
