@@ -4,7 +4,8 @@ import type { KufarListing } from './entities/kufar-listing.entity';
 import { extractAds, mapAd } from './kufar.parser';
 
 const FETCH_TIMEOUT_MS = 30_000;
-const MAX_HTML_SIZE_BYTES = 5 * 1024 * 1024;
+// NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
+const MAX_HTML_LENGTH = 5 * 1024 * 1024;
 
 // NOTE: a browser UA + ru locale is enough for Kufar to serve the SSR __NEXT_DATA__ — no Puppeteer.
 const HEADERS = {
@@ -32,9 +33,15 @@ export class KufarService {
         this.logger.warn(`HTTP ${res.status} for ${url}`);
         return null;
       }
+      // Bail before buffering the body when the server declares an oversized response.
+      const contentLength = Number(res.headers.get('content-length'));
+      if (contentLength > MAX_HTML_LENGTH) {
+        this.logger.warn(`Content-Length ${contentLength} exceeds limit for ${url} — skipping`);
+        return null;
+      }
       const html = await res.text();
-      if (html.length > MAX_HTML_SIZE_BYTES) {
-        this.logger.warn(`Response too large (${html.length} bytes) for ${url} — skipping`);
+      if (html.length > MAX_HTML_LENGTH) {
+        this.logger.warn(`Response too large (${html.length} chars) for ${url} — skipping`);
         return null;
       }
       return html;

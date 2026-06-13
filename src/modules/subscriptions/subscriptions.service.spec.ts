@@ -18,7 +18,7 @@ describe('SubscriptionsService', () => {
     expect(mine[0].id).toBeDefined();
   });
 
-  it('removes only the owner’s subscription', () => {
+  it("removes only the owner's subscription", () => {
     const sub = service.add({ telegramUserId: 1, source: 'kufar', url: 'https://kufar.by/l/a' });
 
     expect(service.remove(sub.id, 2)).toBe(false);
