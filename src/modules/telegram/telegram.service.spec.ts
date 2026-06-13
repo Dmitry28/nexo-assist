@@ -2,7 +2,9 @@ import { Logger } from '@nestjs/common';
 
 import type { AppConfig } from '@/config/configuration';
 import { Environment, LogLevel } from '@/config/env.validation';
+import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 
+import { TelegramHandlers } from './telegram.handlers';
 import { TelegramService } from './telegram.service';
 
 // Only the disabled paths are covered — starting grammY would hit the network.
@@ -19,6 +21,9 @@ const makeConfig = (overrides: Partial<AppConfig> = {}): AppConfig => ({
   ...overrides,
 });
 
+const make = (overrides: Partial<AppConfig> = {}): TelegramService =>
+  new TelegramService(makeConfig(overrides), new TelegramHandlers(new SubscriptionsService()));
+
 describe('TelegramService', () => {
   let warn: jest.SpyInstance;
 
@@ -30,23 +35,19 @@ describe('TelegramService', () => {
     jest.restoreAllMocks();
   });
 
-  it('stays silent under tests', () => {
-    new TelegramService(
-      makeConfig({ env: Environment.Test, telegramBotToken: 'x' }),
-    ).onModuleInit();
+  it('does not warn under tests', () => {
+    make({ env: Environment.Test, telegramBotToken: 'x' }).onModuleInit();
 
     expect(warn).not.toHaveBeenCalled();
   });
 
   it('warns and disables the bot when no token is set', () => {
-    new TelegramService(makeConfig()).onModuleInit();
+    make().onModuleInit();
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disabled'));
   });
 
   it('shuts down cleanly when the bot never started', async () => {
-    await expect(
-      new TelegramService(makeConfig()).onApplicationShutdown(),
-    ).resolves.toBeUndefined();
+    await expect(make().onApplicationShutdown()).resolves.toBeUndefined();
   });
 });

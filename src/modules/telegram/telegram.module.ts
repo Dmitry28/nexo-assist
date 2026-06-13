@@ -1,9 +1,13 @@
 import { Module } from '@nestjs/common';
 
+import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
+
+import { TelegramHandlers } from './telegram.handlers';
 import { TelegramService } from './telegram.service';
 
 @Module({
-  providers: [TelegramService],
+  imports: [SubscriptionsModule],
+  providers: [TelegramService, TelegramHandlers],
   // No exports — add them only when another module actually injects TelegramService.
 })
 export class TelegramModule {}
