@@ -50,11 +50,35 @@ describe('WatchService', () => {
     expect(fresh.map((l) => l.adId)).toEqual([2]);
   });
 
+  it('check is read-only — only markSeen dedups later checks', async () => {
+    const sub = addKufar();
+    fetchSpy.mockResolvedValue([listing(1), listing(2)]);
+
+    expect((await watch.check(sub)).map((l) => l.adId)).toEqual([1, 2]);
+    // No markSeen yet → the same items are still fresh.
+    expect((await watch.check(sub)).map((l) => l.adId)).toEqual([1, 2]);
+
+    watch.markSeen(sub, [listing(1)]);
+    expect((await watch.check(sub)).map((l) => l.adId)).toEqual([2]);
+  });
+
+  it('returns current listings read-only — a later check still sees them as new', async () => {
+    const sub = addKufar();
+    fetchSpy.mockResolvedValue([listing(1)]);
+
+    const current = await watch.current(sub);
+    const fresh = await watch.check(sub);
+
+    expect(current.map((l) => l.adId)).toEqual([1]);
+    expect(fresh.map((l) => l.adId)).toEqual([1]);
+  });
+
   it('treats realt as unsupported without fetching', async () => {
     const sub = subs.add({ telegramUserId: 1, source: 'realt', url: 'https://realt.by/x' });
 
     expect(await watch.baseline(sub)).toEqual({ supported: false, count: 0 });
     expect(await watch.check(sub)).toEqual([]);
+    expect(await watch.current(sub)).toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

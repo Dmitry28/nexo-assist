@@ -13,11 +13,17 @@ function formatOne(listing: KufarListing): string {
   return `${listing.title}\n${price(listing)}\n${listing.link}`;
 }
 
-/** Build a "new listings" digest, capped with a "+N more" footer. */
-export function formatNewListings(listings: KufarListing[]): string {
+/** A listings digest under `header`, capped with a "…and N more" footer. */
+function digest(listings: KufarListing[], header: string): string {
   const shown = listings.slice(0, MAX_PER_DIGEST);
   const lines = shown.map(formatOne).join('\n\n');
   const more = listings.length - shown.length;
   const footer = more > 0 ? `\n\n…and ${more} more` : '';
-  return `🆕 ${listings.length} new\n\n${lines}${footer}`;
+  return `${header}\n\n${lines}${footer}`;
 }
+
+export const formatNewListings = (listings: KufarListing[]): string =>
+  digest(listings, `🆕 ${listings.length} new`);
+
+export const formatCurrentListings = (listings: KufarListing[]): string =>
+  digest(listings, `📋 ${listings.length} current`);

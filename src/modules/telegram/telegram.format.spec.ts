@@ -1,6 +1,6 @@
 import type { KufarListing } from '@/modules/kufar/entities/kufar-listing.entity';
 
-import { formatNewListings } from './telegram.format';
+import { formatCurrentListings, formatNewListings } from './telegram.format';
 
 const listing = (adId: number, over: Partial<KufarListing> = {}): KufarListing => ({
   adId,
@@ -32,5 +32,11 @@ describe('formatNewListings', () => {
   it('falls back through the price options', () => {
     expect(formatNewListings([listing(1, { priceByn: 100 })])).toContain('100 BYN');
     expect(formatNewListings([listing(1)])).toContain('price n/a');
+  });
+});
+
+describe('formatCurrentListings', () => {
+  it('uses a "current" header', () => {
+    expect(formatCurrentListings([listing(1)])).toContain('📋 1 current');
   });
 });

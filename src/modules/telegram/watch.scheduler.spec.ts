@@ -24,7 +24,7 @@ describe('WatchScheduler.runDaily', () => {
     const config = makeAppConfig();
     const subscriptions = new SubscriptionsService();
     const failing = subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
-    subscriptions.add({ telegramUserId: 2, source: 'kufar', url: 'u2' });
+    const healthy = subscriptions.add({ telegramUserId: 2, source: 'kufar', url: 'u2' });
 
     const watch = new WatchService(subscriptions, new KufarService());
     jest.spyOn(watch, 'check').mockImplementation((sub) => {
@@ -52,5 +52,8 @@ describe('WatchScheduler.runDaily', () => {
     // The healthy subscription is still delivered despite the other throwing.
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(2, expect.stringContaining('🆕'));
+    // Seen is marked only for the delivered subscription.
+    expect([...subscriptions.getSeen(healthy.id)]).toEqual([1]);
+    expect(subscriptions.getSeen(failing.id).size).toBe(0);
   });
 });

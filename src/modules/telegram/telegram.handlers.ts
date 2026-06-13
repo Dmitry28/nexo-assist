@@ -9,7 +9,7 @@ import { extractUrl, sourceOf } from '@/modules/subscriptions/source-detection';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { formatNewListings } from './telegram.format';
+import { formatCurrentListings, formatNewListings } from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const NO_LINK_PREVIEW = { is_disabled: true } as const;
@@ -39,6 +39,7 @@ export class TelegramHandlers {
     bot.callbackQuery('subscribe', (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery('cancel', (ctx) => this.onCancel(ctx));
     bot.callbackQuery(/^remove:(.+)$/, (ctx) => this.onRemove(ctx));
+    bot.callbackQuery(/^show:(.+)$/, (ctx) => this.onShowCurrent(ctx));
   }
 
   private async onText(ctx: Context): Promise<void> {
@@ -82,7 +83,15 @@ export class TelegramHandlers {
       const message = supported
         ? `Subscribed ✅ watching ${count} current ${sub.source} listings.\n${sub.url}`
         : `Saved ✅ — ${sub.source} watching isn't available yet; I'll start once it's supported.\n${sub.url}`;
-      await ctx.editMessageText(message, { link_preview_options: NO_LINK_PREVIEW });
+      // Offer the current listings on demand — baseline already counted them.
+      const showCurrent =
+        supported && count > 0
+          ? new InlineKeyboard().text(`Show current (${count})`, `show:${sub.id}`)
+          : undefined;
+      await ctx.editMessageText(message, {
+        link_preview_options: NO_LINK_PREVIEW,
+        reply_markup: showCurrent,
+      });
     } catch {
       // Baseline fetch failed — keep the subscription; the daily run will seed it.
       await ctx.editMessageText(
@@ -142,12 +151,36 @@ export class TelegramHandlers {
         if (fresh.length > 0) {
           foundAny = true;
           await ctx.reply(formatNewListings(fresh), { link_preview_options: NO_LINK_PREVIEW });
+          this.watch.markSeen(sub, fresh);
         }
       } catch {
         await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
       }
     }
     if (!foundAny) await ctx.reply('Nothing new.');
+  }
+
+  private async onShowCurrent(ctx: Context): Promise<void> {
+    const userId = ctx.from?.id;
+    const id = Array.isArray(ctx.match) ? ctx.match[1] : undefined;
+    const sub =
+      userId !== undefined && typeof id === 'string'
+        ? this.subscriptions.listByUser(userId).find((s) => s.id === id)
+        : undefined;
+    if (!sub) {
+      await ctx.answerCallbackQuery('Subscription not found.');
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+    try {
+      const listings = await this.watch.current(sub);
+      const message =
+        listings.length > 0 ? formatCurrentListings(listings) : 'No current listings.';
+      await ctx.reply(message, { link_preview_options: NO_LINK_PREVIEW });
+    } catch {
+      await ctx.reply('Could not load current listings — try again later.');
+    }
   }
 
   private async onRemove(ctx: Context): Promise<void> {

@@ -46,6 +46,8 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         if (fresh.length > 0) {
           // TODO Phase 4: on a 403 (user blocked the bot), pause that user's subscriptions [M].
           await this.telegram.notify(sub.telegramUserId, formatNewListings(fresh));
+          // Mark seen only after a successful send — a failed notify retries next run.
+          this.watch.markSeen(sub, fresh);
         }
       } catch (err) {
         // NOTE: isolate failures — one bad subscription must not skip the rest.
