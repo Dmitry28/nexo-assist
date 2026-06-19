@@ -28,10 +28,10 @@
     "prepare": "husky || true"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.26",
+    "@nestjs/common": "^11.1.27",
     "@nestjs/config": "^4.0.0",
-    "@nestjs/core": "^11.1.26",
-    "@nestjs/platform-express": "^11.1.26",
+    "@nestjs/core": "^11.1.27",
+    "@nestjs/platform-express": "^11.1.27",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
@@ -55,7 +55,7 @@
     "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^11.0.23",
     "@nestjs/schematics": "^11.0.0",
-    "@nestjs/testing": "^11.1.26",
+    "@nestjs/testing": "^11.1.27",
     "@types/compression": "^1.7.5",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
@@ -69,14 +69,14 @@
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "jest": "^30.4.2",
-    "knip": "^6.16.1",
+    "knip": "^6.17.1",
     "lint-staged": "^17.0.7",
     "pino-pretty": "^13.0.0",
     "prettier": "^3.8.4",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.61.0"
+    "typescript-eslint": "^8.61.1"
   },
   "lint-staged": {
     "*.ts": [
