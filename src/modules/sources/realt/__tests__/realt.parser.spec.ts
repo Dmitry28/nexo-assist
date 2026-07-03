@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extractPage, mapObject } from './realt.parser';
+import { extractPage, mapObject } from '../realt.parser';
 
-const fixture = readFileSync(join(__dirname, '__tests__/fixtures/realt-search.html'), 'utf8');
+const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
 
 describe('extractPage', () => {
   it('reads objects and the pagination block', () => {

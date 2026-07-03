@@ -2,8 +2,8 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
-import { SubscriptionsService } from './subscriptions.service';
-import { WatchService } from './watch.service';
+import { SubscriptionsService } from '../subscriptions.service';
+import { WatchService } from '../watch.service';
 
 describe('WatchService', () => {
   let subs: SubscriptionsService;
@@ -30,6 +30,16 @@ describe('WatchService', () => {
 
     expect(result).toEqual({ supported: true, count: 2 });
     expect(fresh).toEqual([]);
+    expect(sub.baselinedAt).toBeInstanceOf(Date);
+  });
+
+  it('propagates a baseline fetch failure and leaves the subscription un-baselined', async () => {
+    const sub = addKufar();
+    fetchSpy.mockRejectedValue(new Error('outage'));
+
+    await expect(watch.baseline(sub)).rejects.toThrow('outage');
+    expect(sub.baselinedAt).toBeUndefined();
+    expect(subs.getSeen(sub.id).size).toBe(0);
   });
 
   it('check returns only listings not seen before', async () => {

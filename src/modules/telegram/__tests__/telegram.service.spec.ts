@@ -8,8 +8,8 @@ import { SourceRegistry } from '@/modules/sources/source-registry';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { TelegramHandlers } from './telegram.handlers';
-import { TelegramService } from './telegram.service';
+import { TelegramHandlers } from '../telegram.handlers';
+import { TelegramService } from '../telegram.service';
 
 // Only the disabled paths are covered — starting grammY would hit the network.
 const make = (overrides: Partial<AppConfig> = {}): TelegramService => {

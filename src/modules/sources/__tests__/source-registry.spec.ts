@@ -1,6 +1,6 @@
-import { KufarAdapter } from './kufar/kufar.adapter';
-import { RealtAdapter } from './realt/realt.adapter';
-import { SourceRegistry } from './source-registry';
+import { KufarAdapter } from '../kufar/kufar.adapter';
+import { RealtAdapter } from '../realt/realt.adapter';
+import { SourceRegistry } from '../source-registry';
 
 describe('SourceRegistry', () => {
   const registry = new SourceRegistry([new KufarAdapter(), new RealtAdapter()]);

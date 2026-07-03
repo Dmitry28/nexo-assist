@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { extractPage, mapAd } from './kufar.parser';
+import { extractPage, mapAd } from '../kufar.parser';
 
-const fixture = readFileSync(join(__dirname, '__tests__/fixtures/kufar-search.html'), 'utf8');
+const fixture = readFileSync(join(__dirname, 'fixtures/kufar-search.html'), 'utf8');
 
 describe('extractPage', () => {
   it('reads ads from the __NEXT_DATA__ JSON (no next on the last page)', () => {

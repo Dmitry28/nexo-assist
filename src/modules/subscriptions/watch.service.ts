@@ -19,12 +19,16 @@ export class WatchService {
     private readonly registry: SourceRegistry,
   ) {}
 
-  /** Seed the seen set with current listings without notifying. */
+  /** Seed the seen set with current listings without notifying. Throws when the fetch fails. */
   async baseline(sub: Subscription): Promise<{ supported: boolean; count: number }> {
     const adapter = this.registry.get(sub.source);
     if (!adapter) return { supported: false, count: 0 };
     const listings = await adapter.fetch(sub.url);
     this.markSeen(sub, listings);
+    // NOTE: a later-page fetch failure yields a partial list (paginate keeps what it collected),
+    // so a partial baseline is still marked done — missed items surface as "new" later, bounded
+    // by the digest cap. Accepted until fetch reports completeness.
+    this.subscriptions.markBaselined(sub.id);
     return { supported: true, count: listings.length };
   }
 

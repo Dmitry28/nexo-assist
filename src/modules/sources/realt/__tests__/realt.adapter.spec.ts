@@ -3,9 +3,9 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
-import { RealtAdapter } from './realt.adapter';
+import { RealtAdapter } from '../realt.adapter';
 
-const fixture = readFileSync(join(__dirname, '__tests__/fixtures/realt-search.html'), 'utf8');
+const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
 
 // Minimal realt page for pagination tests: given object codes and a totalCount.
 const realtPage = (codes: number[], totalCount: number): string =>
@@ -68,10 +68,20 @@ describe('RealtAdapter', () => {
       expect(String(fetchMock.mock.calls[1][0])).toContain('page=2');
     });
 
-    it('returns [] on a non-OK response', async () => {
+    it('pins page 1 and newest-first sort regardless of pasted params', async () => {
+      fetchMock.mockResolvedValue(new Response(realtPage([1], 10)));
+
+      await adapter.fetch('https://realt.by/grodno-region/sale/plots/map/?page=3&sortType=price');
+
+      const firstUrl = String(fetchMock.mock.calls[0][0]);
+      expect(firstUrl).toContain('page=1');
+      expect(firstUrl).toContain('sortType=createdAt');
+    });
+
+    it('rejects on a non-OK response — an outage must not look like an empty search', async () => {
       fetchMock.mockResolvedValue(new Response('', { status: 404 }));
 
-      expect(await adapter.fetch('https://realt.by/x')).toEqual([]);
+      await expect(adapter.fetch('https://realt.by/x')).rejects.toThrow('HTTP 404');
     });
   });
 });

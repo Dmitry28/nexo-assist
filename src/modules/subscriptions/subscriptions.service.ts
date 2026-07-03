@@ -35,12 +35,21 @@ export class SubscriptionsService {
     return this.store.delete(id);
   }
 
+  /** Record that the subscription's seen set was seeded. */
+  markBaselined(id: string): void {
+    const subscription = this.store.get(id);
+    // Guard a remove-mid-baseline race — a gone subscription stays gone.
+    if (subscription) subscription.baselinedAt = new Date();
+  }
+
   // NOTE: "seen" = listing ids already delivered for a subscription; the diff skips them.
   getSeen(subscriptionId: string): ReadonlySet<string> {
     return this.seen.get(subscriptionId) ?? new Set<string>();
   }
 
   markSeen(subscriptionId: string, externalIds: string[]): void {
+    // Guard a remove-mid-check race — don't resurrect seen state for a gone subscription.
+    if (!this.store.has(subscriptionId)) return;
     const set = this.seen.get(subscriptionId) ?? new Set<string>();
     for (const id of externalIds) set.add(id);
     this.seen.set(subscriptionId, set);
