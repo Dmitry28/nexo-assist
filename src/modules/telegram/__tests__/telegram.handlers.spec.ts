@@ -134,6 +134,7 @@ describe('TelegramHandlers', () => {
   });
 
   it('keeps the subscription when the baseline fetch fails — the daily run seeds it', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     fetchSpy.mockRejectedValue(new Error('outage'));
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
 

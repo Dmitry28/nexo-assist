@@ -16,8 +16,10 @@ import { NO_LINK_PREVIEW, formatCurrentListings, newListingsDigest } from './tel
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const EXPIRED = 'This prompt has expired — send the link again.';
-// /list line budget — headroom under Telegram's 4096-char message limit.
+// /list bounds — char budget with headroom under Telegram's 4096-char message limit,
+// row cap under its ~100-button inline-keyboard limit.
 const MAX_LIST_CHARS = 3500;
+const MAX_LIST_ROWS = 50;
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
 const MAX_PENDING = 500;
 
@@ -92,7 +94,8 @@ export class TelegramHandlers {
     }
     // Answer right away — Telegram invalidates callbacks after ~15s and the baseline
     // fetch below can take longer; a late answer leaves the button spinning forever.
-    await ctx.answerCallbackQuery();
+    // The answer is cosmetic: if it fails (late/duplicate callback), still subscribe.
+    await ctx.answerCallbackQuery().catch(() => undefined);
 
     // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
     const sub = this.subscriptions.add({
@@ -154,7 +157,7 @@ export class TelegramHandlers {
     let length = 0;
     for (const [i, sub] of subs.entries()) {
       const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
-      if (length + line.length > MAX_LIST_CHARS) {
+      if (length + line.length > MAX_LIST_CHARS || i >= MAX_LIST_ROWS) {
         lines.push(`…and ${subs.length - i} more — remove some to see the rest`);
         break;
       }
