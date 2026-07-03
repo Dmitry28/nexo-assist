@@ -27,11 +27,14 @@ export interface KufarPage {
   nextCursor: string | null;
 }
 
-/** Parse a Kufar search page's `__NEXT_DATA__`. Returns an empty page on any parse failure. */
+/**
+ * Parse a Kufar search page's `__NEXT_DATA__`.
+ * Throws when the listing state is missing — a bot-wall or layout change must not
+ * read as an empty search (verified live: a zero-result search still has `ads: []`).
+ */
 export function extractPage(html: string): KufarPage {
-  const empty: KufarPage = { ads: [], nextCursor: null };
   const data = parseNextData(html);
-  if (!data) return empty;
+  if (!data) throw new Error('kufar: __NEXT_DATA__ missing or unparseable');
 
   const props = data.props as Record<string, unknown> | undefined;
   const pageProps = props?.pageProps as Record<string, unknown> | undefined;
@@ -39,7 +42,8 @@ export function extractPage(html: string): KufarPage {
   const initialState = (pageProps?.initialState ?? props?.initialState) as
     Record<string, unknown> | undefined;
   const listing = initialState?.listing as Record<string, unknown> | undefined;
-  const ads = (listing?.ads as RawKufarAd[] | undefined) ?? [];
+  const ads = listing?.ads as RawKufarAd[] | undefined;
+  if (!Array.isArray(ads)) throw new Error('kufar: listing.ads missing — page layout changed?');
   const pagination = (listing?.pagination as RawPagination[] | undefined) ?? [];
   const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
   return { ads, nextCursor };

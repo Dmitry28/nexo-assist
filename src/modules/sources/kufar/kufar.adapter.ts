@@ -28,6 +28,7 @@ export class KufarAdapter implements SourceAdapter {
     const base = withParam(withoutParam(url, 'cursor'), 'sort', SORT_NEWEST);
     return paginate(
       base,
+      HOST,
       (html) => {
         const { ads, nextCursor } = extractPage(html);
         return {

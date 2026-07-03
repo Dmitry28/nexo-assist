@@ -37,14 +37,23 @@ describe('extractPage', () => {
     expect(extractPage(html).nextCursor).toBe('t1');
   });
 
-  it('returns an empty page when __NEXT_DATA__ is absent', () => {
-    expect(extractPage('<html><body>no data</body></html>')).toEqual({ ads: [], nextCursor: null });
+  it('throws when __NEXT_DATA__ is absent — a bot-wall must not read as an empty search', () => {
+    expect(() => extractPage('<html><body>no data</body></html>')).toThrow('__NEXT_DATA__');
   });
 
-  it('returns an empty page on malformed JSON', () => {
+  it('throws on malformed JSON', () => {
     const broken = '<script id="__NEXT_DATA__" type="application/json">{ not json </script>';
 
-    expect(extractPage(broken)).toEqual({ ads: [], nextCursor: null });
+    expect(() => extractPage(broken)).toThrow('__NEXT_DATA__');
+  });
+
+  it('throws when the listing state is missing — a layout change must not read as empty', () => {
+    const noAds =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: {} } }) +
+      '</script>';
+
+    expect(() => extractPage(noAds)).toThrow('listing.ads');
   });
 });
 

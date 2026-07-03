@@ -14,8 +14,17 @@ describe('extractPage', () => {
     expect(pagination?.totalCount).toBe(2);
   });
 
-  it('returns an empty page when __NEXT_DATA__ is absent', () => {
-    expect(extractPage('<html>no data</html>')).toEqual({ objects: [], pagination: null });
+  it('throws when __NEXT_DATA__ is absent — a bot-wall must not read as an empty search', () => {
+    expect(() => extractPage('<html>no data</html>')).toThrow('__NEXT_DATA__');
+  });
+
+  it('treats a page without an objects array as empty — realt renders some zero-result pages so', () => {
+    const noObjects =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { apolloState: {} } } }) +
+      '</script>';
+
+    expect(extractPage(noObjects)).toEqual({ objects: [], pagination: null });
   });
 });
 
