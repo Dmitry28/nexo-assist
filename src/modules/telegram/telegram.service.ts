@@ -42,15 +42,24 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     // NOTE: bot.start() runs the long-polling loop until stopped — do not await it here.
     void bot
       .start({ onStart: (me) => this.logger.log(`Bot @${me.username} started`) })
-      .catch((err: unknown) => this.logger.error({ err }, 'Bot stopped with error'));
+      .catch((err: unknown) => {
+        // The bot is this app's sole job — a dead polling loop must not linger as a
+        // healthy-looking process (probes see nothing). Exit; the orchestrator restarts us.
+        this.logger.fatal({ err }, 'Bot polling stopped — exiting');
+        process.exit(1);
+      });
   }
 
   async onApplicationShutdown(): Promise<void> {
     await this.bot?.stop();
   }
 
-  /** Send a message to a chat. No-op when the bot is disabled (no token / tests). */
+  /**
+   * Send a message to a chat. Throws when the bot is disabled — a silent no-op
+   * would let callers mark undelivered listings as seen and drop them for good.
+   */
   async notify(chatId: number, text: string): Promise<void> {
-    await this.bot?.api.sendMessage(chatId, text, { link_preview_options: NO_LINK_PREVIEW });
+    if (!this.bot) throw new Error('Bot is disabled — cannot deliver messages');
+    await this.bot.api.sendMessage(chatId, text, { link_preview_options: NO_LINK_PREVIEW });
   }
 }

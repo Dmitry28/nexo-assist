@@ -15,10 +15,16 @@ start; more frequent once throttling/dedupe land).
 - Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
 - Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet.
 - Buttons: Subscribe / Cancel / Show current / list / remove; non-production `/check`
-  (manual test trigger — dev and staging).
+  (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
+- Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
+  raises an error — it is never mistaken for an empty search. Scraper redirects are
+  pinned to the source's host.
 - Storage: **in-memory** (lost on restart) — DB lands in Phase 3.
+- Deployment: **single replica** (long-polling bot + in-memory state; see k8s NOTE);
+  production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
+  the process so the orchestrator restarts it.
 - Unsupported link → plain "not supported yet" message (Issue flow is Phase 6).
 
 Everything below this section describes the target design.

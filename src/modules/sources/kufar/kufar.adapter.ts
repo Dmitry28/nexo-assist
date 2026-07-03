@@ -26,16 +26,17 @@ export class KufarAdapter implements SourceAdapter {
     // NOTE: Kufar paginates by a cursor token appended to the search URL. Strip a pasted
     // cursor (it would start mid-list and skip the newest pages) and pin newest-first.
     const base = withParam(withoutParam(url, 'cursor'), 'sort', SORT_NEWEST);
-    return paginate(
-      base,
-      (html) => {
+    return paginate({
+      firstUrl: base,
+      host: HOST,
+      parsePage: (html) => {
         const { ads, nextCursor } = extractPage(html);
         return {
           listings: ads.map(mapAd),
           nextUrl: nextCursor ? withParam(base, 'cursor', nextCursor) : null,
         };
       },
-      this.logger,
-    );
+      logger: this.logger,
+    });
   }
 }

@@ -12,6 +12,10 @@ describe('extractUrl', () => {
   it('returns null when there is no url', () => {
     expect(extractUrl('hello there')).toBeNull();
   });
+
+  it('rejects an absurdly long url — echoing it back would break the Telegram reply', () => {
+    expect(extractUrl(`https://kufar.by/l/${'x'.repeat(3000)}`)).toBeNull();
+  });
 });
 
 describe('matchesHost', () => {
@@ -20,6 +24,8 @@ describe('matchesHost', () => {
     ['https://re.kufar.by/l/x', true],
     ['https://www.kufar.by/l/x', true],
     ['https://notkufar.by/x', false],
+    ['https://kufar.by.evil.com/x', false],
+    ['https://kufar.by:6379/x', false],
     ['not a url', false],
   ])('matchesHost(%s, kufar.by) → %s', (url, expected) => {
     expect(matchesHost(url, 'kufar.by')).toBe(expected);

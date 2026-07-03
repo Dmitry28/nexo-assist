@@ -32,10 +32,15 @@ export interface RealtPage {
   pagination: RawPagination | null;
 }
 
-/** Parse a realt search page's `__NEXT_DATA__`. Returns an empty page on any failure. */
+/**
+ * Parse a realt search page's `__NEXT_DATA__`.
+ * Throws when the blob is missing/unparseable — a bot-wall must not read as an
+ * empty search. A missing `objects` array is NOT an error: realt renders some
+ * zero-result pages without it (observed live), so it stays an empty page.
+ */
 export function extractPage(html: string): RealtPage {
   const data = parseNextData(html);
-  if (!data) return { objects: [], pagination: null };
+  if (!data) throw new Error('realt: __NEXT_DATA__ missing or unparseable');
 
   const props = data.props as Record<string, unknown> | undefined;
   const pageProps = props?.pageProps as Record<string, unknown> | undefined;

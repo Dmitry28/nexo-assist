@@ -32,6 +32,18 @@ export interface AppConfig {
   watchCron: string;
 }
 
+/** Derived `appEnv` flags — the single mapping, shared with test fixtures. */
+export function stageFlags(
+  appEnv: AppEnv,
+): Pick<AppConfig, 'isDevelopment' | 'isStaging' | 'isProduction' | 'isTest'> {
+  return {
+    isDevelopment: appEnv === AppEnv.Development,
+    isStaging: appEnv === AppEnv.Staging,
+    isProduction: appEnv === AppEnv.Production,
+    isTest: appEnv === AppEnv.Test,
+  };
+}
+
 /**
  * Single validation + mapping point. `validateEnv` owns the schema, defaults and
  * coercion (see env.validation.ts); this factory runs eagerly at boot, so invalid
@@ -44,10 +56,7 @@ export default registerAs('app', (): AppConfig => {
     env.APP_ENV ?? (env.NODE_ENV === Environment.Test ? AppEnv.Test : AppEnv.Development);
   return {
     appEnv,
-    isDevelopment: appEnv === AppEnv.Development,
-    isStaging: appEnv === AppEnv.Staging,
-    isProduction: appEnv === AppEnv.Production,
-    isTest: appEnv === AppEnv.Test,
+    ...stageFlags(appEnv),
     port: env.PORT,
     apiPrefix: env.API_PREFIX,
     apiVersion: env.API_VERSION,

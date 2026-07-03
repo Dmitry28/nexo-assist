@@ -75,6 +75,18 @@ describe('WatchScheduler.runDaily', () => {
     expect(subscriptions.getSeen(sub.id).size).toBe(DIGEST_LIMIT);
   });
 
+  it('keeps listings unseen when the delivery fails — retried next run', async () => {
+    const { subscriptions, watch, telegram, scheduler, addBaselined } = build();
+    const sub = addBaselined(1, 'u');
+    jest.spyOn(watch, 'check').mockResolvedValue([listing(1)]);
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    jest.spyOn(telegram, 'notify').mockRejectedValue(new Error('403: bot was blocked'));
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.getSeen(sub.id).size).toBe(0);
+  });
+
   it('baselines a pending subscription silently instead of flooding it as new', async () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     // No markBaselined — e.g. the on-subscribe baseline failed.
@@ -83,7 +95,7 @@ describe('WatchScheduler.runDaily', () => {
     const baseline = jest.spyOn(watch, 'baseline').mockImplementation((s) => {
       subscriptions.markSeen(s.id, ['1']);
       subscriptions.markBaselined(s.id);
-      return Promise.resolve({ supported: true, count: 1 });
+      return Promise.resolve(1);
     });
     const check = jest.spyOn(watch, 'check');
     const notify = jest.spyOn(telegram, 'notify').mockResolvedValue();

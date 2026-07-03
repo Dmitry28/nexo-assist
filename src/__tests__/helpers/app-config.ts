@@ -1,14 +1,12 @@
 import type { AppConfig } from '@/config/configuration';
+import { stageFlags } from '@/config/configuration';
 import { AppEnv, LogLevel } from '@/config/env.validation';
 
 /** A valid AppConfig for unit tests; override only what the test cares about. */
 export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => {
   const merged: AppConfig = {
     appEnv: AppEnv.Development,
-    isDevelopment: true,
-    isStaging: false,
-    isProduction: false,
-    isTest: false,
+    ...stageFlags(AppEnv.Development),
     port: 3000,
     apiPrefix: 'api',
     apiVersion: '1',
@@ -21,11 +19,5 @@ export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => 
     ...overrides,
   };
   // Keep the derived flags consistent with the (possibly overridden) appEnv.
-  return {
-    ...merged,
-    isDevelopment: merged.appEnv === AppEnv.Development,
-    isStaging: merged.appEnv === AppEnv.Staging,
-    isProduction: merged.appEnv === AppEnv.Production,
-    isTest: merged.appEnv === AppEnv.Test,
-  };
+  return { ...merged, ...stageFlags(merged.appEnv) };
 };

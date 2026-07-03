@@ -1,3 +1,5 @@
+import { matchesHost } from '@/common/url';
+
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
 const MAX_HTML_LENGTH = 5 * 1024 * 1024;
@@ -10,15 +12,21 @@ const HEADERS = {
 };
 
 /**
- * Fetch a page's HTML with a browser UA, timeout and size guards.
+ * Fetch a page's HTML with a browser UA, timeout and size guards, pinned to `host`.
  * Throws on any failure — a failed fetch must stay distinguishable from an empty
  * search result, otherwise baseline/check silently treat outages as "no listings".
  */
-export async function fetchHtml(url: string): Promise<string> {
+export async function fetchHtml({ url, host }: { url: string; host: string }): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: HEADERS });
+    // Redirects are followed (kufar 301-normalizes search paths) but must stay on the
+    // pinned host — otherwise a redirect could point the scraper anywhere (SSRF).
+    // res.url is empty only for synthetic Responses (tests); real fetches always set it.
+    if (res.url && !matchesHost(res.url, host)) {
+      throw new Error(`Redirected off ${host} (${res.url}) for ${url}`);
+    }
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} for ${url}`);
     }

@@ -15,6 +15,11 @@ import { WatchService } from '@/modules/subscriptions/watch.service';
 import { NO_LINK_PREVIEW, formatCurrentListings, newListingsDigest } from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
+const EXPIRED = 'This prompt has expired — send the link again.';
+// /list bounds — char budget with headroom under Telegram's 4096-char message limit,
+// row cap under its ~100-button inline-keyboard limit.
+const MAX_LIST_CHARS = 3500;
+const MAX_LIST_ROWS = 50;
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
 const MAX_PENDING = 500;
 
@@ -84,9 +89,13 @@ export class TelegramHandlers {
   private async onSubscribe(ctx: Context): Promise<void> {
     const candidate = this.takePending(ctx);
     if (!candidate) {
-      await ctx.answerCallbackQuery('This prompt has expired — send the link again.');
+      await ctx.answerCallbackQuery(EXPIRED);
       return;
     }
+    // Answer right away — Telegram invalidates callbacks after ~15s and the baseline
+    // fetch below can take longer; a late answer leaves the button spinning forever.
+    // The answer is cosmetic: if it fails (late/duplicate callback), still subscribe.
+    await ctx.answerCallbackQuery().catch(() => undefined);
 
     // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
     const sub = this.subscriptions.add({
@@ -97,41 +106,33 @@ export class TelegramHandlers {
 
     // NOTE: catch only the baseline — a failed message edit must fall through to bot.catch.
     // On failure the subscription is kept; the daily run baselines it silently.
-    const baseline = await this.watch.baseline(sub).catch((err: unknown) => {
+    const count = await this.watch.baseline(sub).catch((err: unknown) => {
       this.logger.warn({ err }, `Baseline failed for ${sub.url}`);
       return null;
     });
 
-    try {
-      if (!baseline) {
-        await ctx.editMessageText(
-          `Subscribed ✅ — the source didn't respond, I'll load current listings on the next run.\n${sub.url}`,
-          { link_preview_options: NO_LINK_PREVIEW },
-        );
-        return;
-      }
-      const message = baseline.supported
-        ? `Subscribed ✅ watching ${baseline.count} current ${sub.source} listings.\n${sub.url}`
-        : `Saved ✅ — ${sub.source} watching isn't available yet; I'll start once it's supported.\n${sub.url}`;
-      // Offer the current listings on demand — baseline already counted them.
-      const showCurrent =
-        baseline.supported && baseline.count > 0
-          ? new InlineKeyboard().text(`Show current (${baseline.count})`, `show:${sub.id}`)
-          : undefined;
-      await ctx.editMessageText(message, {
-        link_preview_options: NO_LINK_PREVIEW,
-        reply_markup: showCurrent,
-      });
-    } finally {
-      // NOTE: always answer or the user's button keeps a spinner.
-      await ctx.answerCallbackQuery();
+    if (count === null) {
+      await ctx.editMessageText(
+        `Subscribed ✅ — the source didn't respond, I'll load current listings on the next run.\n${sub.url}`,
+        { link_preview_options: NO_LINK_PREVIEW },
+      );
+      return;
     }
+    // Offer the current listings on demand — baseline already counted them.
+    const showCurrent =
+      count > 0
+        ? new InlineKeyboard().text(`Show current (${count})`, `show:${sub.id}`)
+        : undefined;
+    await ctx.editMessageText(
+      `Subscribed ✅ watching ${count} current ${sub.source} listings.\n${sub.url}`,
+      { link_preview_options: NO_LINK_PREVIEW, reply_markup: showCurrent },
+    );
   }
 
   private async onCancel(ctx: Context): Promise<void> {
     // Same guard as onSubscribe — an expired or foreign tap must not wipe the owner's prompt.
     if (!this.takePending(ctx)) {
-      await ctx.answerCallbackQuery('This prompt has expired — send the link again.');
+      await ctx.answerCallbackQuery(EXPIRED);
       return;
     }
     await ctx.editMessageText('Cancelled.');
@@ -149,11 +150,21 @@ export class TelegramHandlers {
       return;
     }
 
+    // Stay under Telegram's 4096-char message limit — an oversized reply throws and
+    // the user loses /list (their only way to remove subscriptions).
     const keyboard = new InlineKeyboard();
-    const lines = subs.map((sub, i) => {
+    const lines: string[] = [];
+    let length = 0;
+    for (const [i, sub] of subs.entries()) {
+      const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
+      if (length + line.length > MAX_LIST_CHARS || i >= MAX_LIST_ROWS) {
+        lines.push(`…and ${subs.length - i} more — remove some to see the rest`);
+        break;
+      }
       keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`).row();
-      return `#${i + 1} — ${sub.source}\n${sub.url}`;
-    });
+      lines.push(line);
+      length += line.length + '\n\n'.length;
+    }
     await ctx.reply(lines.join('\n\n'), {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
@@ -171,35 +182,31 @@ export class TelegramHandlers {
       return;
     }
 
-    let foundAny = false;
-    let failedAny = false;
+    let hasFindings = false;
+    let hasFailures = false;
     for (const sub of subs) {
       try {
-        // A failed on-subscribe baseline retries here — seed instead of flooding as "new".
-        if (!sub.baselinedAt) {
-          foundAny = true;
-          const { count } = await this.watch.baseline(sub);
+        const outcome = await this.watch.poll(sub);
+        if (outcome.kind === 'nothing') continue;
+        hasFindings = true;
+        if (outcome.kind === 'baselined') {
           await ctx.reply(
-            `Watching ${count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
+            `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
             { link_preview_options: NO_LINK_PREVIEW },
           );
           continue;
         }
-        const fresh = await this.watch.check(sub);
-        if (fresh.length > 0) {
-          foundAny = true;
-          const { text, delivered } = newListingsDigest(fresh);
-          await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-          this.watch.markSeen(sub, delivered);
-        }
+        const { text, delivered } = newListingsDigest(outcome.listings);
+        await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
+        this.watch.markSeen(sub, delivered);
       } catch (err) {
-        failedAny = true;
+        hasFailures = true;
         this.logger.warn({ err }, `Check failed for ${sub.url}`);
         await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
       }
     }
     // Error replies already went out — a trailing "Nothing new." would contradict them.
-    if (!foundAny && !failedAny) await ctx.reply('Nothing new.');
+    if (!hasFindings && !hasFailures) await ctx.reply('Nothing new.');
   }
 
   private async onShowCurrent(ctx: Context): Promise<void> {

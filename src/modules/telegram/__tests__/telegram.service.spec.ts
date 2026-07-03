@@ -46,4 +46,8 @@ describe('TelegramService', () => {
   it('shuts down cleanly when the bot never started', async () => {
     await expect(make().onApplicationShutdown()).resolves.toBeUndefined();
   });
+
+  it('notify throws when the bot is disabled — callers must not mark listings seen', async () => {
+    await expect(make().notify(1, 'hi')).rejects.toThrow('disabled');
+  });
 });

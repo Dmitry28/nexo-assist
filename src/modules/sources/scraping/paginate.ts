@@ -16,23 +16,31 @@ export interface ParsedPage {
 
 /**
  * Fetch pages newest-first via `parsePage` until there is no next page, a page is
- * empty, or MAX_PAGES is reached. De-duplicates by externalId across pages (a listing
- * can shift between page fetches); seen-dedup happens in WatchService.
+ * empty, or MAX_PAGES is reached. Fetches are pinned to `host` (redirects must not
+ * leave it). De-duplicates by externalId across pages (a listing can shift between
+ * page fetches); seen-dedup happens in WatchService.
  *
- * A failed FIRST page throws — an outage must not look like an empty search.
- * A failure on a later page returns what was collected (the newest pages are in).
+ * A failed FIRST page — fetch or parse — throws: an outage, bot-wall or layout
+ * change must not look like an empty search. A failure on a later page returns
+ * what was collected (the newest pages are in).
  */
-export async function paginate(
-  firstUrl: string,
-  parsePage: (html: string) => ParsedPage,
-  logger: Logger,
-): Promise<Listing[]> {
+export async function paginate({
+  firstUrl,
+  host,
+  parsePage,
+  logger,
+}: {
+  firstUrl: string;
+  host: string;
+  parsePage: (html: string, page: number) => ParsedPage;
+  logger: Logger;
+}): Promise<Listing[]> {
   const byId = new Map<string, Listing>();
   let url: string | null = firstUrl;
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
-    let html: string;
+    let parsed: ParsedPage;
     try {
-      html = await fetchHtml(url);
+      parsed = parsePage(await fetchHtml({ url, host }), page);
     } catch (err) {
       if (page === 1) throw err;
       logger.warn(
@@ -41,7 +49,7 @@ export async function paginate(
       );
       break;
     }
-    const { listings, nextUrl } = parsePage(html);
+    const { listings, nextUrl } = parsed;
     // Stop on an empty page — also guards against a loop if a page advertises a next but yields nothing.
     if (listings.length === 0) break;
     for (const listing of listings) {

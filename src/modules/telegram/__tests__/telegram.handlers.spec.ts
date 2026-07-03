@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
@@ -133,6 +134,7 @@ describe('TelegramHandlers', () => {
   });
 
   it('keeps the subscription when the baseline fetch fails — the daily run seeds it', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     fetchSpy.mockRejectedValue(new Error('outage'));
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
 
@@ -212,7 +214,23 @@ describe('TelegramHandlers', () => {
     expect(subscriptions.getSeen(sub.id).size).toBe(2);
   });
 
+  it('/check reports an unregistered source as a failure, not as watched', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    // 'realt' is not registered in this suite's registry — only kufar is.
+    subscriptions.add({ telegramUserId: 1, source: 'realt', url: 'u1' });
+
+    const ctx = makeCtx({ userId: 1 });
+    await bot.commands.get('check')!(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Could not check'));
+    expect(ctx.reply).not.toHaveBeenCalledWith(
+      expect.stringContaining('Watching'),
+      expect.anything(),
+    );
+  });
+
   it('/check reports a failing subscription without a contradictory "Nothing new."', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
     fetchSpy.mockRejectedValue(new Error('outage'));
 

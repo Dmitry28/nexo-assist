@@ -22,6 +22,16 @@ describe('newListingsDigest', () => {
     expect(delivered[0].externalId).toBe('1');
   });
 
+  it('caps by characters too — a few huge titles must not break the 4096-char limit', () => {
+    const huge = Array.from({ length: 5 }, (_, i) => listing(i + 1, { title: 't'.repeat(1500) }));
+
+    const { text, delivered } = newListingsDigest(huge);
+
+    expect(text.length).toBeLessThan(4096);
+    expect(delivered.length).toBeLessThan(5);
+    expect(text).toContain(`…and ${5 - delivered.length} more`);
+  });
+
   it('falls back through the price options', () => {
     expect(newListingsDigest([listing(1, { priceByn: 100 })]).text).toContain('100 BYN');
     expect(newListingsDigest([listing(1)]).text).toContain('price n/a');
