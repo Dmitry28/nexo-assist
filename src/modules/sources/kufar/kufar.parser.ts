@@ -37,8 +37,7 @@ export function extractPage(html: string): KufarPage {
   const pageProps = props?.pageProps as Record<string, unknown> | undefined;
   // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
   const initialState = (pageProps?.initialState ?? props?.initialState) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   const listing = initialState?.listing as Record<string, unknown> | undefined;
   const ads = (listing?.ads as RawKufarAd[] | undefined) ?? [];
   const pagination = (listing?.pagination as RawPagination[] | undefined) ?? [];

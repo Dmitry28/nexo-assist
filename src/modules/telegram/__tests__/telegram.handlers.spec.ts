@@ -80,8 +80,7 @@ describe('TelegramHandlers', () => {
     const ctx = makeCtx({ text: url, userId });
     await bot.onText(ctx);
     const markup = ctx.reply.mock.calls[0]?.[1]?.reply_markup as
-      | { inline_keyboard: Array<Array<{ callback_data: string }>> }
-      | undefined;
+      { inline_keyboard: Array<Array<{ callback_data: string }>> } | undefined;
     const nonce = markup?.inline_keyboard[0][0].callback_data.split(':')[1];
     return { ctx, nonce };
   };
