@@ -1,5 +1,3 @@
-import type { Logger } from '@nestjs/common';
-
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
 const MAX_HTML_LENGTH = 5 * 1024 * 1024;
@@ -11,31 +9,29 @@ const HEADERS = {
   'Accept-Language': 'ru-RU,ru;q=0.9',
 };
 
-/** Fetch a page's HTML with a browser UA, timeout and size guards. Returns null on any failure. */
-export async function fetchHtml(url: string, logger: Logger): Promise<string | null> {
+/**
+ * Fetch a page's HTML with a browser UA, timeout and size guards.
+ * Throws on any failure — a failed fetch must stay distinguishable from an empty
+ * search result, otherwise baseline/check silently treat outages as "no listings".
+ */
+export async function fetchHtml(url: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: HEADERS });
     if (!res.ok) {
-      logger.warn(`HTTP ${res.status} for ${url}`);
-      return null;
+      throw new Error(`HTTP ${res.status} for ${url}`);
     }
     // Bail before buffering the body when the server declares an oversized response.
     const contentLength = Number(res.headers.get('content-length'));
     if (contentLength > MAX_HTML_LENGTH) {
-      logger.warn(`Content-Length ${contentLength} exceeds limit for ${url} — skipping`);
-      return null;
+      throw new Error(`Content-Length ${contentLength} exceeds limit for ${url}`);
     }
     const html = await res.text();
     if (html.length > MAX_HTML_LENGTH) {
-      logger.warn(`Response too large (${html.length} chars) for ${url} — skipping`);
-      return null;
+      throw new Error(`Response too large (${html.length} chars) for ${url}`);
     }
     return html;
-  } catch (err) {
-    logger.error({ err }, `Failed to fetch ${url}`);
-    return null;
   } finally {
     clearTimeout(timer);
   }

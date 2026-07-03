@@ -3,9 +3,9 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
-import { KufarAdapter } from './kufar.adapter';
+import { KufarAdapter } from '../kufar.adapter';
 
-const fixture = readFileSync(join(__dirname, '__tests__/fixtures/kufar-search.html'), 'utf8');
+const fixture = readFileSync(join(__dirname, 'fixtures/kufar-search.html'), 'utf8');
 
 describe('KufarAdapter', () => {
   let adapter: KufarAdapter;
@@ -43,16 +43,26 @@ describe('KufarAdapter', () => {
       expect(listings[0].externalId).toBe('1069720654');
     });
 
-    it('returns [] on a non-OK response', async () => {
-      fetchMock.mockResolvedValue(new Response('', { status: 404 }));
+    it('strips a pasted cursor and pins newest-first sort', async () => {
+      fetchMock.mockResolvedValue(new Response(fixture, { status: 200 }));
 
-      expect(await adapter.fetch('https://re.kufar.by/l/x')).toEqual([]);
+      await adapter.fetch('https://re.kufar.by/l/minsk?cursor=abc&sort=prc.a');
+
+      const firstUrl = String(fetchMock.mock.calls[0][0]);
+      expect(firstUrl).not.toContain('cursor=');
+      expect(firstUrl).toContain('sort=lst.d');
     });
 
-    it('returns [] when the request throws', async () => {
+    it('rejects on a non-OK response — an outage must not look like an empty search', async () => {
+      fetchMock.mockResolvedValue(new Response('', { status: 404 }));
+
+      await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toThrow('HTTP 404');
+    });
+
+    it('rejects when the request throws', async () => {
       fetchMock.mockRejectedValue(new Error('network down'));
 
-      expect(await adapter.fetch('https://re.kufar.by/l/x')).toEqual([]);
+      await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toThrow('network down');
     });
   });
 });

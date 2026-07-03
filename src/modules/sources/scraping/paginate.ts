@@ -1,7 +1,8 @@
 import type { Logger } from '@nestjs/common';
 
+import type { Listing } from '../source-adapter';
+
 import { fetchHtml } from './http';
-import type { Listing } from './source-adapter';
 
 // NOTE: page-cap bound (not a time window) — deterministic and enough for daily volumes
 // (e.g. 5 × ~30 = 150 listings). A lookback window can be added later if it proves wasteful.
@@ -15,24 +16,38 @@ export interface ParsedPage {
 
 /**
  * Fetch pages newest-first via `parsePage` until there is no next page, a page is
- * empty, or MAX_PAGES is reached. Listings are returned across all fetched pages;
- * de-duplication against what was already delivered happens in WatchService.
+ * empty, or MAX_PAGES is reached. De-duplicates by externalId across pages (a listing
+ * can shift between page fetches); seen-dedup happens in WatchService.
+ *
+ * A failed FIRST page throws — an outage must not look like an empty search.
+ * A failure on a later page returns what was collected (the newest pages are in).
  */
 export async function paginate(
   firstUrl: string,
   parsePage: (html: string) => ParsedPage,
   logger: Logger,
 ): Promise<Listing[]> {
-  const all: Listing[] = [];
+  const byId = new Map<string, Listing>();
   let url: string | null = firstUrl;
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
-    const html = await fetchHtml(url, logger);
-    if (!html) break;
+    let html: string;
+    try {
+      html = await fetchHtml(url);
+    } catch (err) {
+      if (page === 1) throw err;
+      logger.warn(
+        { err },
+        `Page ${page} failed for ${firstUrl} — returning ${byId.size} collected`,
+      );
+      break;
+    }
     const { listings, nextUrl } = parsePage(html);
     // Stop on an empty page — also guards against a loop if a page advertises a next but yields nothing.
     if (listings.length === 0) break;
-    all.push(...listings);
+    for (const listing of listings) {
+      if (!byId.has(listing.externalId)) byId.set(listing.externalId, listing);
+    }
     url = nextUrl;
   }
-  return all;
+  return [...byId.values()];
 }

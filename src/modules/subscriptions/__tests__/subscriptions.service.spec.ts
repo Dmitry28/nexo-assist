@@ -1,4 +1,4 @@
-import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionsService } from '../subscriptions.service';
 
 describe('SubscriptionsService', () => {
   let service: SubscriptionsService;
@@ -45,5 +45,23 @@ describe('SubscriptionsService', () => {
 
     service.remove(sub.id, 1);
     expect(service.getSeen(sub.id).size).toBe(0);
+  });
+
+  it('ignores markSeen for a removed subscription — no orphan state', () => {
+    const sub = service.add({ telegramUserId: 1, source: 'kufar', url: 'https://kufar.by/l/a' });
+    service.remove(sub.id, 1);
+
+    service.markSeen(sub.id, ['10']);
+
+    expect(service.getSeen(sub.id).size).toBe(0);
+  });
+
+  it('records the baseline timestamp', () => {
+    const sub = service.add({ telegramUserId: 1, source: 'kufar', url: 'https://kufar.by/l/a' });
+    expect(sub.baselinedAt).toBeUndefined();
+
+    service.markBaselined(sub.id);
+
+    expect(sub.baselinedAt).toBeInstanceOf(Date);
   });
 });

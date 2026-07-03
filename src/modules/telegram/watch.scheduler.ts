@@ -7,7 +7,7 @@ import configuration from '@/config/configuration';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { DIGEST_LIMIT, formatNewListings } from './telegram.format';
+import { newListingsDigest } from './telegram.format';
 import { TelegramService } from './telegram.service';
 
 const JOB_NAME = 'daily-watch';
@@ -43,12 +43,17 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   async runDaily(): Promise<void> {
     for (const sub of this.subscriptions.listAll()) {
       try {
+        // A failed on-subscribe baseline retries here — seed silently, don't flood.
+        if (!sub.baselinedAt) {
+          await this.watch.baseline(sub);
+          continue;
+        }
         const fresh = await this.watch.check(sub);
         if (fresh.length > 0) {
+          const { text, delivered } = newListingsDigest(fresh);
           // TODO Phase 4: on a 403 (user blocked the bot), pause that user's subscriptions [M].
-          await this.telegram.notify(sub.telegramUserId, formatNewListings(fresh));
-          // Mark only the delivered slice — overflow beyond the digest cap surfaces next run.
-          this.watch.markSeen(sub, fresh.slice(0, DIGEST_LIMIT));
+          await this.telegram.notify(sub.telegramUserId, text);
+          this.watch.markSeen(sub, delivered);
         }
       } catch (err) {
         // NOTE: isolate failures — one bad subscription must not skip the rest.

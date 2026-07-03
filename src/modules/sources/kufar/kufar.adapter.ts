@@ -1,39 +1,38 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { paginate } from '../paginate';
+import { matchesHost, withParam, withoutParam } from '@/common/url';
+
+import { paginate } from '../scraping/paginate';
 import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
-import { withParam } from '../url';
 
 import { extractPage, mapAd } from './kufar.parser';
 
 const HOST = 'kufar.by';
+// Pin newest-first ordering — the page-cap model relies on new listings being on page 1
+// (verified live: sort=lst.d orders by list_time desc).
+const SORT_NEWEST = 'lst.d';
 
-/** Kufar source adapter — fetches and parses the first page of a search. */
+/** Kufar source adapter — fetches a search newest-first, up to the page cap. */
 @Injectable()
 export class KufarAdapter implements SourceAdapter {
   readonly id: SourceId = 'kufar';
   private readonly logger = new Logger(KufarAdapter.name);
 
   matches(url: string): boolean {
-    let hostname: string;
-    try {
-      hostname = new URL(url).hostname.replace(/^www\./, '');
-    } catch {
-      return false;
-    }
-    // NOTE: endsWith(".kufar.by") also matches subdomains like re.kufar.by.
-    return hostname === HOST || hostname.endsWith(`.${HOST}`);
+    return matchesHost(url, HOST);
   }
 
   async fetch(url: string): Promise<Listing[]> {
-    // NOTE: Kufar paginates by a cursor token appended to the original search URL.
+    // NOTE: Kufar paginates by a cursor token appended to the search URL. Strip a pasted
+    // cursor (it would start mid-list and skip the newest pages) and pin newest-first.
+    const base = withParam(withoutParam(url, 'cursor'), 'sort', SORT_NEWEST);
     return paginate(
-      url,
+      base,
       (html) => {
         const { ads, nextCursor } = extractPage(html);
         return {
           listings: ads.map(mapAd),
-          nextUrl: nextCursor ? withParam(url, 'cursor', nextCursor) : null,
+          nextUrl: nextCursor ? withParam(base, 'cursor', nextCursor) : null,
         };
       },
       this.logger,

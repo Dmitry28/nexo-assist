@@ -4,7 +4,7 @@ import type { Listing } from '@/modules/sources/source-adapter';
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
 
 // Cap the digest item count so the message stays small (Telegram's hard limit is 4096 chars).
-// Exported so callers mark only the delivered slice as seen (overflow surfaces next run).
+// Exported for specs; production callers get the delivered slice from newListingsDigest.
 export const DIGEST_LIMIT = 10;
 
 function price(listing: Listing): string {
@@ -26,8 +26,18 @@ function digest(listings: Listing[], header: string): string {
   return `${header}\n\n${lines}${footer}`;
 }
 
-export const formatNewListings = (listings: Listing[]): string =>
-  digest(listings, `🆕 ${listings.length} new`);
-
 export const formatCurrentListings = (listings: Listing[]): string =>
   digest(listings, `📋 ${listings.length} current`);
+
+/**
+ * The "new listings" digest plus the exact slice it shows. Callers must markSeen
+ * only `delivered` — the overflow beyond the cap surfaces on a later run.
+ * NOTE: newest-first means sustained volume > cap starves the oldest items; fixed
+ * by batched delivery (Phase 7).
+ */
+export function newListingsDigest(fresh: Listing[]): { text: string; delivered: Listing[] } {
+  return {
+    text: digest(fresh, `🆕 ${fresh.length} new`),
+    delivered: fresh.slice(0, DIGEST_LIMIT),
+  };
+}

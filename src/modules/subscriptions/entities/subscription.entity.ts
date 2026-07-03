@@ -7,4 +7,6 @@ export interface Subscription {
   source: SourceId;
   url: string;
   createdAt: Date;
+  /** When the seen set was seeded. Unset = baseline still pending (e.g. it failed on subscribe). */
+  baselinedAt?: Date;
 }

@@ -1,4 +1,4 @@
-import { parseNextData } from '../next-data';
+import { parseNextData } from '../scraping/next-data';
 import type { Listing } from '../source-adapter';
 
 /** Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read. */
