@@ -18,7 +18,16 @@ describe('extractPage', () => {
     expect(() => extractPage('<html>no data</html>')).toThrow('__NEXT_DATA__');
   });
 
-  it('treats a page without an objects array as empty — realt renders some zero-result pages so', () => {
+  it('throws when pageProps is missing — a layout change must not read as an empty search', () => {
+    const noPageProps =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: {} }) +
+      '</script>';
+
+    expect(() => extractPage(noPageProps)).toThrow('pageProps');
+  });
+
+  it('treats pageProps without an objects array as empty — realt renders some zero-result pages so', () => {
     const noObjects =
       '<script id="__NEXT_DATA__" type="application/json">' +
       JSON.stringify({ props: { pageProps: { apolloState: {} } } }) +
