@@ -2,10 +2,10 @@
 
 ## Layout
 
-- **Unit tests** — side-by-side `<file>.spec.ts` next to the source file.
+- **Unit tests** — `<file>.spec.ts` in a `__tests__/` folder inside the same layer as the source (e.g. `sources/scraping/__tests__/paginate.spec.ts`), so specs don't clutter the source folder. Jest finds them anywhere under `src/`.
 - **E2E tests** — under `test/` at the repo root (config in `test/jest-e2e.json`).
 - **Integration** — cover the app boot (full `AppModule`) and non-HTTP flows (e.g. the watch loop) with `Test.createTestingModule` + `overrideProvider`; keep them green as modules grow.
-- **Shared fixtures / helpers** — extract to `__tests__/fixtures/` or `__tests__/helpers/` when reused across multiple spec files.
+- **Fixtures / helpers** — per-layer fixtures in that layer's `__tests__/fixtures/` (beside its specs); cross-cutting helpers in `src/__tests__/helpers/` (import via `@/__tests__/helpers/*`).
 
 ## Test Structure (AAA)
 

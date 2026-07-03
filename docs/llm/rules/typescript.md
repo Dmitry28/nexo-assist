@@ -28,4 +28,3 @@ The repo runs with `strict: true` plus `noImplicitReturns`, `noImplicitOverride`
 - DTOs are classes (not interfaces) — required for `class-validator` and `class-transformer`.
 - Use `@ApiProperty()` from `@nestjs/swagger` on DTO fields for auto-documentation.
 - Inject services via constructor; never instantiate manually.
-- For paginated list endpoints, return `PaginatedResponse<T>` and document with `@ApiPaginatedResponse(Model)`.

@@ -1,12 +1,27 @@
 # Product — how it works
 
-> Living doc: how the product is built (behavior + architecture). Keep it current
-> on any change. Roadmap lives in [PRODUCT_PLAN.md](PRODUCT_PLAN.md).
+> Living doc: the target design (behavior + architecture); **Status now** marks
+> what is already implemented. Keep it current on any change. Roadmap lives in
+> [PRODUCT_PLAN.md](PRODUCT_PLAN.md).
 
 ## What it is
 
 A Telegram bot. A user pastes a filtered search link (kufar/realt and more) and
-the bot sends new / changed / removed listings for it once a day.
+the bot sends new / changed / removed listings for it on a schedule (daily to
+start; more frequent once throttling/dedupe land).
+
+## Status now (implemented)
+
+- Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
+- Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet.
+- Buttons: Subscribe / Cancel / Show current / list / remove; non-production `/check`
+  (manual test trigger — dev and staging).
+- Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
+- Baseline on subscribe; seen marked **only after successful delivery**.
+- Storage: **in-memory** (lost on restart) — DB lands in Phase 3.
+- Unsupported link → plain "not supported yet" message (Issue flow is Phase 6).
+
+Everything below this section describes the target design.
 
 ## User flow
 
@@ -21,7 +36,7 @@ the bot sends new / changed / removed listings for it once a day.
 
 ## How it works inside
 
-1. The scheduler runs the scrape once a day.
+1. The scheduler runs the scrape on its cron (daily to start).
 2. Collect the unique normalized URLs of active subscriptions (dedupe).
 3. For each URL the adapter fetches listings **page by page** (newest-first, capped
    at a few pages) and normalizes them. (Early stop-on-already-seen is a later
@@ -36,8 +51,8 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 ## Volume and limits
 
 - **First subscription:** take a baseline of recent listings, send nothing.
-- **Many new at once:** send a digest — cap the item count + an "N more on the
-  site" link, not one message per item.
+- **Many new at once:** send the digest in batches of messages (overall cap
+  ~100), not one message per item and not a silent "N more" drop.
 - **Telegram limits:** throttle the fan-out through a queue; if a user blocked the
   bot (403) → pause their subscriptions.
 - **Source with no subscribers:** stop scraping it and purge its data.

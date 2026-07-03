@@ -11,19 +11,28 @@ src/
 ├── config/
 │   ├── configuration.ts   # registerAs('app', ...) — typed AppConfig + single validation point
 │   └── env.validation.ts  # class-validator schema; single source of defaults; fail-fast on boot
-├── common/                # Cross-cutting building blocks
+├── common/                # Cross-cutting building blocks (never import from modules/)
 │   ├── filters/           # Global exception filters (consistent error JSON)
-│   └── dto/               # Shared DTOs — PaginationQueryDto, PaginatedResponse, @ApiPaginatedResponse
+│   └── url.ts             # Generic URL helpers (extract/withParam/matchesHost)
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
 ├── metrics/            # MetricsModule + Prometheus controller override; @SkipThrottle()
 └── modules/
-    └── <feature>/      # Feature module — mirror an existing one (e.g. subscriptions)
-        ├── dto/
-        ├── entities/
-        ├── <feature>.controller.ts
-        ├── <feature>.service.ts
-        └── <feature>.module.ts
+    ├── <feature>/      # Feature module — mirror an existing one (e.g. subscriptions)
+    │   ├── dto/
+    │   ├── entities/
+    │   ├── __tests__/       # specs (+ fixtures) for this layer
+    │   ├── <feature>.controller.ts
+    │   ├── <feature>.service.ts
+    │   └── <feature>.module.ts
+    └── sources/        # Source-plugin layer (specialized module)
+        ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
+        ├── source-registry.ts  # Resolves an adapter by URL/id
+        ├── sources.module.ts
+        ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
+        └── <site>/             # One adapter per site (kufar, realt) + parser
 ```
+
+Specs live in a `__tests__/` folder within their own layer (not beside the source) — see [testing.md](testing.md#layout).
 
 ## Module Rules
 
