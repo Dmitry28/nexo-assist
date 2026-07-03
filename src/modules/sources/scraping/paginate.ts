@@ -24,18 +24,23 @@ export interface ParsedPage {
  * change must not look like an empty search. A failure on a later page returns
  * what was collected (the newest pages are in).
  */
-export async function paginate(
-  firstUrl: string,
-  host: string,
-  parsePage: (html: string, page: number) => ParsedPage,
-  logger: Logger,
-): Promise<Listing[]> {
+export async function paginate({
+  firstUrl,
+  host,
+  parsePage,
+  logger,
+}: {
+  firstUrl: string;
+  host: string;
+  parsePage: (html: string, page: number) => ParsedPage;
+  logger: Logger;
+}): Promise<Listing[]> {
   const byId = new Map<string, Listing>();
   let url: string | null = firstUrl;
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
     let parsed: ParsedPage;
     try {
-      parsed = parsePage(await fetchHtml(url, host), page);
+      parsed = parsePage(await fetchHtml({ url, host }), page);
     } catch (err) {
       if (page === 1) throw err;
       logger.warn(

@@ -26,7 +26,7 @@ describe('paginate', () => {
     ];
     const parsePage = jest.fn().mockImplementation(() => pages.shift());
 
-    const result = await paginate('p1', 'x.by', parsePage, logger);
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(result.map((l) => l.externalId)).toEqual(['1', '2']);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -39,7 +39,7 @@ describe('paginate', () => {
     ];
     const parsePage = jest.fn().mockImplementation(() => pages.shift());
 
-    const result = await paginate('p1', 'x.by', parsePage, logger);
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(result.map((l) => l.externalId)).toEqual(['1', '2', '3']);
   });
@@ -51,7 +51,7 @@ describe('paginate', () => {
       .fn()
       .mockImplementation(() => ({ listings: [makeListing(++id)], nextUrl: 'next' }));
 
-    const result = await paginate('p1', 'x.by', parsePage, logger);
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(result).toHaveLength(5); // MAX_PAGES
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -60,14 +60,16 @@ describe('paginate', () => {
   it('stops on an empty page', async () => {
     const parsePage = jest.fn().mockReturnValue({ listings: [], nextUrl: 'next' });
 
-    expect(await paginate('p1', 'x.by', parsePage, logger)).toEqual([]);
+    expect(await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('throws when the first page fails — an outage must not look like an empty search', async () => {
     fetchMock.mockRejectedValue(new Error('boom'));
 
-    await expect(paginate('p1', 'x.by', jest.fn(), logger)).rejects.toThrow('boom');
+    await expect(
+      paginate({ firstUrl: 'p1', host: 'x.by', parsePage: jest.fn(), logger }),
+    ).rejects.toThrow('boom');
   });
 
   it('returns the collected listings when a later page fails', async () => {
@@ -76,7 +78,7 @@ describe('paginate', () => {
       .mockRejectedValueOnce(new Error('boom'));
     const parsePage = jest.fn().mockReturnValue({ listings: [makeListing(1)], nextUrl: 'p2' });
 
-    const result = await paginate('p1', 'x.by', parsePage, logger);
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(result.map((l) => l.externalId)).toEqual(['1']);
   });
@@ -86,7 +88,9 @@ describe('paginate', () => {
       throw new Error('__NEXT_DATA__ missing');
     });
 
-    await expect(paginate('p1', 'x.by', parsePage, logger)).rejects.toThrow('__NEXT_DATA__');
+    await expect(paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).rejects.toThrow(
+      '__NEXT_DATA__',
+    );
   });
 
   it('returns the collected listings when a later page fails to parse', async () => {
@@ -97,7 +101,7 @@ describe('paginate', () => {
         throw new Error('bad page');
       });
 
-    const result = await paginate('p1', 'x.by', parsePage, logger);
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(result.map((l) => l.externalId)).toEqual(['1']);
   });
@@ -108,7 +112,7 @@ describe('paginate', () => {
       .mockReturnValueOnce({ listings: [makeListing(1)], nextUrl: 'p2' })
       .mockReturnValueOnce({ listings: [makeListing(2)], nextUrl: null });
 
-    await paginate('p1', 'x.by', parsePage, logger);
+    await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(parsePage).toHaveBeenNthCalledWith(1, expect.any(String), 1);
     expect(parsePage).toHaveBeenNthCalledWith(2, expect.any(String), 2);

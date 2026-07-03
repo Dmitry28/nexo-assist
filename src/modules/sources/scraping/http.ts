@@ -16,7 +16,7 @@ const HEADERS = {
  * Throws on any failure — a failed fetch must stay distinguishable from an empty
  * search result, otherwise baseline/check silently treat outages as "no listings".
  */
-export async function fetchHtml(url: string, host: string): Promise<string> {
+export async function fetchHtml({ url, host }: { url: string; host: string }): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {

@@ -3,9 +3,12 @@ import type { Listing } from '@/modules/sources/source-adapter';
 /** Reusable "no link preview" message option. */
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
 
-// Cap the digest item count so the message stays small (Telegram's hard limit is 4096 chars).
-// Exported for specs; production callers get the delivered slice from newListingsDigest.
+// Digest caps: item count for readability, char budget with headroom under
+// Telegram's 4096-char message limit (an oversized send throws — and would then
+// be rebuilt oversized and fail on every retry).
+// DIGEST_LIMIT is exported for specs; production callers get the delivered slice.
 export const DIGEST_LIMIT = 10;
+const MAX_DIGEST_CHARS = 3500;
 
 function price(listing: Listing): string {
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
@@ -17,27 +20,33 @@ function formatOne(listing: Listing): string {
   return `${listing.title}\n${price(listing)}\n${listing.link}`;
 }
 
-/** A listings digest under `header`, capped with a "…and N more" footer. */
-function digest(listings: Listing[], header: string): string {
-  const shown = listings.slice(0, DIGEST_LIMIT);
-  const lines = shown.map(formatOne).join('\n\n');
+/** A listings digest under `header`: items up to the caps, then an "…and N more" footer. */
+function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
+  const lines: string[] = [];
+  const shown: Listing[] = [];
+  let length = header.length;
+  for (const listing of listings) {
+    const line = formatOne(listing);
+    if (shown.length >= DIGEST_LIMIT || length + line.length > MAX_DIGEST_CHARS) break;
+    lines.push(line);
+    shown.push(listing);
+    length += line.length + '\n\n'.length;
+  }
   const more = listings.length - shown.length;
   const footer = more > 0 ? `\n\n…and ${more} more` : '';
-  return `${header}\n\n${lines}${footer}`;
+  return { text: `${header}\n\n${lines.join('\n\n')}${footer}`, shown };
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
-  digest(listings, `📋 ${listings.length} current`);
+  digest(listings, `📋 ${listings.length} current`).text;
 
 /**
  * The "new listings" digest plus the exact slice it shows. Callers must markSeen
- * only `delivered` — the overflow beyond the cap surfaces on a later run.
+ * only `delivered` — the overflow beyond the caps surfaces on a later run.
  * NOTE: newest-first means sustained volume > cap starves the oldest items; fixed
  * by batched delivery (Phase 7).
  */
 export function newListingsDigest(fresh: Listing[]): { text: string; delivered: Listing[] } {
-  return {
-    text: digest(fresh, `🆕 ${fresh.length} new`),
-    delivered: fresh.slice(0, DIGEST_LIMIT),
-  };
+  const { text, shown } = digest(fresh, `🆕 ${fresh.length} new`);
+  return { text, delivered: shown };
 }

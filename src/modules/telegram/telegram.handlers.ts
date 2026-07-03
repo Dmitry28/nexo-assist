@@ -182,13 +182,13 @@ export class TelegramHandlers {
       return;
     }
 
-    let foundAny = false;
-    let failedAny = false;
+    let hasFindings = false;
+    let hasFailures = false;
     for (const sub of subs) {
       try {
         const outcome = await this.watch.poll(sub);
         if (outcome.kind === 'nothing') continue;
-        foundAny = true;
+        hasFindings = true;
         if (outcome.kind === 'baselined') {
           await ctx.reply(
             `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
@@ -200,13 +200,13 @@ export class TelegramHandlers {
         await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
         this.watch.markSeen(sub, delivered);
       } catch (err) {
-        failedAny = true;
+        hasFailures = true;
         this.logger.warn({ err }, `Check failed for ${sub.url}`);
         await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
       }
     }
     // Error replies already went out — a trailing "Nothing new." would contradict them.
-    if (!foundAny && !failedAny) await ctx.reply('Nothing new.');
+    if (!hasFindings && !hasFailures) await ctx.reply('Nothing new.');
   }
 
   private async onShowCurrent(ctx: Context): Promise<void> {
