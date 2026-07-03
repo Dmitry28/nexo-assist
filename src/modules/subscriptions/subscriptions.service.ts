@@ -38,6 +38,7 @@ export class SubscriptionsService {
   /** Record that the subscription's seen set was seeded. */
   markBaselined(id: string): void {
     const subscription = this.store.get(id);
+    // Guard a remove-mid-baseline race — a gone subscription stays gone.
     if (subscription) subscription.baselinedAt = new Date();
   }
 

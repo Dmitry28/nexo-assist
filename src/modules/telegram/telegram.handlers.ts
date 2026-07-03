@@ -129,7 +129,11 @@ export class TelegramHandlers {
   }
 
   private async onCancel(ctx: Context): Promise<void> {
-    this.takePending(ctx);
+    // Same guard as onSubscribe — an expired or foreign tap must not wipe the owner's prompt.
+    if (!this.takePending(ctx)) {
+      await ctx.answerCallbackQuery('This prompt has expired — send the link again.');
+      return;
+    }
     await ctx.editMessageText('Cancelled.');
     await ctx.answerCallbackQuery();
   }

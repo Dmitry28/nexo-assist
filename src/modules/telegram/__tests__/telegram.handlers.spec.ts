@@ -148,6 +148,17 @@ describe('TelegramHandlers', () => {
     expect(ctx.answerCallbackQuery).toHaveBeenCalled();
   });
 
+  it("ignores another user's cancel tap — the owner's prompt stays subscribable", async () => {
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk', 1);
+
+    const stranger = await pressButton(`cancel:${nonce}`, 999);
+    expect(stranger.editMessageText).not.toHaveBeenCalled();
+    expect(stranger.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
+
+    await pressButton(`subscribe:${nonce}`, 1);
+    expect(subscriptions.listByUser(1).map((s) => s.url)).toEqual(['https://re.kufar.by/l/minsk']);
+  });
+
   it('cancel consumes the prompt — a later subscribe tap is expired', async () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
 
