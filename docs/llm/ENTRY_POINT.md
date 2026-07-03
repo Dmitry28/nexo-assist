@@ -44,6 +44,11 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep product docs current:** on any change to product behavior or architecture, update [docs/PRODUCT.md](../PRODUCT.md) (how the product works) and [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap) in the same change.
 
+## Reference Repos (local)
+
+- `/Users/dmitrypoluy/dp/my/land-scraper` — the prototype; logic to port here (see [PRODUCT_PLAN.md §5](../PRODUCT_PLAN.md)).
+- `/Users/dmitrypoluy/dp/enneo/enneo/ops-fe` and `/Users/dmitrypoluy/dp/enneo/enneo/io-proxy` — mature repos to borrow from: technical solutions, approaches, LLM instructions, eslint/tooling configs.
+
 ## Workflow
 
 Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement → Verify → Fix.
