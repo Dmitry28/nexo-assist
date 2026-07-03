@@ -19,6 +19,10 @@ export class SubscriptionsService {
     return subscription;
   }
 
+  has(id: string): boolean {
+    return this.store.has(id);
+  }
+
   listByUser(telegramUserId: number): Subscription[] {
     return [...this.store.values()].filter((s) => s.telegramUserId === telegramUserId);
   }

@@ -36,7 +36,7 @@ describe('Watch flow (integration)', () => {
     fetch.mockResolvedValueOnce([listing(1), listing(2)]);
     const fresh = await watch.check(sub);
 
-    expect(seeded).toEqual({ supported: true, count: 1 });
+    expect(seeded).toBe(1);
     expect(fresh.map((l) => l.externalId)).toEqual(['2']);
   });
 });

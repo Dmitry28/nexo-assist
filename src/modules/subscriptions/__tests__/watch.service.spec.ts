@@ -25,10 +25,10 @@ describe('WatchService', () => {
     const sub = addKufar();
     fetchSpy.mockResolvedValue([listing(1), listing(2)]);
 
-    const result = await watch.baseline(sub);
+    const count = await watch.baseline(sub);
     const fresh = await watch.check(sub);
 
-    expect(result).toEqual({ supported: true, count: 2 });
+    expect(count).toBe(2);
     expect(fresh).toEqual([]);
     expect(sub.baselinedAt).toBeInstanceOf(Date);
   });
@@ -76,12 +76,55 @@ describe('WatchService', () => {
     expect(fresh.map((l) => l.externalId)).toEqual(['1']);
   });
 
-  it('treats an unregistered source as unsupported without fetching', async () => {
+  it('poll baselines a pending subscription instead of reporting its backlog as fresh', async () => {
+    const sub = addKufar();
+    fetchSpy.mockResolvedValue([listing(1), listing(2)]);
+
+    const outcome = await watch.poll(sub);
+
+    expect(outcome).toEqual({ kind: 'baselined', count: 2 });
+    expect(sub.baselinedAt).toBeInstanceOf(Date);
+  });
+
+  it('poll returns fresh listings without marking them seen', async () => {
+    const sub = addKufar();
+    fetchSpy.mockResolvedValueOnce([listing(1)]);
+    await watch.baseline(sub);
+    fetchSpy.mockResolvedValue([listing(1), listing(2)]);
+
+    const outcome = await watch.poll(sub);
+
+    expect(outcome).toEqual({ kind: 'fresh', listings: [listing(2)] });
+    // Still fresh on the next poll — only the caller's markSeen dedups it.
+    expect(await watch.poll(sub)).toEqual({ kind: 'fresh', listings: [listing(2)] });
+  });
+
+  it('poll reports nothing when no new listings appeared', async () => {
+    const sub = addKufar();
+    fetchSpy.mockResolvedValue([listing(1)]);
+    await watch.baseline(sub);
+
+    expect(await watch.poll(sub)).toEqual({ kind: 'nothing' });
+  });
+
+  it('poll reports nothing for a subscription removed while the fetch was in flight', async () => {
+    const sub = addKufar();
+    subs.markBaselined(sub.id);
+    fetchSpy.mockImplementation(() => {
+      subs.remove(sub.id, sub.telegramUserId);
+      return Promise.resolve([listing(1)]);
+    });
+
+    // The seen set is gone with the sub — without the guard everything would look fresh.
+    expect(await watch.poll(sub)).toEqual({ kind: 'nothing' });
+  });
+
+  it('fails loudly for an unregistered source — a wiring bug must not read as empty', async () => {
     const sub = subs.add({ telegramUserId: 1, source: 'realt', url: 'https://realt.by/x' });
 
-    expect(await watch.baseline(sub)).toEqual({ supported: false, count: 0 });
-    expect(await watch.check(sub)).toEqual([]);
-    expect(await watch.current(sub)).toEqual([]);
+    await expect(watch.baseline(sub)).rejects.toThrow('adapter');
+    await expect(watch.check(sub)).rejects.toThrow('adapter');
+    expect(() => watch.current(sub)).toThrow('adapter');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
