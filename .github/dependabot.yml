@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    # Land bumps on dev; they reach main via the normal dev -> main flow.
+    target-branch: dev
     schedule:
       interval: weekly
     # One PR for all minor/patch bumps; majors stay individual.
@@ -18,5 +20,6 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
