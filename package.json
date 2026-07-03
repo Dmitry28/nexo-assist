@@ -1,7 +1,7 @@
 {
   "name": "nexo-assist",
   "version": "0.1.0",
-  "description": "Production-ready NestJS skeleton",
+  "description": "Telegram listing-watch bot (kufar.by, realt.by) on NestJS",
   "author": "NEXO",
   "private": true,
   "license": "UNLICENSED",
