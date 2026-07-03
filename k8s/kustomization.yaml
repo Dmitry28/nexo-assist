@@ -7,8 +7,8 @@ resources:
   - configmap.yaml
   - deployment.yaml
   - service.yaml
-  - hpa.yaml
-  - pdb.yaml
+# NOTE: no HPA/PDB — the app is a single-replica long-polling bot with in-memory
+# state; autoscaling/disruption budgets return with webhook + DB (Phase 3+).
 
 # Stamps every resource's metadata (not selectors — those are declared per-manifest).
 labels:

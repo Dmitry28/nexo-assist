@@ -1,12 +1,14 @@
 import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   Matches,
   Max,
   Min,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -87,9 +89,13 @@ export class EnvironmentVariables {
   @IsOptional()
   THROTTLE_LIMIT: number = 100;
 
-  /** Telegram bot token from @BotFather. When unset, the bot stays disabled. */
+  /**
+   * Telegram bot token from @BotFather. When unset, the bot stays disabled —
+   * but the bot IS the product, so production refuses to boot without it.
+   */
+  @ValidateIf((env: EnvironmentVariables) => env.APP_ENV === AppEnv.Production)
   @IsString()
-  @IsOptional()
+  @IsNotEmpty({ message: 'TELEGRAM_BOT_TOKEN is required when APP_ENV=production' })
   TELEGRAM_BOT_TOKEN?: string;
 
   /**

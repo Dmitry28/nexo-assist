@@ -5,7 +5,13 @@ metadata:
   labels:
     app.kubernetes.io/name: nexo-assist
 spec:
-  replicas: 2
+  # NOTE: singleton by design — grammY long polling allows one poller per token
+  # (a second pod gets Telegram 409s) and the store is in-memory (each replica
+  # would hold disjoint subscriptions). Scale out only after webhook + DB land.
+  replicas: 1
+  # Recreate: a rolling update would briefly run two pollers (409s).
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: nexo-assist
@@ -39,8 +45,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: nexo-assist-config
-            # - secretRef:
-            #     name: nexo-assist-secrets
+            # TELEGRAM_BOT_TOKEN lives here — create the Secret first (see README);
+            # production refuses to boot without the token.
+            - secretRef:
+                name: nexo-assist-secrets
           resources:
             requests:
               cpu: 100m

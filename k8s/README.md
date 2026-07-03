@@ -10,13 +10,13 @@ kubectl apply -k k8s/
 cd k8s && kustomize edit set image nexo-assist=registry/nexo-assist:<git-sha>
 ```
 
-| File              | Purpose                                                                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `configmap.yaml`  | Non-secret env. Put credentials in a `Secret` (see commented ref).                                                                           |
-| `deployment.yaml` | 2 replicas, liveness/readiness/startup probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
-| `service.yaml`    | ClusterIP on port 80 → container port 3000.                                                                                                  |
-| `hpa.yaml`        | Autoscale 2→10 pods on CPU/memory.                                                                                                           |
-| `pdb.yaml`        | Keep ≥1 pod up through voluntary disruptions (drains, upgrades).                                                                             |
+| File              | Purpose                                                                                                                                                                          |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configmap.yaml`  | Non-secret env. Put credentials in a `Secret` (see commented ref).                                                                                                               |
+| `deployment.yaml` | 1 replica (long-polling bot + in-memory state — see NOTE in the manifest), probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
+| `service.yaml`    | ClusterIP on port 80 → container port 3000.                                                                                                                                      |
+| `hpa.yaml`        | Autoscale 2→10 pods on CPU/memory.                                                                                                                                               |
+| `pdb.yaml`        | Keep ≥1 pod up through voluntary disruptions (drains, upgrades).                                                                                                                 |
 
 ## Probes
 
@@ -26,6 +26,7 @@ cd k8s && kustomize edit set image nexo-assist=registry/nexo-assist:<git-sha>
 
 ## Secrets
 
-Create a `Secret` named `nexo-assist-secrets` and uncomment the `secretRef` in
-`deployment.yaml`. Never commit real secrets — use a sealed-secrets / external-secrets
+Create a `Secret` named `nexo-assist-secrets` with `TELEGRAM_BOT_TOKEN` **before**
+applying — the deployment references it, and production refuses to boot without
+the token. Never commit real secrets — use a sealed-secrets / external-secrets
 operator or your platform's secret manager.
