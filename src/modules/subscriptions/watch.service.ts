@@ -30,14 +30,16 @@ export class WatchService {
    * seen — the caller delivers them and marks only what was actually sent.
    */
   async poll(sub: Subscription): Promise<PollOutcome> {
+    // NOTE: both branches re-check `has` after the fetch — the user may remove the
+    // subscription while it is in flight; a gone sub gets no report and no delivery
+    // (its seen set is wiped, so everything would otherwise look fresh).
     if (!sub.baselinedAt) {
-      return { kind: 'baselined', count: await this.baseline(sub) };
+      const count = await this.baseline(sub);
+      return this.subscriptions.has(sub.id) ? { kind: 'baselined', count } : { kind: 'nothing' };
     }
     const fresh = await this.check(sub);
-    // The user may remove the subscription while the fetch is in flight — its seen
-    // set is gone, so everything would look fresh; never deliver for a gone sub.
-    if (!this.subscriptions.has(sub.id)) return { kind: 'nothing' };
-    return fresh.length > 0 ? { kind: 'fresh', listings: fresh } : { kind: 'nothing' };
+    if (!this.subscriptions.has(sub.id) || fresh.length === 0) return { kind: 'nothing' };
+    return { kind: 'fresh', listings: fresh };
   }
 
   /**

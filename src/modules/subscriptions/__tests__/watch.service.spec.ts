@@ -119,6 +119,16 @@ describe('WatchService', () => {
     expect(await watch.poll(sub)).toEqual({ kind: 'nothing' });
   });
 
+  it('poll reports nothing for a subscription removed while its baseline was in flight', async () => {
+    const sub = addKufar();
+    fetchSpy.mockImplementation(() => {
+      subs.remove(sub.id, sub.telegramUserId);
+      return Promise.resolve([listing(1)]);
+    });
+
+    expect(await watch.poll(sub)).toEqual({ kind: 'nothing' });
+  });
+
   it('fails loudly for an unregistered source — a wiring bug must not read as empty', async () => {
     const sub = subs.add({ telegramUserId: 1, source: 'realt', url: 'https://realt.by/x' });
 

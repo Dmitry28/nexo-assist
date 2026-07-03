@@ -34,9 +34,9 @@ export interface RealtPage {
 
 /**
  * Parse a realt search page's `__NEXT_DATA__`.
- * Throws when the blob is missing/unparseable — a bot-wall must not read as an
- * empty search. A missing `objects` array is NOT an error: realt renders some
- * zero-result pages without it (observed live), so it stays an empty page.
+ * Throws when the blob or `pageProps` is missing — a bot-wall or layout change
+ * must not read as an empty search. A present `pageProps` without an `objects`
+ * array is NOT an error: realt renders some zero-result pages so (observed live).
  */
 export function extractPage(html: string): RealtPage {
   const data = parseNextData(html);
@@ -44,9 +44,10 @@ export function extractPage(html: string): RealtPage {
 
   const props = data.props as Record<string, unknown> | undefined;
   const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  if (!pageProps) throw new Error('realt: pageProps missing — page layout changed?');
   return {
-    objects: (pageProps?.objects as RawRealtObject[] | undefined) ?? [],
-    pagination: (pageProps?.pagination as RawPagination | undefined) ?? null,
+    objects: (pageProps.objects as RawRealtObject[] | undefined) ?? [],
+    pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
 }
 

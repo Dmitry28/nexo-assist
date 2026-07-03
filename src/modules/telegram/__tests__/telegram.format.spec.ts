@@ -22,14 +22,24 @@ describe('newListingsDigest', () => {
     expect(delivered[0].externalId).toBe('1');
   });
 
-  it('caps by characters too — a few huge titles must not break the 4096-char limit', () => {
-    const huge = Array.from({ length: 5 }, (_, i) => listing(i + 1, { title: 't'.repeat(1500) }));
+  it('clamps a pathological title — one huge line must not produce an item-less digest', () => {
+    const { text, delivered } = newListingsDigest([listing(1, { title: 't'.repeat(5000) })]);
 
-    const { text, delivered } = newListingsDigest(huge);
+    expect(delivered).toHaveLength(1);
+    expect(text.length).toBeLessThan(4096);
+  });
+
+  it('caps by characters too — oversized items fold into the "more" footer', () => {
+    const longLinks = Array.from({ length: 10 }, (_, i) =>
+      listing(i + 1, { link: `https://re.kufar.by/vi/${'x'.repeat(400)}${i}` }),
+    );
+
+    const { text, delivered } = newListingsDigest(longLinks);
 
     expect(text.length).toBeLessThan(4096);
-    expect(delivered.length).toBeLessThan(5);
-    expect(text).toContain(`…and ${5 - delivered.length} more`);
+    expect(delivered.length).toBeGreaterThan(0);
+    expect(delivered.length).toBeLessThan(10);
+    expect(text).toContain(`…and ${10 - delivered.length} more`);
   });
 
   it('falls back through the price options', () => {
