@@ -1,6 +1,15 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 import type { SourceId } from '@/modules/sources/source-adapter';
+
+import { User } from './user.entity';
 
 /** A user's request to watch one search URL. */
 @Entity('subscriptions')
@@ -8,13 +17,13 @@ export class Subscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // NOTE: bigint column — Telegram ids exceed int4; they still fit JS's safe-integer
-  // range, so the transformer keeps the field a plain number across the app.
-  @Column({
-    type: 'bigint',
-    transformer: { to: (v: number) => v, from: (v: string) => Number(v) },
-  })
-  telegramUserId: number;
+  @Column('uuid')
+  userId: string;
+
+  // NOTE: eager — the scheduler needs user.telegramId to deliver without a second query.
+  @ManyToOne(() => User, { eager: true, onDelete: 'CASCADE', nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user: User;
 
   @Column({ type: 'varchar' })
   source: SourceId;

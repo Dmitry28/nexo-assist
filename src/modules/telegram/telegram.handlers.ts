@@ -98,8 +98,15 @@ export class TelegramHandlers {
     await ctx.answerCallbackQuery().catch(() => undefined);
 
     // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
+    // ctx.from is the owner (takePending checked it) — capture their profile.
     const sub = await this.subscriptions.add({
-      telegramUserId: candidate.userId,
+      user: {
+        telegramId: candidate.userId,
+        username: ctx.from?.username,
+        firstName: ctx.from?.first_name,
+        lastName: ctx.from?.last_name,
+        language: ctx.from?.language_code,
+      },
       source: candidate.source,
       url: candidate.url,
     });

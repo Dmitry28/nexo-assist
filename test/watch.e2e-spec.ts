@@ -6,9 +6,11 @@ import { DataSource } from 'typeorm';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
 import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-InitSchema';
+import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import { User } from '@/modules/subscriptions/entities/user.entity';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 import {
   MAX_SEEN_PER_SUBSCRIPTION,
@@ -31,8 +33,8 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
         TypeOrmModule.forRoot({
           type: 'postgres',
           url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
-          entities: [Subscription, SeenListing],
-          migrations: [InitSchema1783163228738],
+          entities: [Subscription, SeenListing, User],
+          migrations: [InitSchema1783163228738, AddUsers1783179934781],
           migrationsRun: true,
           synchronize: false,
         }),
@@ -54,22 +56,41 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   });
 
   beforeEach(async () => {
-    // Isolate tests — the FK cascade wipes seen_listings with it.
-    await dataSource.query('TRUNCATE TABLE subscriptions CASCADE');
+    // Isolate tests — cascade wipes seen_listings; users are wiped too (upsert re-creates).
+    await dataSource.query('TRUNCATE TABLE subscriptions, users CASCADE');
   });
 
   it('persists a subscription with a generated id and lists it by user', async () => {
-    const sub = await subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
+    const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u1' });
     expect(sub.id).toEqual(expect.any(String));
 
     const mine = await subscriptions.listByUser(1);
     expect(mine.map((s) => s.url)).toEqual(['u1']);
+    expect(mine[0].user.telegramId).toBe(1); // user relation loaded eagerly
     expect(await subscriptions.listByUser(2)).toEqual([]);
+  });
+
+  it('upserts the user by telegramId — one row, profile refreshed on re-subscribe', async () => {
+    await subscriptions.add({
+      user: { telegramId: 7, username: 'old' },
+      source: 'kufar',
+      url: 'a',
+    });
+    await subscriptions.add({
+      user: { telegramId: 7, username: 'new' },
+      source: 'kufar',
+      url: 'b',
+    });
+
+    const users = await dataSource.query<{ username: string }[]>(
+      `SELECT username FROM users WHERE "telegramId" = 7`,
+    );
+    expect(users).toEqual([{ username: 'new' }]); // single user, latest profile
   });
 
   it('baselines silently, then check reports only newly appeared listings', async () => {
     const sub = await subscriptions.add({
-      telegramUserId: 1,
+      user: { telegramId: 1 },
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
@@ -84,7 +105,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   });
 
   it('seedBaseline records seen and marks baselined atomically', async () => {
-    const sub = await subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u' });
+    const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u' });
     await subscriptions.seedBaseline(sub.id, ['1', '2']);
 
     const [reloaded] = await subscriptions.listByUser(1);
@@ -93,7 +114,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   });
 
   it('getSeen returns only the queried candidates already delivered; markSeen is idempotent', async () => {
-    const sub = await subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u' });
+    const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u' });
     await subscriptions.markSeen(sub.id, ['1', '2']);
     await subscriptions.markSeen(sub.id, ['2', '3']); // '2' already seen — ignored, no error
 
@@ -101,7 +122,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   });
 
   it('prunes the seen set to the most recent MAX per subscription', async () => {
-    const sub = await subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u' });
+    const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u' });
     const ids = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION + 5 }, (_, i) => `e${i}`);
     await subscriptions.markSeen(sub.id, ids);
 
@@ -109,7 +130,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   });
 
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {
-    const sub = await subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u' });
+    const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u' });
     await subscriptions.markSeen(sub.id, ['1']);
 
     expect(await subscriptions.remove(sub.id, 999)).toBe(false); // not the owner

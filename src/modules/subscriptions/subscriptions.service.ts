@@ -7,21 +7,39 @@ import type { SourceId } from '@/modules/sources/source-adapter';
 
 import { SeenListing } from './entities/seen-listing.entity';
 import { Subscription } from './entities/subscription.entity';
+import { User } from './entities/user.entity';
 
 // Cap on stored seen rows per subscription. Kept above the source page-cap window
 // (MAX_PAGES × page size ≈ 250) so ids still reachable are never pruned — anything
 // older has fallen out of the window and can't reappear as "new".
 export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 
+/** Telegram account details captured from `ctx.from` at subscribe time. */
+export interface TelegramUserProfile {
+  telegramId: number;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  language?: string;
+}
+
 @Injectable()
 export class SubscriptionsService {
   constructor(
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
     @InjectRepository(SeenListing) private readonly seen: Repository<SeenListing>,
+    @InjectRepository(User) private readonly users: Repository<User>,
   ) {}
 
-  add(input: { telegramUserId: number; source: SourceId; url: string }): Promise<Subscription> {
-    return this.subs.save(this.subs.create(input));
+  async add(input: {
+    user: TelegramUserProfile;
+    source: SourceId;
+    url: string;
+  }): Promise<Subscription> {
+    const user = await this.upsertUser(input.user);
+    return this.subs.save(
+      this.subs.create({ userId: user.id, source: input.source, url: input.url }),
+    );
   }
 
   has(id: string): Promise<boolean> {
@@ -29,7 +47,7 @@ export class SubscriptionsService {
   }
 
   listByUser(telegramUserId: number): Promise<Subscription[]> {
-    return this.subs.findBy({ telegramUserId });
+    return this.subs.find({ where: { user: { telegramId: telegramUserId } } });
   }
 
   listAll(): Promise<Subscription[]> {
@@ -38,8 +56,16 @@ export class SubscriptionsService {
 
   /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */
   async remove(id: string, telegramUserId: number): Promise<boolean> {
-    const { affected } = await this.subs.delete({ id, telegramUserId });
-    return (affected ?? 0) > 0;
+    const owned = await this.subs.existsBy({ id, user: { telegramId: telegramUserId } });
+    if (!owned) return false;
+    await this.subs.delete({ id });
+    return true;
+  }
+
+  /** Create the Telegram user, or refresh their profile — keyed by telegramId. */
+  private async upsertUser(profile: TelegramUserProfile): Promise<User> {
+    await this.users.upsert(profile, ['telegramId']);
+    return this.users.findOneByOrFail({ telegramId: profile.telegramId });
   }
 
   // NOTE: "seen" = listing ids already delivered for a subscription; the diff skips them.

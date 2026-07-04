@@ -43,7 +43,7 @@ const makeCtx = (over: { text?: string; userId?: number; match?: RegExpMatchArra
 };
 
 const sub = (over: Partial<Subscription> = {}): Subscription =>
-  ({ id: 'sub-1', telegramUserId: 1, source: 'kufar', url: 'u1', ...over }) as Subscription;
+  ({ id: 'sub-1', user: { telegramId: 1 }, source: 'kufar', url: 'u1', ...over }) as Subscription;
 
 // Collaborators are mocked — these tests cover the bot conversation (pending nonces,
 // ownership, replies), not persistence (the DB layer is covered by the integration e2e).
@@ -58,7 +58,9 @@ describe('TelegramHandlers', () => {
 
   beforeEach(() => {
     subscriptions = {
-      add: jest.fn().mockImplementation((input: object) => Promise.resolve(sub(input))),
+      add: jest
+        .fn()
+        .mockImplementation((input: { url: string }) => Promise.resolve(sub({ url: input.url }))),
       listByUser: jest.fn().mockResolvedValue([]),
       remove: jest.fn().mockResolvedValue(true),
     };
@@ -114,7 +116,10 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton(`subscribe:${nonce}`);
 
     expect(subscriptions.add).toHaveBeenCalledWith(
-      expect.objectContaining({ telegramUserId: 1, url: 'https://re.kufar.by/l/minsk' }),
+      expect.objectContaining({
+        user: expect.objectContaining({ telegramId: 1 }),
+        url: 'https://re.kufar.by/l/minsk',
+      }),
     );
     expect(watch.baseline).toHaveBeenCalledTimes(1);
     expect(ctx.editMessageText).toHaveBeenCalledWith(

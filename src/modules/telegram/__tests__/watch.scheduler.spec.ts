@@ -12,7 +12,7 @@ import type { TelegramService } from '../telegram.service';
 import { WatchScheduler } from '../watch.scheduler';
 
 const sub = (id: number): Subscription =>
-  ({ id: String(id), telegramUserId: id, source: 'kufar', url: `u${id}` }) as Subscription;
+  ({ id: String(id), user: { telegramId: id }, source: 'kufar', url: `u${id}` }) as Subscription;
 
 // Collaborators are mocked — the scheduler's job is orchestration, not persistence
 // (the DB layer is covered by the integration e2e).
