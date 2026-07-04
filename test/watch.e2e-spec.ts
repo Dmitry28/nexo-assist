@@ -258,6 +258,28 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     expect((await subscriptions.listByUser(1))[0].pausedAt).toBeInstanceOf(Date);
   });
 
+  it('re-adding a paused search revives it (clears pause + failure streak, same row)', async () => {
+    const s = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x?page=1',
+    });
+    await subscriptions.bumpFailures(s.id);
+    await subscriptions.pause(s.id);
+    expect(await subscriptions.listActive()).toEqual([]); // paused → not polled
+
+    // Same search (volatile params differ → same normalizedUrl) — should revive, not duplicate.
+    const revived = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x?page=9',
+    });
+    expect(revived.id).toBe(s.id); // same row, no duplicate created
+    expect(revived.pausedAt).toBeNull();
+    expect(revived.consecutiveFailures).toBe(0);
+    expect((await subscriptions.listActive()).map((x) => x.id)).toEqual([s.id]); // active again
+  });
+
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {
     const sub = await subscriptions.add({
       user: { telegramId: 1 },

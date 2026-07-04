@@ -44,10 +44,10 @@ export class Subscription {
   @Column({ type: 'timestamptz', nullable: true })
   baselinedAt?: Date;
 
-  /** When the subscription was paused. Unset = active; set = skipped by the scheduler
-   * (e.g. auto-paused after the user blocked the bot). */
+  /** When the subscription was paused. null = active; set = skipped by the scheduler
+   * (e.g. auto-paused after the user blocked the bot). Cleared when the user re-adds it. */
   @Column({ type: 'timestamptz', nullable: true })
-  pausedAt?: Date;
+  pausedAt: Date | null;
 
   /** Consecutive failed polls (errors only). Reset on any successful poll; at the cap
    * the subscription is auto-paused and the user is asked to refresh the link. */
