@@ -8,6 +8,7 @@ import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
 import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-InitSchema';
 import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
 import { AddNormalizedUrl1783187484846 } from '@/database/migrations/1783187484846-AddNormalizedUrl';
+import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -42,6 +43,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             InitSchema1783163228738,
             AddUsers1783179934781,
             AddNormalizedUrl1783187484846,
+            AddPausedAt1783195101942,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -206,6 +208,33 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
         url: 'https://kufar.by/l/over',
       }),
     ).rejects.toBeInstanceOf(SubscriptionLimitError);
+  });
+
+  it('pauseAllForUser pauses every sub of a user; listActive then excludes them', async () => {
+    const a = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/a',
+    });
+    await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/b',
+    });
+    const other = await subscriptions.add({
+      user: { telegramId: 2 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/c',
+    });
+
+    await subscriptions.pauseAllForUser(a.userId);
+
+    // Only user 1's subs are paused; user 2 (other) stays active.
+    const active = await subscriptions.listActive();
+    expect(active.map((s) => s.id)).toEqual([other.id]);
+    // pausedAt is stamped on the paused rows.
+    const [reloaded] = await subscriptions.listByUser(1);
+    expect(reloaded.pausedAt).toBeInstanceOf(Date);
   });
 
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryFailedError } from 'typeorm';
+import { In, IsNull, QueryFailedError } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
 import { normalizeUrl } from '@/common/url';
@@ -83,8 +83,18 @@ export class SubscriptionsService {
     });
   }
 
-  listAll(): Promise<Subscription[]> {
-    return this.subs.find();
+  /** Subscriptions the scheduler should poll — active only (paused ones are skipped). */
+  listActive(): Promise<Subscription[]> {
+    return this.subs.find({ where: { pausedAt: IsNull() } });
+  }
+
+  /**
+   * Pause every currently-active subscription of a user — used after a Telegram 403
+   * (the user blocked the bot), so we stop scraping/delivering for them. Only touches
+   * active rows, so an existing pause timestamp is preserved.
+   */
+  async pauseAllForUser(userId: string): Promise<void> {
+    await this.subs.update({ userId, pausedAt: IsNull() }, { pausedAt: new Date() });
   }
 
   /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */

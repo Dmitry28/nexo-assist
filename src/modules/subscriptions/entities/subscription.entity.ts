@@ -43,4 +43,9 @@ export class Subscription {
   /** When the seen set was seeded. Unset = baseline still pending (e.g. it failed on subscribe). */
   @Column({ type: 'timestamptz', nullable: true })
   baselinedAt?: Date;
+
+  /** When the subscription was paused. Unset = active; set = skipped by the scheduler
+   * (e.g. auto-paused after the user blocked the bot). */
+  @Column({ type: 'timestamptz', nullable: true })
+  pausedAt?: Date;
 }

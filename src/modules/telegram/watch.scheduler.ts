@@ -1,9 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
+import { GrammyError } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
@@ -15,6 +17,11 @@ const JOB_NAME = 'daily-watch';
 /** Base delay plus a random 0..jitter, in ms — paces polls so we don't hammer a source. */
 export function jitteredDelay(minMs: number, jitterMs: number, random = Math.random): number {
   return minMs + Math.floor(random() * (jitterMs + 1));
+}
+
+/** A Telegram 403 means delivery is impossible (blocked / deactivated) — pause the user. */
+function isBotBlocked(err: unknown): boolean {
+  return err instanceof GrammyError && err.error_code === 403;
 }
 
 /** Runs the daily subscription check and pushes new listings to each subscriber. */
@@ -46,22 +53,44 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   async runDaily(): Promise<void> {
-    const subs = await this.subscriptions.listAll();
+    const subs = await this.subscriptions.listActive();
+    // Users who blocked us this run — skip their remaining subs to avoid re-hitting 403.
+    const blockedUsers = new Set<string>();
     for (const [i, sub] of subs.entries()) {
+      if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
       if (i > 0) await this.pace();
-      try {
-        const outcome = await this.watch.poll(sub);
-        // A pending baseline was just seeded silently — deliver only fresh listings.
-        if (outcome.kind !== 'fresh') continue;
-        const { text, delivered } = newListingsDigest(outcome.listings);
-        // TODO Phase 4: on a 403 (user blocked the bot), pause that user's subscriptions [M].
-        await this.telegram.notify(sub.user.telegramId, text);
-        await this.watch.markSeen(sub, delivered);
-      } catch (err) {
-        // NOTE: isolate failures — one bad subscription must not skip the rest.
-        this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
+      if (await this.deliverFresh(sub)) {
+        blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
+        await this.pauseUser(sub.userId);
       }
+    }
+  }
+
+  /** Poll one subscription and deliver its fresh listings. Returns true if the user blocked us. */
+  private async deliverFresh(sub: Subscription): Promise<boolean> {
+    try {
+      const outcome = await this.watch.poll(sub);
+      // A pending baseline was just seeded silently — deliver only fresh listings.
+      if (outcome.kind !== 'fresh') return false;
+      const { text, delivered } = newListingsDigest(outcome.listings);
+      await this.telegram.notify(sub.user.telegramId, text);
+      await this.watch.markSeen(sub, delivered);
+    } catch (err) {
+      if (isBotBlocked(err)) return true;
+      // Isolate failures — one bad subscription must not skip the rest.
+      this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
+    }
+    return false;
+  }
+
+  /** Pause a user's subscriptions after a 403; a write failure must not abort the run. */
+  private async pauseUser(userId: string): Promise<void> {
+    try {
+      await this.subscriptions.pauseAllForUser(userId);
+      this.logger.log(`Paused subscriptions for user ${userId} — undeliverable (403)`);
+    } catch (err) {
+      this.logger.error({ err }, `Failed to pause user ${userId} after 403`);
     }
   }
 
