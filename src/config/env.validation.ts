@@ -110,6 +110,18 @@ export class EnvironmentVariables {
   @IsOptional()
   WATCH_CRON: string = '0 9 * * *';
 
+  /** Base pause between subscription polls, in ms — paces the scraper off a source. */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  WATCH_MIN_DELAY_MS: number = 2000;
+
+  /** Extra random pause on top of the base (0..jitter), in ms — spreads the load. */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  WATCH_JITTER_MS: number = 3000;
+
   /**
    * Postgres connection URL. Defaults to the local docker database (`npm run db:up`);
    * staging/prod inject a Neon URL (SSL, pooled endpoint).

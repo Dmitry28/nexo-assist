@@ -9,7 +9,7 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
-import { WatchScheduler } from '../watch.scheduler';
+import { jitteredDelay, WatchScheduler } from '../watch.scheduler';
 
 const sub = (id: number): Subscription =>
   ({ id: String(id), user: { telegramId: id }, source: 'kufar', url: `u${id}` }) as Subscription;
@@ -21,7 +21,8 @@ const build = () => {
   const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
   const telegram = { notify: jest.fn().mockResolvedValue(undefined) };
   const scheduler = new WatchScheduler(
-    makeAppConfig(),
+    // No pacing delay under tests — the jitter math is covered separately.
+    makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }),
     new SchedulerRegistry(),
     subscriptions as unknown as SubscriptionsService,
     watch as unknown as WatchService,
@@ -84,5 +85,24 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(watch.markSeen).not.toHaveBeenCalled();
+  });
+
+  it('paces between polls only — N-1 delays for N subscriptions, none before the first', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listAll.mockResolvedValue([sub(1), sub(2), sub(3)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    const timeout = jest.spyOn(global, 'setTimeout');
+
+    await scheduler.runDaily();
+
+    expect(timeout).toHaveBeenCalledTimes(2); // between 3 polls, not before the first
+  });
+});
+
+describe('jitteredDelay', () => {
+  it('returns the base with no jitter, and stays within [min, min+jitter]', () => {
+    expect(jitteredDelay(2000, 0)).toBe(2000);
+    expect(jitteredDelay(2000, 3000, () => 0)).toBe(2000); // low end
+    expect(jitteredDelay(2000, 3000, () => 0.999999)).toBe(5000); // high end
   });
 });

@@ -30,6 +30,10 @@ export interface AppConfig {
   telegramBotToken: string | undefined;
   /** Cron expression for the daily subscription check. */
   watchCron: string;
+  /** Base pause between subscription polls, in ms. */
+  watchMinDelayMs: number;
+  /** Extra random pause (0..this) added to the base, in ms. */
+  watchJitterMs: number;
   /** Postgres connection URL (local docker by default; Neon in staging/prod). */
   databaseUrl: string;
 }
@@ -69,6 +73,8 @@ export default registerAs('app', (): AppConfig => {
     throttleLimit: env.THROTTLE_LIMIT,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
     watchCron: env.WATCH_CRON,
+    watchMinDelayMs: env.WATCH_MIN_DELAY_MS,
+    watchJitterMs: env.WATCH_JITTER_MS,
     databaseUrl: env.DATABASE_URL,
   };
 });

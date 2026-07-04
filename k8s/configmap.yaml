@@ -11,6 +11,9 @@ data:
   PORT: '3000'
   # Cron for the daily subscription check (09:00 UTC).
   WATCH_CRON: '0 9 * * *'
+  # Pacing between subscription polls: base delay + random 0..jitter (ms).
+  WATCH_MIN_DELAY_MS: '2000'
+  WATCH_JITTER_MS: '3000'
   API_PREFIX: 'api'
   API_VERSION: '1'
   LOG_LEVEL: 'info'
