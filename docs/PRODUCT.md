@@ -16,6 +16,7 @@ start; more frequent once throttling/dedupe land).
 - Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet.
 - Buttons: Subscribe / Cancel / Show current / list / remove; non-production `/check`
   (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
+  Admin-only `/stats` (`ADMIN_TELEGRAM_ID`) reports users / active / paused / last run.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
