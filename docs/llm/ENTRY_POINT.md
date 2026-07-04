@@ -39,6 +39,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
 - **Decide, don't ask.** When a question comes up, investigate it yourself first (code, docs, live checks) and decide by common sense, standards and best practices. Ask the owner only what is genuinely important: product direction, destructive/irreversible actions, trade-offs only he can weigh.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
+- **Log tech debt.** Spot over-complicated code you're not refactoring now → add it to the «Технический бэклог» in [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) so it isn't lost.
 - Follow existing NestJS module structure — mirror an existing module (`subscriptions`, `telegram`).
 - **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
 - **Explain purpose, plainly.** Before acting, say _why_ (what problem it solves / what it enables). When done, say _what_ changed and _why_ in plain language a non-implementer follows — the intent and effect, not a diff dump. File/line detail is a supplement, never the whole report.
