@@ -1,6 +1,6 @@
 import type { AppConfig } from '@/config/configuration';
 import { stageFlags } from '@/config/configuration';
-import { AppEnv, LogLevel } from '@/config/env.validation';
+import { AppEnv, DEFAULT_DATABASE_URL, LogLevel } from '@/config/env.validation';
 
 /** A valid AppConfig for unit tests; override only what the test cares about. */
 export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => {
@@ -16,7 +16,7 @@ export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => 
     throttleLimit: 100,
     telegramBotToken: undefined,
     watchCron: '0 9 * * *',
-    databaseUrl: 'postgres://app:app@localhost:5432/app',
+    databaseUrl: DEFAULT_DATABASE_URL,
     ...overrides,
   };
   // Keep the derived flags consistent with the (possibly overridden) appEnv.

@@ -41,7 +41,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   async runDaily(): Promise<void> {
-    for (const sub of this.subscriptions.listAll()) {
+    for (const sub of await this.subscriptions.listAll()) {
       try {
         const outcome = await this.watch.poll(sub);
         // A pending baseline was just seeded silently — deliver only fresh listings.
@@ -49,7 +49,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         const { text, delivered } = newListingsDigest(outcome.listings);
         // TODO Phase 4: on a 403 (user blocked the bot), pause that user's subscriptions [M].
         await this.telegram.notify(sub.telegramUserId, text);
-        this.watch.markSeen(sub, delivered);
+        await this.watch.markSeen(sub, delivered);
       } catch (err) {
         // NOTE: isolate failures — one bad subscription must not skip the rest.
         this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);

@@ -98,7 +98,7 @@ export class TelegramHandlers {
     await ctx.answerCallbackQuery().catch(() => undefined);
 
     // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
-    const sub = this.subscriptions.add({
+    const sub = await this.subscriptions.add({
       telegramUserId: candidate.userId,
       source: candidate.source,
       url: candidate.url,
@@ -144,7 +144,7 @@ export class TelegramHandlers {
     // Anonymous senders (e.g. channel posts) have no subscriptions to list.
     if (userId === undefined) return;
 
-    const subs = this.subscriptions.listByUser(userId);
+    const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
       await ctx.reply(`No subscriptions yet. ${PROMPT}`);
       return;
@@ -176,7 +176,7 @@ export class TelegramHandlers {
     // Anonymous senders have no subscriptions to check.
     if (userId === undefined) return;
 
-    const subs = this.subscriptions.listByUser(userId);
+    const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
       await ctx.reply(`No subscriptions yet. ${PROMPT}`);
       return;
@@ -198,7 +198,7 @@ export class TelegramHandlers {
         }
         const { text, delivered } = newListingsDigest(outcome.listings);
         await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-        this.watch.markSeen(sub, delivered);
+        await this.watch.markSeen(sub, delivered);
       } catch (err) {
         hasFailures = true;
         this.logger.warn({ err }, `Check failed for ${sub.url}`);
@@ -214,7 +214,7 @@ export class TelegramHandlers {
     const id = this.matchParam(ctx);
     const sub =
       userId !== undefined && id !== undefined
-        ? this.subscriptions.listByUser(userId).find((s) => s.id === id)
+        ? (await this.subscriptions.listByUser(userId)).find((s) => s.id === id)
         : undefined;
     if (!sub) {
       await ctx.answerCallbackQuery('Subscription not found.');
@@ -242,7 +242,7 @@ export class TelegramHandlers {
       return;
     }
 
-    const removed = this.subscriptions.remove(id, userId);
+    const removed = await this.subscriptions.remove(id, userId);
     await ctx.answerCallbackQuery(removed ? 'Removed' : 'Already gone');
   }
 

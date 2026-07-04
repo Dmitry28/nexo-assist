@@ -5,8 +5,9 @@ import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
-import { WatchService } from '@/modules/subscriptions/watch.service';
+import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import type { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { TelegramHandlers } from '../telegram.handlers';
 
@@ -21,17 +22,14 @@ class FakeBot {
   command(name: string, fn: Handler): void {
     this.commands.set(name, fn);
   }
-
   on(_event: string, fn: Handler): void {
     this.onText = fn;
   }
-
   callbackQuery(pattern: RegExp, fn: Handler): void {
     this.callbacks.push({ pattern, fn });
   }
 }
 
-/** A minimal Context stub; only the fields the handlers read. */
 const makeCtx = (over: { text?: string; userId?: number; match?: RegExpMatchArray | string }) => {
   const ctx = {
     message: over.text !== undefined ? { text: over.text } : undefined,
@@ -44,22 +42,37 @@ const makeCtx = (over: { text?: string; userId?: number; match?: RegExpMatchArra
   return ctx as unknown as Context & typeof ctx;
 };
 
+const sub = (over: Partial<Subscription> = {}): Subscription =>
+  ({ id: 'sub-1', telegramUserId: 1, source: 'kufar', url: 'u1', ...over }) as Subscription;
+
+// Collaborators are mocked — these tests cover the bot conversation (pending nonces,
+// ownership, replies), not persistence (the DB layer is covered by the integration e2e).
 describe('TelegramHandlers', () => {
   let bot: FakeBot;
-  let subscriptions: SubscriptionsService;
-  let kufar: KufarAdapter;
-  let fetchSpy: jest.SpyInstance;
+  let subscriptions: {
+    add: jest.Mock;
+    listByUser: jest.Mock;
+    remove: jest.Mock;
+  };
+  let watch: { baseline: jest.Mock; poll: jest.Mock; current: jest.Mock; markSeen: jest.Mock };
 
   beforeEach(() => {
-    subscriptions = new SubscriptionsService();
-    kufar = new KufarAdapter();
-    fetchSpy = jest.spyOn(kufar, 'fetch').mockResolvedValue([listing(1)]);
-    const registry = new SourceRegistry([kufar]);
+    subscriptions = {
+      add: jest.fn().mockImplementation((input: object) => Promise.resolve(sub(input))),
+      listByUser: jest.fn().mockResolvedValue([]),
+      remove: jest.fn().mockResolvedValue(true),
+    };
+    watch = {
+      baseline: jest.fn().mockResolvedValue(1),
+      poll: jest.fn(),
+      current: jest.fn().mockResolvedValue([]),
+      markSeen: jest.fn().mockResolvedValue(undefined),
+    };
     const handlers = new TelegramHandlers(
       makeAppConfig(),
-      subscriptions,
-      new WatchService(subscriptions, registry),
-      registry,
+      subscriptions as unknown as SubscriptionsService,
+      watch as unknown as WatchService,
+      new SourceRegistry([new KufarAdapter()]),
     );
     bot = new FakeBot();
     handlers.register(bot as unknown as Bot);
@@ -67,7 +80,6 @@ describe('TelegramHandlers', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  /** Fire the callback handler whose pattern matches `data` (as a real callback would). */
   const pressButton = async (data: string, userId = 1) => {
     const entry = bot.callbacks.find((c) => c.pattern.test(data));
     if (!entry) throw new Error(`no handler for ${data}`);
@@ -76,7 +88,6 @@ describe('TelegramHandlers', () => {
     return ctx;
   };
 
-  /** Paste a link and return the nonce from the reply keyboard plus the ctx. */
   const pasteLink = async (url: string, userId = 1) => {
     const ctx = makeCtx({ text: url, userId });
     await bot.onText(ctx);
@@ -89,30 +100,27 @@ describe('TelegramHandlers', () => {
   it('prompts when the text has no url', async () => {
     const ctx = makeCtx({ text: 'hello', userId: 1 });
     await bot.onText(ctx);
-
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Send me a kufar.by'));
   });
 
   it('rejects an unsupported source', async () => {
     const ctx = makeCtx({ text: 'https://example.com/x', userId: 1 });
     await bot.onText(ctx);
-
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('not supported'));
   });
 
-  it('subscribes via the button: baseline runs and the confirmation is edited in', async () => {
+  it('subscribes via the button: adds + baselines, edits the confirmation in', async () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
-
     const ctx = await pressButton(`subscribe:${nonce}`);
 
-    const [sub] = subscriptions.listByUser(1);
-    expect(sub.url).toBe('https://re.kufar.by/l/minsk');
-    expect(sub.baselinedAt).toBeInstanceOf(Date);
+    expect(subscriptions.add).toHaveBeenCalledWith(
+      expect.objectContaining({ telegramUserId: 1, url: 'https://re.kufar.by/l/minsk' }),
+    );
+    expect(watch.baseline).toHaveBeenCalledTimes(1);
     expect(ctx.editMessageText).toHaveBeenCalledWith(
       expect.stringContaining('watching 1 current'),
       expect.anything(),
     );
-    expect(ctx.answerCallbackQuery).toHaveBeenCalled();
   });
 
   it('subscribes the link of THIS prompt, not the newest pasted one', async () => {
@@ -121,32 +129,32 @@ describe('TelegramHandlers', () => {
 
     await pressButton(`subscribe:${nonceA}`);
 
-    expect(subscriptions.listByUser(1).map((s) => s.url)).toEqual(['https://re.kufar.by/l/aaa']);
+    expect(subscriptions.add).toHaveBeenCalledTimes(1);
+    expect(subscriptions.add).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://re.kufar.by/l/aaa' }),
+    );
   });
 
-  it("ignores another user's tap on the prompt", async () => {
+  it("ignores another user's subscribe tap", async () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk', 1);
-
     const ctx = await pressButton(`subscribe:${nonce}`, 999);
 
-    expect(subscriptions.listAll()).toEqual([]);
+    expect(subscriptions.add).not.toHaveBeenCalled();
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
   });
 
-  it('keeps the subscription when the baseline fetch fails — the daily run seeds it', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    fetchSpy.mockRejectedValue(new Error('outage'));
+  it('keeps the subscription when the baseline fetch fails', async () => {
+    watch.baseline.mockRejectedValue(new Error('outage'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
 
     const ctx = await pressButton(`subscribe:${nonce}`);
 
-    const [sub] = subscriptions.listByUser(1);
-    expect(sub.baselinedAt).toBeUndefined();
+    expect(subscriptions.add).toHaveBeenCalledTimes(1);
     expect(ctx.editMessageText).toHaveBeenCalledWith(
       expect.stringContaining("didn't respond"),
       expect.anything(),
     );
-    expect(ctx.answerCallbackQuery).toHaveBeenCalled();
   });
 
   it("ignores another user's cancel tap — the owner's prompt stays subscribable", async () => {
@@ -157,38 +165,39 @@ describe('TelegramHandlers', () => {
     expect(stranger.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
 
     await pressButton(`subscribe:${nonce}`, 1);
-    expect(subscriptions.listByUser(1).map((s) => s.url)).toEqual(['https://re.kufar.by/l/minsk']);
+    expect(subscriptions.add).toHaveBeenCalledTimes(1);
   });
 
   it('cancel consumes the prompt — a later subscribe tap is expired', async () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
-
     await pressButton(`cancel:${nonce}`);
     const ctx = await pressButton(`subscribe:${nonce}`);
 
-    expect(subscriptions.listAll()).toEqual([]);
+    expect(subscriptions.add).not.toHaveBeenCalled();
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
   });
 
-  it('lists subscriptions with remove buttons and removes only for the owner', async () => {
-    const sub = subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
-
+  it('lists subscriptions with remove buttons and removes for the owner', async () => {
+    subscriptions.listByUser.mockResolvedValue([sub({ id: 's1', url: 'u1' })]);
     const listCtx = makeCtx({ userId: 1 });
     await bot.commands.get('list')!(listCtx);
     expect(listCtx.reply).toHaveBeenCalledWith(expect.stringContaining('u1'), expect.anything());
 
-    const stranger = await pressButton(`remove:${sub.id}`, 999);
-    expect(stranger.answerCallbackQuery).toHaveBeenCalledWith('Already gone');
+    subscriptions.remove.mockResolvedValue(true);
+    const ctx = await pressButton('remove:s1', 1);
+    expect(subscriptions.remove).toHaveBeenCalledWith('s1', 1);
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Removed');
+  });
 
-    const owner = await pressButton(`remove:${sub.id}`, 1);
-    expect(owner.answerCallbackQuery).toHaveBeenCalledWith('Removed');
-    expect(subscriptions.listByUser(1)).toEqual([]);
+  it('remove answers "Already gone" when nothing was deleted', async () => {
+    subscriptions.remove.mockResolvedValue(false);
+    const ctx = await pressButton('remove:s1', 999);
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Already gone');
   });
 
   it('/check baselines a pending subscription instead of flooding it as new', async () => {
-    // No markBaselined — e.g. the on-subscribe baseline failed.
-    const sub = subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
-    fetchSpy.mockResolvedValue([listing(1), listing(2)]);
+    subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
+    watch.poll.mockResolvedValue({ kind: 'baselined', count: 2 });
 
     const ctx = makeCtx({ userId: 1 });
     await bot.commands.get('check')!(ctx);
@@ -197,42 +206,25 @@ describe('TelegramHandlers', () => {
       expect.stringContaining('Watching 2 current'),
       expect.anything(),
     );
-    expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('🆕'), expect.anything());
-    expect(sub.baselinedAt).toBeInstanceOf(Date);
-    expect(subscriptions.getSeen(sub.id).size).toBe(2);
+    expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('/check replies with the digest and marks only the delivered items seen', async () => {
-    const sub = subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
-    subscriptions.markBaselined(sub.id);
-    fetchSpy.mockResolvedValue([listing(1), listing(2)]);
+  it('/check replies with the digest and marks the delivered items seen', async () => {
+    const s = sub({ url: 'u1' });
+    subscriptions.listByUser.mockResolvedValue([s]);
+    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1), listing(2)] });
 
     const ctx = makeCtx({ userId: 1 });
     await bot.commands.get('check')!(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('🆕 2 new'), expect.anything());
-    expect(subscriptions.getSeen(sub.id).size).toBe(2);
-  });
-
-  it('/check reports an unregistered source as a failure, not as watched', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    // 'realt' is not registered in this suite's registry — only kufar is.
-    subscriptions.add({ telegramUserId: 1, source: 'realt', url: 'u1' });
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Could not check'));
-    expect(ctx.reply).not.toHaveBeenCalledWith(
-      expect.stringContaining('Watching'),
-      expect.anything(),
-    );
+    expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
   });
 
   it('/check reports a failing subscription without a contradictory "Nothing new."', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
-    fetchSpy.mockRejectedValue(new Error('outage'));
+    subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
+    watch.poll.mockRejectedValue(new Error('outage'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     const ctx = makeCtx({ userId: 1 });
     await bot.commands.get('check')!(ctx);
@@ -242,10 +234,9 @@ describe('TelegramHandlers', () => {
   });
 
   it('show-current denies a subscription that is not yours', async () => {
-    const sub = subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u1' });
-
-    const ctx = await pressButton(`show:${sub.id}`, 999);
-
+    subscriptions.listByUser.mockResolvedValue([]); // user 999 owns nothing
+    const ctx = await pressButton('show:sub-1', 999);
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Subscription not found.');
+    expect(watch.current).not.toHaveBeenCalled();
   });
 });

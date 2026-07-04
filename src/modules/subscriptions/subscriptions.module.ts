@@ -1,14 +1,15 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { SourcesModule } from '@/modules/sources/sources.module';
 
+import { SeenListing } from './entities/seen-listing.entity';
+import { Subscription } from './entities/subscription.entity';
 import { SubscriptionsService } from './subscriptions.service';
 import { WatchService } from './watch.service';
 
 @Module({
-  // NOTE: entities/ define the schema (see the migration); TypeOrmModule.forFeature +
-  // repository injection arrive in 3.3 when the service moves off the in-memory store.
-  imports: [SourcesModule],
+  imports: [SourcesModule, TypeOrmModule.forFeature([Subscription, SeenListing])],
   providers: [SubscriptionsService, WatchService],
   exports: [SubscriptionsService, WatchService],
 })

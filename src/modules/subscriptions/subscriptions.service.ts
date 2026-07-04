@@ -1,61 +1,82 @@
-import { randomUUID } from 'node:crypto';
-
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In } from 'typeorm';
+import type { EntityManager, Repository } from 'typeorm';
 
 import type { SourceId } from '@/modules/sources/source-adapter';
 
-import type { Subscription } from './entities/subscription.entity';
+import { SeenListing } from './entities/seen-listing.entity';
+import { Subscription } from './entities/subscription.entity';
 
-// NOTE: Phase 1 — everything is in-memory and unbounded; the DB slice replaces this store.
 @Injectable()
 export class SubscriptionsService {
-  private readonly store = new Map<string, Subscription>();
-  // Listing ids already delivered per subscription — the "seen" level of the diff.
-  private readonly seen = new Map<string, Set<string>>();
+  constructor(
+    @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
+    @InjectRepository(SeenListing) private readonly seen: Repository<SeenListing>,
+  ) {}
 
-  add(input: { telegramUserId: number; source: SourceId; url: string }): Subscription {
-    const subscription: Subscription = { id: randomUUID(), createdAt: new Date(), ...input };
-    this.store.set(subscription.id, subscription);
-    return subscription;
+  add(input: { telegramUserId: number; source: SourceId; url: string }): Promise<Subscription> {
+    return this.subs.save(this.subs.create(input));
   }
 
-  has(id: string): boolean {
-    return this.store.has(id);
+  has(id: string): Promise<boolean> {
+    return this.subs.existsBy({ id });
   }
 
-  listByUser(telegramUserId: number): Subscription[] {
-    return [...this.store.values()].filter((s) => s.telegramUserId === telegramUserId);
+  listByUser(telegramUserId: number): Promise<Subscription[]> {
+    return this.subs.findBy({ telegramUserId });
   }
 
-  listAll(): Subscription[] {
-    return [...this.store.values()];
+  listAll(): Promise<Subscription[]> {
+    return this.subs.find();
   }
 
-  /** Removes the subscription only if it belongs to the user. Returns whether it existed. */
-  remove(id: string, telegramUserId: number): boolean {
-    const subscription = this.store.get(id);
-    if (!subscription || subscription.telegramUserId !== telegramUserId) return false;
-    this.seen.delete(id);
-    return this.store.delete(id);
-  }
-
-  /** Record that the subscription's seen set was seeded. */
-  markBaselined(id: string): void {
-    const subscription = this.store.get(id);
-    // Guard a remove-mid-baseline race — a gone subscription stays gone.
-    if (subscription) subscription.baselinedAt = new Date();
+  /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */
+  async remove(id: string, telegramUserId: number): Promise<boolean> {
+    const { affected } = await this.subs.delete({ id, telegramUserId });
+    return (affected ?? 0) > 0;
   }
 
   // NOTE: "seen" = listing ids already delivered for a subscription; the diff skips them.
-  getSeen(subscriptionId: string): ReadonlySet<string> {
-    return this.seen.get(subscriptionId) ?? new Set<string>();
+  // Query only the run's candidate ids, not the whole set — the table is window-pruned (3.4).
+  async getSeen(subscriptionId: string, candidates: string[]): Promise<ReadonlySet<string>> {
+    if (candidates.length === 0) return new Set();
+    const rows = await this.seen.findBy({ subscriptionId, externalId: In(candidates) });
+    return new Set(rows.map((r) => r.externalId));
   }
 
-  markSeen(subscriptionId: string, externalIds: string[]): void {
-    // Guard a remove-mid-check race — don't resurrect seen state for a gone subscription.
-    if (!this.store.has(subscriptionId)) return;
-    const set = this.seen.get(subscriptionId) ?? new Set<string>();
-    for (const id of externalIds) set.add(id);
-    this.seen.set(subscriptionId, set);
+  /** Mark listings delivered so they aren't sent again; already-seen ids are ignored. */
+  // NOTE: no explicit "subscription still exists" guard — the seen_listings FK
+  // (ON DELETE CASCADE) already rules out orphan rows. A subscription removed mid-run
+  // surfaces as a caught insert error in the caller, not a silent no-op.
+  markSeen(subscriptionId: string, externalIds: string[]): Promise<void> {
+    return this.insertSeen(this.seen.manager, subscriptionId, externalIds);
+  }
+
+  /**
+   * Seed the seen set and flag the subscription baselined atomically — a crash must not
+   * leave a half-seeded baseline marked done (it would then never re-seed).
+   */
+  async seedBaseline(subscriptionId: string, externalIds: string[]): Promise<void> {
+    await this.subs.manager.transaction(async (manager) => {
+      await this.insertSeen(manager, subscriptionId, externalIds);
+      await manager.update(Subscription, { id: subscriptionId }, { baselinedAt: new Date() });
+    });
+  }
+
+  // Insert-or-ignore on the composite PK (ON CONFLICT DO NOTHING) — safe to re-mark.
+  private async insertSeen(
+    manager: EntityManager,
+    subscriptionId: string,
+    externalIds: string[],
+  ): Promise<void> {
+    if (externalIds.length === 0) return;
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(SeenListing)
+      .values(externalIds.map((externalId) => ({ subscriptionId, externalId })))
+      .orIgnore()
+      .execute();
   }
 }

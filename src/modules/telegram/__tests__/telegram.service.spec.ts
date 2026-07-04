@@ -3,21 +3,15 @@ import { Logger } from '@nestjs/common';
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import type { AppConfig } from '@/config/configuration';
 import { AppEnv } from '@/config/env.validation';
-import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
-import { SourceRegistry } from '@/modules/sources/source-registry';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
-import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { TelegramHandlers } from '../telegram.handlers';
+import type { TelegramHandlers } from '../telegram.handlers';
 import { TelegramService } from '../telegram.service';
 
-// Only the disabled paths are covered — starting grammY would hit the network.
+// Only the disabled paths are covered — starting grammY would hit the network. Handlers
+// are only registered on a live bot, so a stub suffices here.
 const make = (overrides: Partial<AppConfig> = {}): TelegramService => {
-  const config = makeAppConfig(overrides);
-  const subscriptions = new SubscriptionsService();
-  const registry = new SourceRegistry([new KufarAdapter()]);
-  const watch = new WatchService(subscriptions, registry);
-  return new TelegramService(config, new TelegramHandlers(config, subscriptions, watch, registry));
+  const handlers = { register: jest.fn() } as unknown as TelegramHandlers;
+  return new TelegramService(makeAppConfig(overrides), handlers);
 };
 
 describe('TelegramService', () => {
