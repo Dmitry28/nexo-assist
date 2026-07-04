@@ -12,6 +12,7 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
 import { jitteredDelay, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
+import type { WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
   ({
@@ -43,6 +44,7 @@ const build = () => {
     recordPause: jest.fn(),
     setTotals: jest.fn(),
   };
+  const status = { markRun: jest.fn() };
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
     makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }),
@@ -51,15 +53,16 @@ const build = () => {
     watch as unknown as WatchService,
     telegram as unknown as TelegramService,
     metrics as unknown as WatchMetrics,
+    status as unknown as WatchStatus,
   );
-  return { subscriptions, watch, telegram, metrics, scheduler };
+  return { subscriptions, watch, telegram, metrics, status, scheduler };
 };
 
 describe('WatchScheduler.runDaily', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('delivers fresh outcomes and isolates a failing subscription', async () => {
-    const { subscriptions, watch, telegram, scheduler } = build();
+    const { subscriptions, watch, telegram, status, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1), sub(2)]);
     watch.poll.mockImplementation((s: Subscription) => {
       if (s.id === '1') throw new Error('boom');
@@ -73,6 +76,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notify).toHaveBeenCalledTimes(1);
     expect(telegram.notify).toHaveBeenCalledWith(2, expect.stringContaining('🆕'));
     expect(watch.markSeen).toHaveBeenCalledTimes(1);
+    expect(status.markRun).toHaveBeenCalledTimes(1); // run stamped for /stats
   });
 
   it('does not notify for non-fresh outcomes (baselined / nothing)', async () => {

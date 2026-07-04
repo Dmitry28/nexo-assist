@@ -28,6 +28,8 @@ export interface AppConfig {
   throttleLimit: number;
   /** Telegram bot token; `undefined` keeps the bot disabled. */
   telegramBotToken: string | undefined;
+  /** Telegram id of the owner for the admin-only `/stats` command; `undefined` = no admin. */
+  adminTelegramId: number | undefined;
   /** Cron expression for the daily subscription check. */
   watchCron: string;
   /** Base pause between subscription polls, in ms. */
@@ -72,6 +74,7 @@ export default registerAs('app', (): AppConfig => {
     throttleTtl: env.THROTTLE_TTL,
     throttleLimit: env.THROTTLE_LIMIT,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+    adminTelegramId: env.ADMIN_TELEGRAM_ID,
     watchCron: env.WATCH_CRON,
     watchMinDelayMs: env.WATCH_MIN_DELAY_MS,
     watchJitterMs: env.WATCH_JITTER_MS,

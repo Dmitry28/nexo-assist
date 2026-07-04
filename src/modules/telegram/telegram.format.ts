@@ -62,3 +62,18 @@ export function newListingsDigest(fresh: Listing[]): { text: string; delivered: 
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
   `⚠️ This ${source} search stopped responding, so I've paused it. ` +
   `Check the link and send it again if it still works.\n${url}`;
+
+/** Admin `/stats` snapshot. */
+export const formatStats = (s: {
+  users: number;
+  active: number;
+  paused: number;
+  lastRunAt?: Date;
+}): string =>
+  [
+    '📊 Stats',
+    `👥 users: ${s.users}`,
+    `📋 active subscriptions: ${s.active}`,
+    `⏸ paused: ${s.paused}`,
+    `🕒 last run: ${s.lastRunAt ? s.lastRunAt.toISOString() : 'never'}`,
+  ].join('\n');

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, QueryFailedError } from 'typeorm';
+import { In, IsNull, Not, QueryFailedError } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
 import { normalizeUrl } from '@/common/url';
@@ -91,6 +91,11 @@ export class SubscriptionsService {
   /** Count of active (non-paused) subscriptions — for metrics / admin stats. */
   countActive(): Promise<number> {
     return this.subs.countBy({ pausedAt: IsNull() });
+  }
+
+  /** Count of paused subscriptions — for admin stats. */
+  countPaused(): Promise<number> {
+    return this.subs.countBy({ pausedAt: Not(IsNull()) });
   }
 
   /** Count of users — for metrics / admin stats. */

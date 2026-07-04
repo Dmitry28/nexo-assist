@@ -14,6 +14,7 @@ import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { TelegramHandlers } from '../telegram.handlers';
+import type { WatchStatus } from '../watch.status';
 
 type Handler = (ctx: Context) => Promise<void> | void;
 
@@ -57,8 +58,25 @@ describe('TelegramHandlers', () => {
     add: jest.Mock;
     listByUser: jest.Mock;
     remove: jest.Mock;
+    countUsers: jest.Mock;
+    countActive: jest.Mock;
+    countPaused: jest.Mock;
   };
   let watch: { baseline: jest.Mock; poll: jest.Mock; current: jest.Mock; markSeen: jest.Mock };
+  const status = { lastRunAt: undefined };
+
+  const buildHandlers = (config = makeAppConfig()) => {
+    const handlers = new TelegramHandlers(
+      config,
+      subscriptions as unknown as SubscriptionsService,
+      watch as unknown as WatchService,
+      new SourceRegistry([new KufarAdapter()]),
+      status as unknown as WatchStatus,
+    );
+    const fakeBot = new FakeBot();
+    handlers.register(fakeBot as unknown as Bot);
+    return fakeBot;
+  };
 
   beforeEach(() => {
     subscriptions = {
@@ -67,6 +85,9 @@ describe('TelegramHandlers', () => {
         .mockImplementation((input: { url: string }) => Promise.resolve(sub({ url: input.url }))),
       listByUser: jest.fn().mockResolvedValue([]),
       remove: jest.fn().mockResolvedValue(true),
+      countUsers: jest.fn().mockResolvedValue(0),
+      countActive: jest.fn().mockResolvedValue(0),
+      countPaused: jest.fn().mockResolvedValue(0),
     };
     watch = {
       baseline: jest.fn().mockResolvedValue(1),
@@ -74,14 +95,7 @@ describe('TelegramHandlers', () => {
       current: jest.fn().mockResolvedValue([]),
       markSeen: jest.fn().mockResolvedValue(undefined),
     };
-    const handlers = new TelegramHandlers(
-      makeAppConfig(),
-      subscriptions as unknown as SubscriptionsService,
-      watch as unknown as WatchService,
-      new SourceRegistry([new KufarAdapter()]),
-    );
-    bot = new FakeBot();
-    handlers.register(bot as unknown as Bot);
+    bot = buildHandlers();
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -266,5 +280,28 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton('show:sub-1', 999);
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Subscription not found.');
     expect(watch.current).not.toHaveBeenCalled();
+  });
+
+  it('/stats replies to the admin with counts', async () => {
+    const adminBot = buildHandlers(makeAppConfig({ adminTelegramId: 99 }));
+    subscriptions.countUsers.mockResolvedValue(3);
+    subscriptions.countActive.mockResolvedValue(5);
+    subscriptions.countPaused.mockResolvedValue(2);
+
+    const ctx = makeCtx({ userId: 99 });
+    await adminBot.commands.get('stats')!(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('users: 3'));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('active subscriptions: 5'));
+  });
+
+  it('/stats stays silent for a non-admin', async () => {
+    const adminBot = buildHandlers(makeAppConfig({ adminTelegramId: 99 }));
+    const ctx = makeCtx({ userId: 1 }); // not the admin
+
+    await adminBot.commands.get('stats')!(ctx);
+
+    expect(ctx.reply).not.toHaveBeenCalled();
+    expect(subscriptions.countUsers).not.toHaveBeenCalled();
   });
 });

@@ -22,8 +22,10 @@ import {
   MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
   formatCurrentListings,
+  formatStats,
   newListingsDigest,
 } from './telegram.format';
+import { WatchStatus } from './watch.status';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const EXPIRED = 'This prompt has expired — send the link again.';
@@ -51,11 +53,13 @@ export class TelegramHandlers {
     private readonly subscriptions: SubscriptionsService,
     private readonly watch: WatchService,
     private readonly registry: SourceRegistry,
+    private readonly status: WatchStatus,
   ) {}
 
   register(bot: Bot): void {
     bot.command('start', (ctx) => ctx.reply(`Hi! ${PROMPT}`));
     bot.command('list', (ctx) => this.showList(ctx));
+    bot.command('stats', (ctx) => this.onStats(ctx));
     // NOTE: /check is a manual test trigger — kept out of production.
     if (!this.appConfig.isProduction) {
       bot.command('check', (ctx) => this.onCheck(ctx));
@@ -201,6 +205,19 @@ export class TelegramHandlers {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });
+  }
+
+  /** Admin-only service snapshot. Silent for everyone else — don't reveal the command. */
+  private async onStats(ctx: Context): Promise<void> {
+    const adminId = this.appConfig.adminTelegramId;
+    if (adminId === undefined || ctx.from?.id !== adminId) return;
+
+    const [users, active, paused] = await Promise.all([
+      this.subscriptions.countUsers(),
+      this.subscriptions.countActive(),
+      this.subscriptions.countPaused(),
+    ]);
+    await ctx.reply(formatStats({ users, active, paused, lastRunAt: this.status.lastRunAt }));
   }
 
   private async onCheck(ctx: Context): Promise<void> {

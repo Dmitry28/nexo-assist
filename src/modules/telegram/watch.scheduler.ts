@@ -14,6 +14,7 @@ import { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { deadSubscriptionNotice, newListingsDigest } from './telegram.format';
 import { TelegramService } from './telegram.service';
+import { WatchStatus } from './watch.status';
 
 const JOB_NAME = 'daily-watch';
 
@@ -42,6 +43,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly watch: WatchService,
     private readonly telegram: TelegramService,
     private readonly metrics: WatchMetrics,
+    private readonly status: WatchStatus,
   ) {}
 
   onModuleInit(): void {
@@ -78,6 +80,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       }
     }
     await this.recordTotals();
+    this.status.markRun(new Date());
   }
 
   /** Snapshot user/subscription gauges once per run; a metrics failure must not fail the run. */
