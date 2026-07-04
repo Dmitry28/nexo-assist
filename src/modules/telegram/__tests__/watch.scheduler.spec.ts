@@ -4,6 +4,7 @@ import { GrammyError } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import type { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
@@ -27,13 +28,21 @@ const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
 const build = () => {
   const subscriptions = {
     listActive: jest.fn(),
-    pauseAllForUser: jest.fn().mockResolvedValue(undefined),
+    pauseAllForUser: jest.fn().mockResolvedValue(1),
     pause: jest.fn().mockResolvedValue(undefined),
     bumpFailures: jest.fn().mockResolvedValue(undefined),
     resetFailures: jest.fn().mockResolvedValue(undefined),
+    countUsers: jest.fn().mockResolvedValue(0),
+    countActive: jest.fn().mockResolvedValue(0),
   };
   const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
   const telegram = { notify: jest.fn().mockResolvedValue(undefined) };
+  const metrics = {
+    recordDelivery: jest.fn(),
+    recordPollError: jest.fn(),
+    recordPause: jest.fn(),
+    setTotals: jest.fn(),
+  };
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
     makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }),
@@ -41,8 +50,9 @@ const build = () => {
     subscriptions as unknown as SubscriptionsService,
     watch as unknown as WatchService,
     telegram as unknown as TelegramService,
+    metrics as unknown as WatchMetrics,
   );
-  return { subscriptions, watch, telegram, scheduler };
+  return { subscriptions, watch, telegram, metrics, scheduler };
 };
 
 describe('WatchScheduler.runDaily', () => {
@@ -102,9 +112,10 @@ describe('WatchScheduler.runDaily', () => {
   });
 
   it('auto-pauses a user on 403 and skips their remaining subscriptions', async () => {
-    const { subscriptions, watch, telegram, scheduler } = build();
-    // Two subs owned by the same user (userId 1).
+    const { subscriptions, watch, telegram, metrics, scheduler } = build();
+    // Two subs owned by the same user (userId 1); pausing them affects 2 rows.
     subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 1)]);
+    subscriptions.pauseAllForUser.mockResolvedValue(2);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
@@ -115,6 +126,7 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
+    expect(metrics.recordPause).toHaveBeenCalledWith('blocked', 2); // counted per subscription
     expect(telegram.notify).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
@@ -151,7 +163,7 @@ describe('WatchScheduler.runDaily', () => {
   });
 
   it('warns the user and pauses the subscription at the failure threshold', async () => {
-    const { subscriptions, watch, telegram, scheduler } = build();
+    const { subscriptions, watch, telegram, metrics, scheduler } = build();
     // one short of the cap → this run trips it
     subscriptions.listActive.mockResolvedValue([sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1)]);
     watch.poll.mockRejectedValue(new Error('source down'));
@@ -163,6 +175,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(subscriptions.bumpFailures).toHaveBeenCalledWith('1');
     expect(telegram.notify).toHaveBeenCalledWith(1, expect.stringContaining('paused'));
     expect(subscriptions.pause).toHaveBeenCalledWith('1');
+    expect(metrics.recordPause).toHaveBeenCalledWith('dead');
   });
 
   it('does not bump the dead-link streak when delivery fails (only poll errors count)', async () => {
@@ -187,6 +200,24 @@ describe('WatchScheduler.runDaily', () => {
 
     expect(subscriptions.resetFailures).toHaveBeenCalledTimes(1); // only sub 1 (had a streak)
     expect(subscriptions.resetFailures).toHaveBeenCalledWith('1');
+  });
+
+  it('records product metrics: delivery, poll error, and run totals', async () => {
+    const { subscriptions, watch, metrics, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2)]);
+    subscriptions.countUsers.mockResolvedValue(7);
+    subscriptions.countActive.mockResolvedValue(2);
+    watch.poll.mockImplementation((s: Subscription) => {
+      if (s.id === '1') return Promise.resolve({ kind: 'fresh', listings: [listing(1)] });
+      throw new Error('source down');
+    });
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
+    expect(metrics.recordPollError).toHaveBeenCalledWith('kufar');
+    expect(metrics.setTotals).toHaveBeenCalledWith(7, 2);
   });
 
   it('paces between polls only — N-1 delays for N subscriptions, none before the first', async () => {

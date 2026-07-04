@@ -88,13 +88,24 @@ export class SubscriptionsService {
     return this.subs.find({ where: { pausedAt: IsNull() } });
   }
 
+  /** Count of active (non-paused) subscriptions — for metrics / admin stats. */
+  countActive(): Promise<number> {
+    return this.subs.countBy({ pausedAt: IsNull() });
+  }
+
+  /** Count of users — for metrics / admin stats. */
+  countUsers(): Promise<number> {
+    return this.users.count();
+  }
+
   /**
    * Pause every currently-active subscription of a user — used after a Telegram 403
    * (the user blocked the bot), so we stop scraping/delivering for them. Only touches
    * active rows, so an existing pause timestamp is preserved.
    */
-  async pauseAllForUser(userId: string): Promise<void> {
-    await this.subs.update({ userId, pausedAt: IsNull() }, { pausedAt: new Date() });
+  async pauseAllForUser(userId: string): Promise<number> {
+    const result = await this.subs.update({ userId, pausedAt: IsNull() }, { pausedAt: new Date() });
+    return result.affected ?? 0;
   }
 
   /** Pause a single subscription — used when its URL looks dead (see consecutiveFailures). */

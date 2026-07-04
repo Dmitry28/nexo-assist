@@ -5,6 +5,7 @@ import { GrammyError } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Listing } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -40,6 +41,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly subscriptions: SubscriptionsService,
     private readonly watch: WatchService,
     private readonly telegram: TelegramService,
+    private readonly metrics: WatchMetrics,
   ) {}
 
   onModuleInit(): void {
@@ -75,6 +77,20 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
       }
     }
+    await this.recordTotals();
+  }
+
+  /** Snapshot user/subscription gauges once per run; a metrics failure must not fail the run. */
+  private async recordTotals(): Promise<void> {
+    try {
+      const [users, active] = await Promise.all([
+        this.subscriptions.countUsers(),
+        this.subscriptions.countActive(),
+      ]);
+      this.metrics.setTotals(users, active);
+    } catch (err) {
+      this.logger.warn({ err }, 'Failed to record totals');
+    }
   }
 
   /** Poll, then deliver fresh listings. Returns true if the user blocked us. */
@@ -86,6 +102,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       outcome = await this.watch.poll(sub);
     } catch (err) {
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
+      this.metrics.recordPollError(sub.source);
       await this.recordFailure(sub);
       return false;
     }
@@ -103,6 +120,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       const { text, delivered } = newListingsDigest(listings);
       await this.telegram.notify(sub.user.telegramId, text);
       await this.watch.markSeen(sub, delivered);
+      this.metrics.recordDelivery(sub.source);
     } catch (err) {
       if (isBotBlocked(err)) return true;
       this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);
@@ -116,6 +134,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     if (sub.consecutiveFailures + 1 < MAX_CONSECUTIVE_FAILURES) return;
     // Pause first — only tell the user it's paused if the write actually stuck.
     await this.subscriptions.pause(sub.id);
+    this.metrics.recordPause('dead');
     this.logger.log(
       `Paused dead subscription ${sub.id} after ${MAX_CONSECUTIVE_FAILURES} failures`,
     );
@@ -127,8 +146,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   /** Pause a user's subscriptions after a 403; a write failure must not abort the run. */
   private async pauseUser(userId: string): Promise<void> {
     try {
-      await this.subscriptions.pauseAllForUser(userId);
-      this.logger.log(`Paused subscriptions for user ${userId} — undeliverable (403)`);
+      const paused = await this.subscriptions.pauseAllForUser(userId);
+      this.metrics.recordPause('blocked', paused);
+      this.logger.log(`Paused ${paused} subscriptions for user ${userId} — undeliverable (403)`);
     } catch (err) {
       this.logger.error({ err }, `Failed to pause user ${userId} after 403`);
     }

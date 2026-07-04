@@ -229,7 +229,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       url: 'https://kufar.by/l/c',
     });
 
-    await subscriptions.pauseAllForUser(a.userId);
+    expect(await subscriptions.pauseAllForUser(a.userId)).toBe(2); // both of user 1's subs
 
     // Only user 1's subs are paused; user 2 (other) stays active.
     const active = await subscriptions.listActive();
