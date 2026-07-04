@@ -12,6 +12,10 @@ services:
       - '${PORT:-3000}:3000'
     environment:
       NODE_ENV: production
+      # APP_ENV drives app behavior (JSON logs, token required, Swagger off). Without it
+      # appEnv falls back to development and the runtime image crashes on the pruned
+      # pino-pretty transport. The dev override sets it back to development.
+      APP_ENV: production
       PORT: 3000
       DATABASE_URL: postgres://app:app@postgres:5432/app
     env_file:
