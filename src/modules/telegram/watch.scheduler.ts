@@ -21,6 +21,16 @@ const JOB_NAME = 'daily-watch';
 // Consecutive failed polls before a subscription is treated as dead: warn the user, auto-pause.
 export const MAX_CONSECUTIVE_FAILURES = 5;
 
+// Min polls of a source in one run before "all failed" is treated as a source-wide outage
+// (below this, a single bad URL would raise a false alarm).
+const SOURCE_FAILURE_MIN_POLLS = 3;
+
+// Outcome of processing one subscription — drives the source tally and the 403 pause.
+type ProcessResult = 'ok' | 'blocked' | 'poll-failed';
+
+// Per-source poll counters for the source-outage alert.
+type SourceStats = { attempts: number; failures: number };
+
 /** Base delay plus a random 0..jitter, in ms — paces polls so we don't hammer a source. */
 export function jitteredDelay(minMs: number, jitterMs: number, random = Math.random): number {
   return minMs + Math.floor(random() * (jitterMs + 1));
@@ -65,22 +75,56 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     const subs = await this.subscriptions.listActive();
     // Users who blocked us this run — skip their remaining subs to avoid re-hitting 403.
     const blockedUsers = new Set<string>();
+    // Per-source poll tally — used to alert the admin if a whole source is failing.
+    const sourceStats = new Map<string, SourceStats>();
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
       if (i > 0) await this.pace();
+      let result: ProcessResult;
       try {
-        if (await this.processSubscription(sub)) {
-          blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
-          await this.pauseUser(sub.userId);
-        }
+        result = await this.processSubscription(sub);
       } catch (err) {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
+        continue;
+      }
+      this.tallySource(sourceStats, sub.source, result === 'poll-failed');
+      if (result === 'blocked') {
+        blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
+        await this.pauseUser(sub.userId);
       }
     }
     await this.recordTotals();
+    await this.alertFailedSources(sourceStats);
     this.status.markRun(new Date());
+  }
+
+  private tallySource(stats: Map<string, SourceStats>, source: string, failed: boolean): void {
+    const s = stats.get(source) ?? { attempts: 0, failures: 0 };
+    s.attempts += 1;
+    if (failed) s.failures += 1;
+    stats.set(source, s);
+  }
+
+  /** Alert the admin about any source whose polls all failed this run (likely a broken adapter). */
+  private async alertFailedSources(stats: Map<string, SourceStats>): Promise<void> {
+    for (const [source, { attempts, failures }] of stats) {
+      if (attempts >= SOURCE_FAILURE_MIN_POLLS && failures === attempts) {
+        await this.notifyAdmin(
+          `🚨 Source "${source}" failed all ${attempts} polls this run — the adapter may be broken.`,
+        );
+      }
+    }
+  }
+
+  /** Send an alert to the owner if configured; a failed alert must not affect the run. */
+  private async notifyAdmin(text: string): Promise<void> {
+    const adminId = this.appConfig.adminTelegramId;
+    if (adminId === undefined) return;
+    await this.telegram
+      .notify(adminId, text)
+      .catch((err: unknown) => this.logger.warn({ err }, 'Admin alert failed'));
   }
 
   /** Snapshot user/subscription gauges once per run; a metrics failure must not fail the run. */
@@ -96,24 +140,27 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Poll, then deliver fresh listings. Returns true if the user blocked us. */
-  private async processSubscription(sub: Subscription): Promise<boolean> {
-    // The dead-link streak tracks POLL (source) failures only — delivery errors below
-    // are a separate concern and must not count toward it.
+  /** Poll, then deliver fresh listings. The dead-link streak and the source tally track
+   *  POLL (source) failures only — delivery errors are a separate concern. */
+  private async processSubscription(sub: Subscription): Promise<ProcessResult> {
     let outcome: PollOutcome;
     try {
       outcome = await this.watch.poll(sub);
     } catch (err) {
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
       this.metrics.recordPollError(sub.source);
-      await this.recordFailure(sub);
-      return false;
+      // Guard the bookkeeping so a DB hiccup can't hide a poll failure from the source
+      // tally — otherwise a broken adapter + failing write would suppress the outage alert.
+      await this.recordFailure(sub).catch((e: unknown) =>
+        this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`),
+      );
+      return 'poll-failed';
     }
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
     if (sub.consecutiveFailures > 0) await this.subscriptions.resetFailures(sub.id);
     // A pending baseline was just seeded silently — deliver only fresh listings.
-    if (outcome.kind !== 'fresh') return false;
-    return this.deliverFresh(sub, outcome.listings);
+    if (outcome.kind !== 'fresh') return 'ok';
+    return (await this.deliverFresh(sub, outcome.listings)) ? 'blocked' : 'ok';
   }
 
   /** Send the fresh digest. Returns true if the user blocked us; other send failures are
@@ -144,6 +191,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     await this.telegram
       .notify(sub.user.telegramId, deadSubscriptionNotice({ source: sub.source, url: sub.url }))
       .catch((err: unknown) => this.logger.warn({ err }, `Dead-link notice failed for ${sub.id}`));
+    await this.notifyAdmin(
+      `⏸ Paused a dead ${sub.source} subscription after ${MAX_CONSECUTIVE_FAILURES} failures.\n${sub.url}`,
+    );
   }
 
   /** Pause a user's subscriptions after a 403; a write failure must not abort the run. */
@@ -152,6 +202,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       const paused = await this.subscriptions.pauseAllForUser(userId);
       this.metrics.recordPause('blocked', paused);
       this.logger.log(`Paused ${paused} subscriptions for user ${userId} — undeliverable (403)`);
+      await this.notifyAdmin(
+        `⏸ Paused ${paused} subscription(s) for user ${userId} — they blocked the bot (403).`,
+      );
     } catch (err) {
       this.logger.error({ err }, `Failed to pause user ${userId} after 403`);
     }

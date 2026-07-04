@@ -26,7 +26,7 @@ const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
 
 // Collaborators are mocked — the scheduler's job is orchestration, not persistence
 // (the DB layer is covered by the integration e2e).
-const build = () => {
+const build = (configOverrides: Record<string, unknown> = {}) => {
   const subscriptions = {
     listActive: jest.fn(),
     pauseAllForUser: jest.fn().mockResolvedValue(1),
@@ -47,7 +47,7 @@ const build = () => {
   const status = { markRun: jest.fn() };
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
-    makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }),
+    makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0, ...configOverrides }),
     new SchedulerRegistry(),
     subscriptions as unknown as SubscriptionsService,
     watch as unknown as WatchService,
@@ -222,6 +222,75 @@ describe('WatchScheduler.runDaily', () => {
     expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
     expect(metrics.recordPollError).toHaveBeenCalledWith('kufar');
     expect(metrics.setTotals).toHaveBeenCalledWith(7, 2);
+  });
+
+  it('alerts the admin when a user blocks the bot (403)', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1, 1)]);
+    subscriptions.pauseAllForUser.mockResolvedValue(1);
+    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
+      error_code: 403,
+    });
+    // The user delivery 403s; the admin alert succeeds.
+    telegram.notify.mockImplementation((id: number) =>
+      id === 99 ? Promise.resolve() : Promise.reject(blocked),
+    );
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('blocked the bot'));
+  });
+
+  it('alerts the admin when a subscription is auto-paused as dead', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1)]);
+    watch.poll.mockRejectedValue(new Error('source down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('dead'));
+  });
+
+  it('alerts the admin when a whole source fails all its polls in a run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    // 3 subs of the same source (≥ the min-polls threshold), all failing to poll.
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2), sub(3, 3)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('failed all 3 polls'));
+  });
+
+  it('sends no admin alert when ADMIN_TELEGRAM_ID is unset', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build(); // no adminTelegramId
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1)]);
+    watch.poll.mockRejectedValue(new Error('source down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    // Only the user's dead-link notice is sent — no admin alert.
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    expect(telegram.notify).toHaveBeenCalledWith(1, expect.stringContaining('paused'));
+  });
+
+  it('does not raise a source alert below the min-polls threshold', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    // Only 2 failing polls — below the threshold, so a single bad URL can't false-alarm.
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2)]);
+    watch.poll.mockRejectedValue(new Error('source down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('failed all'));
   });
 
   it('paces between polls only — N-1 delays for N subscriptions, none before the first', async () => {
