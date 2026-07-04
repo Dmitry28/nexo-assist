@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
 import { stdSerializers, stdTimeFunctions } from 'pino';
 
@@ -62,6 +64,22 @@ import { TelegramModule } from './modules/telegram/telegram.module';
       inject: [configuration.KEY],
       useFactory: (appConfig: AppConfig) => ({
         throttlers: [{ ttl: appConfig.throttleTtl * 1000, limit: appConfig.throttleLimit }],
+      }),
+    }),
+    // Postgres via TypeORM. Schema changes only through migrations (Phase 3.2+).
+    TypeOrmModule.forRootAsync({
+      inject: [configuration.KEY],
+      useFactory: (appConfig: AppConfig): TypeOrmModuleOptions => ({
+        type: 'postgres',
+        url: appConfig.databaseUrl,
+        // NOTE: autoLoadEntities — register every entity a module pulls in via
+        // TypeOrmModule.forFeature, so we never maintain a manual entities list.
+        autoLoadEntities: true,
+        // NOTE: never auto-create/alter tables from entities — schema changes go only
+        // through reviewed migrations (Phase 3.2+); autosync would risk data loss in prod.
+        synchronize: false,
+        // Managed Postgres (Neon) requires SSL; local docker doesn't.
+        ssl: appConfig.isProduction || appConfig.isStaging ? { rejectUnauthorized: false } : false,
       }),
     }),
     // Cron scheduler for the daily subscription check.

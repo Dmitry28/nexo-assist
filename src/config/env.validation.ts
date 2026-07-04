@@ -106,6 +106,14 @@ export class EnvironmentVariables {
   @Matches(/^(\S+\s+){4}\S+$/, { message: 'WATCH_CRON must be a 5-field cron expression' })
   @IsOptional()
   WATCH_CRON: string = '0 9 * * *';
+
+  /**
+   * Postgres connection URL. Defaults to the local docker database (`npm run db:up`);
+   * staging/prod inject a Neon URL (SSL, pooled endpoint).
+   */
+  @IsString()
+  @IsOptional()
+  DATABASE_URL: string = 'postgres://app:app@localhost:5432/app';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

@@ -16,6 +16,7 @@ export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => 
     throttleLimit: 100,
     telegramBotToken: undefined,
     watchCron: '0 9 * * *',
+    databaseUrl: 'postgres://app:app@localhost:5432/app',
     ...overrides,
   };
   // Keep the derived flags consistent with the (possibly overridden) appEnv.
