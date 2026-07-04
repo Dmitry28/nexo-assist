@@ -97,6 +97,21 @@ export class SubscriptionsService {
     await this.subs.update({ userId, pausedAt: IsNull() }, { pausedAt: new Date() });
   }
 
+  /** Pause a single subscription — used when its URL looks dead (see consecutiveFailures). */
+  async pause(id: string): Promise<void> {
+    await this.subs.update({ id }, { pausedAt: new Date() });
+  }
+
+  /** Increment a subscription's consecutive-failure streak by one (atomic). */
+  async bumpFailures(id: string): Promise<void> {
+    await this.subs.increment({ id }, 'consecutiveFailures', 1);
+  }
+
+  /** Clear the failure streak after a successful poll. */
+  async resetFailures(id: string): Promise<void> {
+    await this.subs.update({ id }, { consecutiveFailures: 0 });
+  }
+
   /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */
   async remove(id: string, telegramUserId: number): Promise<boolean> {
     const owned = await this.subs.existsBy({ id, user: { telegramId: telegramUserId } });

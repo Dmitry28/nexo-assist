@@ -48,4 +48,9 @@ export class Subscription {
    * (e.g. auto-paused after the user blocked the bot). */
   @Column({ type: 'timestamptz', nullable: true })
   pausedAt?: Date;
+
+  /** Consecutive failed polls (errors only). Reset on any successful poll; at the cap
+   * the subscription is auto-paused and the user is asked to refresh the link. */
+  @Column({ type: 'int', default: 0 })
+  consecutiveFailures: number;
 }

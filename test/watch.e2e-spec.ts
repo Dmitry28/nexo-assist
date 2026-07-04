@@ -9,6 +9,7 @@ import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-Ini
 import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
 import { AddNormalizedUrl1783187484846 } from '@/database/migrations/1783187484846-AddNormalizedUrl';
 import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
+import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -44,6 +45,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             AddUsers1783179934781,
             AddNormalizedUrl1783187484846,
             AddPausedAt1783195101942,
+            AddConsecutiveFailures1783196783018,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -235,6 +237,25 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     // pausedAt is stamped on the paused rows.
     const [reloaded] = await subscriptions.listByUser(1);
     expect(reloaded.pausedAt).toBeInstanceOf(Date);
+  });
+
+  it('bumpFailures increments, resetFailures clears, and pause pauses one subscription', async () => {
+    const s = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+
+    await subscriptions.bumpFailures(s.id);
+    await subscriptions.bumpFailures(s.id);
+    expect((await subscriptions.listByUser(1))[0].consecutiveFailures).toBe(2);
+
+    await subscriptions.resetFailures(s.id);
+    expect((await subscriptions.listByUser(1))[0].consecutiveFailures).toBe(0);
+
+    await subscriptions.pause(s.id);
+    expect(await subscriptions.listActive()).toEqual([]); // paused → excluded
+    expect((await subscriptions.listByUser(1))[0].pausedAt).toBeInstanceOf(Date);
   });
 
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {

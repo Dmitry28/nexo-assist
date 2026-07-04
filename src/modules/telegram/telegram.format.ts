@@ -57,3 +57,8 @@ export function newListingsDigest(fresh: Listing[]): { text: string; delivered: 
   const { text, shown } = digest(fresh, `🆕 ${fresh.length} new`);
   return { text, delivered: shown };
 }
+
+/** Sent when a subscription is auto-paused because its URL kept failing. */
+export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
+  `⚠️ This ${source} search stopped responding, so I've paused it. ` +
+  `Check the link and send it again if it still works.\n${url}`;

@@ -63,6 +63,8 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   ~100), not one message per item and not a silent "N more" drop.
 - **Telegram limits:** throttle the fan-out through a queue; if a user blocked the
   bot (403) → pause their subscriptions.
+- **Dead link:** if a search keeps failing to poll (errors, not empty results) for
+  several runs in a row → tell the user to refresh it and pause that subscription.
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture

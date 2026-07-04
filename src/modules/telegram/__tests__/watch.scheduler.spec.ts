@@ -10,15 +10,16 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
-import { jitteredDelay, WatchScheduler } from '../watch.scheduler';
+import { jitteredDelay, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
 
-const sub = (id: number, userId = id): Subscription =>
+const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
   ({
     id: String(id),
     userId: String(userId),
     user: { telegramId: userId },
     source: 'kufar',
     url: `u${id}`,
+    consecutiveFailures,
   }) as Subscription;
 
 // Collaborators are mocked — the scheduler's job is orchestration, not persistence
@@ -27,6 +28,9 @@ const build = () => {
   const subscriptions = {
     listActive: jest.fn(),
     pauseAllForUser: jest.fn().mockResolvedValue(undefined),
+    pause: jest.fn().mockResolvedValue(undefined),
+    bumpFailures: jest.fn().mockResolvedValue(undefined),
+    resetFailures: jest.fn().mockResolvedValue(undefined),
   };
   const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
   const telegram = { notify: jest.fn().mockResolvedValue(undefined) };
@@ -131,6 +135,58 @@ describe('WatchScheduler.runDaily', () => {
 
     expect(telegram.notify).toHaveBeenCalledTimes(2); // user 2 still attempted
     expect(telegram.notify).toHaveBeenLastCalledWith(2, expect.stringContaining('🆕'));
+  });
+
+  it('bumps the failure streak on a poll error without warning below the threshold', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]); // 0 prior failures
+    watch.poll.mockRejectedValue(new Error('source down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.bumpFailures).toHaveBeenCalledWith('1');
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    expect(telegram.notify).not.toHaveBeenCalled();
+  });
+
+  it('warns the user and pauses the subscription at the failure threshold', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    // one short of the cap → this run trips it
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1)]);
+    watch.poll.mockRejectedValue(new Error('source down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.bumpFailures).toHaveBeenCalledWith('1');
+    expect(telegram.notify).toHaveBeenCalledWith(1, expect.stringContaining('paused'));
+    expect(subscriptions.pause).toHaveBeenCalledWith('1');
+  });
+
+  it('does not bump the dead-link streak when delivery fails (only poll errors count)', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
+    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] }); // poll OK
+    telegram.notify.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.bumpFailures).not.toHaveBeenCalled();
+    expect(watch.markSeen).not.toHaveBeenCalled(); // retried next run
+  });
+
+  it('resets the failure streak after a successful poll, and skips the write when already zero', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, 3), sub(2, 2, 0)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.resetFailures).toHaveBeenCalledTimes(1); // only sub 1 (had a streak)
+    expect(subscriptions.resetFailures).toHaveBeenCalledWith('1');
   });
 
   it('paces between polls only — N-1 delays for N subscriptions, none before the first', async () => {
