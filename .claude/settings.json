@@ -11,11 +11,11 @@
       "Skill(*)",
       "Bash(*)"
     ],
-    "deny": [
-      "Bash(git push --force *)",
-      "Bash(git push --force)",
-      "Bash(git push -f *)",
-      "Bash(git push -f)",
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git commit)",
+      "Bash(git push *)",
+      "Bash(git push)",
       "Bash(git reset --hard *)",
       "Bash(git reset --hard)",
       "Bash(git clean -f *)",
@@ -23,7 +23,28 @@
       "Bash(git checkout .)",
       "Bash(git restore .)",
       "Bash(git branch -D *)",
+      "Bash(git stash drop *)",
+      "Bash(git stash drop)",
+      "Bash(git stash clear)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Bash(rm -r *)",
       "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(kubectl apply *)",
+      "Bash(kubectl delete *)",
+      "Bash(docker system prune *)",
+      "Bash(docker system prune)",
+      "Bash(docker volume rm *)",
+      "Bash(npm publish *)",
+      "Bash(npm publish)"
+    ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push --force)",
+      "Bash(git push -f *)",
+      "Bash(git push -f)",
+      "Bash(gh repo delete *)",
       "Bash(sudo *)"
     ]
   },
