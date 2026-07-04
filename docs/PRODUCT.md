@@ -66,6 +66,8 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   bot (403) → pause their subscriptions.
 - **Dead link:** if a search keeps failing to poll (errors, not empty results) for
   several runs in a row → tell the user to refresh it and pause that subscription.
+- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`) is notified on every auto-pause
+  (403 / dead link) and when a whole source fails all its polls in a run.
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture
