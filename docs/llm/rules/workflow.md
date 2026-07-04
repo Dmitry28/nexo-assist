@@ -13,7 +13,8 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 ## 2. Implement
 
-- One milestone at a time. Keep changes focused and atomic.
+- One milestone at a time: describe the plan → wait for approval → implement → show the diff → wait for approval → next. Keep changes focused and atomic.
+- When the user asks to work **step by step**, follow [step-by-step-flow.md](step-by-step-flow.md) — it adds a per-step review before each commit.
 - Implement → verify → report, **leaving all changes uncommitted**.
 - **Never commit, push, or open a PR without explicit approval of the reviewed diff.** Approval means the user has seen these specific local changes and said to commit them. A broad task mandate ("do whatever you think is right") authorizes implementing — not committing.
 - After opening a PR, surface the URL so the user can review.
@@ -30,7 +31,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - Confirm the plan step is fully realized (nothing skipped).
 - Run `/verify-task-result` on changed files.
 - For behavioral changes, run the app and exercise the path (`/run`, `/verify`) — not only unit tests.
-- Self-check: [philosophy questions](development-philosophy.md#self-check) (simple / clear / concise / DRY) + architecture, types, naming, edge cases.
+- Self-check: [philosophy questions](development-philosophy.md#self-check) (simple / clear / concise / DRY / no excess) + architecture, types, naming, edge cases.
 - **Generation is fast; verification is the bottleneck — don't skip or rush this step.**
 
 ## 4. Fix
@@ -43,7 +44,9 @@ _(Repeat steps 2–4 for each milestone)_
 
 ---
 
-**After all work is complete — run every step in order, do not skip.** "This change is too small" → scale the check down, don't skip it.
+## Post-completion checklist
+
+**Run every step in order, do not skip.** "This change is too small" → scale the check down, don't skip it.
 
 1. Run `/logic-review` — correctness review against the task / acceptance criteria / agreed plan. Fix gaps before moving on.
 2. Cover critical logic with tests if not yet covered — only what matters.
