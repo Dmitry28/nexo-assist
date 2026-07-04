@@ -32,7 +32,6 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - Run `/verify-task-result` on changed files.
 - For behavioral changes, run the app and exercise the path (`/run`, `/verify`) — not only unit tests.
 - Self-check: [philosophy questions](development-philosophy.md#self-check) (simple / clear / concise / DRY / no excess) + architecture, types, naming, edge cases.
-- **Generation is fast; verification is the bottleneck — don't skip or rush this step.**
 
 ## 4. Fix
 
@@ -77,4 +76,4 @@ For long tasks, maintain a progress section in the plan (or a scratch file) that
 - Key decisions made (one-liner each)
 - Known issues to address later
 
-Update after each milestone. Acts as durable memory the agent can re-read to stay oriented.
+Update after each milestone.

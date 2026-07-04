@@ -37,14 +37,9 @@ Escape hatches: 0 peers anywhere → suspend Pattern Check (rely on DOCs); chang
 
 ## Pre-Output Verification
 
-Before emitting any `[M]` / `[L]` candidate, do a second-pass Pattern Check — first-pass grep can miss peer usages; this pass filters false positives so they never reach the user.
-
-1. Re-read the cited rule and SA.
-2. Grep how peers handle the same case (≥2 files, ≥3 occurrences = dominant pattern).
-3. Changed code already matches the dominant pattern → mark **SKIPPED — pattern already followed**, move to § Skipped; do NOT include in main findings.
-4. Otherwise emit as a normal finding.
-
-`[H]` correctness/security findings skip this pass — emit immediately.
+Before emitting any `[M]` / `[L]`, re-run Pattern Check once more (first-pass grep misses
+peers). If the changed code matches the dominant pattern, route it to § Skipped ("pattern
+already followed") instead of the findings. `[H]` correctness/security skip this — emit immediately.
 
 ## Triggers
 

@@ -11,6 +11,9 @@ src/
 ├── config/
 │   ├── configuration.ts   # registerAs('app', ...) — typed AppConfig + single validation point
 │   └── env.validation.ts  # class-validator schema; single source of defaults; fail-fast on boot
+├── database/                 # TypeORM CLI data-source + generated migrations
+│   ├── data-source.ts        # DataSource for the migration CLI (separate from the Nest module)
+│   └── migrations/           # generated schema migrations
 ├── common/                # Cross-cutting building blocks (never import from modules/)
 │   ├── filters/           # Global exception filters (consistent error JSON)
 │   └── url.ts             # Generic URL helpers (extract/withParam/matchesHost)
@@ -45,13 +48,13 @@ Specs live in a `__tests__/` folder within their own layer (not beside the sourc
 
 ## Layer Responsibilities
 
-| Layer      | Responsibility                                                     |
-| ---------- | ------------------------------------------------------------------ |
-| Controller | HTTP only — parse request via DTOs, call service, shape response   |
-| Service    | Business logic — no HTTP, no Express/req objects                   |
-| Module     | Wire dependencies, declare exports                                 |
-| DTO        | Input validation via `class-validator` + `@ApiProperty`            |
-| Entity     | API-facing model (kept separate from any future persistence model) |
+| Layer      | Responsibility                                                                 |
+| ---------- | ------------------------------------------------------------------------------ |
+| Controller | HTTP only — parse request via DTOs, call service, shape response               |
+| Service    | Business logic — no HTTP, no Express/req objects                               |
+| Module     | Wire dependencies, declare exports                                             |
+| DTO        | Input validation via `class-validator` + `@ApiProperty`                        |
+| Entity     | TypeORM persistence model (`@Entity`); map to a DTO at the controller boundary |
 
 ## Environments
 
@@ -93,47 +96,24 @@ this.config.get('app.port');
 ## Adding a New Feature Module
 
 1. Create `src/modules/<feature>/` mirroring an existing module (e.g. `subscriptions/`).
-2. DTOs in `src/modules/<feature>/dto/` with `class-validator` + `@ApiProperty`.
-3. Keep the entity API-facing — never leak ORM internals.
+2. DTOs in `dto/` (`class-validator` + `@ApiProperty`); entities in `entities/` (TypeORM `@Entity`).
+3. Register entities via `TypeOrmModule.forFeature([...])`, inject repositories with
+   `@InjectRepository`, and map entities to DTOs at the controller boundary — don't return raw entities.
 4. Throw Nest HTTP exceptions; the global `AllExceptionsFilter` formats them.
-5. Register the module in `src/app.module.ts`.
-6. Add a `*.service.spec.ts` (unit) and extend `test/app.e2e-spec.ts`.
+5. Register the module in `src/app.module.ts`; schema changes go through a generated migration
+   (see Database & migrations).
+6. Add a `*.service.spec.ts` (unit) and extend the e2e tests.
 
-## CLI Scripts (`src/scripts/`)
+## Database & migrations
 
-For seed scripts, one-shot migrations, admin tasks, or anything that needs the DI container without HTTP, use `NestFactory.createApplicationContext` instead of `NestFactory.create`:
+Postgres via TypeORM. `TypeOrmModule.forRootAsync` (in `app.module.ts`) wires the app;
+`synchronize: false` — schema changes go **only** through generated migrations. The
+migration CLI uses a standalone `src/database/data-source.ts` (separate from the Nest
+module): `npm run migration:generate|run|revert|show`.
 
-```typescript
-// src/scripts/<name>.ts
-import { NestFactory } from '@nestjs/core';
-
-import { AppModule } from '@/app.module';
-import { SomeService } from '@/modules/<feature>/<feature>.service';
-
-async function main(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['log', 'warn', 'error'],
-  });
-  try {
-    await app.get(SomeService).doSomething();
-  } finally {
-    await app.close();
-  }
-}
-
-void main();
-```
-
-Run via (install `ts-node` + `tsconfig-paths` as devDependencies with the first script — they are intentionally absent until then):
-
-```jsonc
-// package.json
-"scripts": {
-  "task:<name>": "ts-node -r tsconfig-paths/register src/scripts/<name>.ts"
-}
-```
-
-This keeps maintenance work in the same dependency graph as the app — no duplicated bootstrap, no out-of-band code.
+For one-off DI scripts (seeds, admin tasks) use `NestFactory.createApplicationContext` in
+`src/scripts/` via a `"task:<name>": "ts-node -r tsconfig-paths/register …"` script
+(`ts-node`/`tsconfig-paths` are already devDependencies).
 
 ## Adding a New Env Variable
 
