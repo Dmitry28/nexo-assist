@@ -214,31 +214,35 @@ export class TelegramHandlers {
       return;
     }
 
-    let hasFindings = false;
-    let hasFailures = false;
+    let replied = false;
     for (const sub of subs) {
-      try {
-        const outcome = await this.watch.poll(sub);
-        if (outcome.kind === 'nothing') continue;
-        hasFindings = true;
-        if (outcome.kind === 'baselined') {
-          await ctx.reply(
-            `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
-            { link_preview_options: NO_LINK_PREVIEW },
-          );
-          continue;
-        }
-        const { text, delivered } = newListingsDigest(outcome.listings);
-        await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-        await this.watch.markSeen(sub, delivered);
-      } catch (err) {
-        hasFailures = true;
-        this.logger.warn({ err }, `Check failed for ${sub.url}`);
-        await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
-      }
+      replied = (await this.checkOne(ctx, sub)) || replied;
     }
-    // Error replies already went out — a trailing "Nothing new." would contradict them.
-    if (!hasFindings && !hasFailures) await ctx.reply('Nothing new.');
+    // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
+    if (!replied) await ctx.reply('Nothing new.');
+  }
+
+  /** Poll one subscription and reply with its outcome. Returns true if it replied anything. */
+  private async checkOne(ctx: Context, sub: Subscription): Promise<boolean> {
+    try {
+      const outcome = await this.watch.poll(sub);
+      if (outcome.kind === 'nothing') return false;
+      if (outcome.kind === 'baselined') {
+        await ctx.reply(
+          `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
+          { link_preview_options: NO_LINK_PREVIEW },
+        );
+        return true;
+      }
+      const { text, delivered } = newListingsDigest(outcome.listings);
+      await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
+      await this.watch.markSeen(sub, delivered);
+      return true;
+    } catch (err) {
+      this.logger.warn({ err }, `Check failed for ${sub.url}`);
+      await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
+      return true;
+    }
   }
 
   private async onShowCurrent(ctx: Context): Promise<void> {
