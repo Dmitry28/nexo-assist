@@ -92,6 +92,7 @@ Under-coverage (`N < total`) → `[H]` finding listing the missing files, not a 
 
 ## Reflection
 
-Propose updates to shared instructions (`docs/llm/`, `.claude/skills/`) only when grounded in a real review finding — specific, minimal. Skip if nothing came up.
+Improve repo-tracked instructions per the Reflection step in
+[workflow.md](workflow.md#post-completion-checklist), grounded in a real review finding.
 
 **DOC vs code:** when multiple files violate the same rule the same way, consider whether the DOC is stale (and update it) instead of fixing each file — massive same-shape violations signal the convention has shifted.
