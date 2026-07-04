@@ -110,8 +110,10 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
 
 ## Observability
 
-- **Metrics** — Prometheus scrape endpoint at `/api/v1/metrics` (default Node/process
-  metrics included). Add custom counters/histograms via `@willsoto/nestjs-prometheus`.
+- **Metrics** — Prometheus scrape endpoint at `/api/v1/metrics`. Default Node/process
+  metrics plus product metrics: `nexo_deliveries_total`, `nexo_poll_errors_total`,
+  `nexo_subscriptions_paused_total`, `nexo_users`, `nexo_active_subscriptions` (see
+  `src/metrics/watch.metrics.ts`).
 - **Tracing** — OpenTelemetry, opt-in. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optionally
   `OTEL_SERVICE_NAME`) to start the SDK; auto-instruments HTTP/Express. See `src/tracing.ts`.
   Control sampling without code changes via standard env: `OTEL_TRACES_SAMPLER=parentbased_traceidratio`

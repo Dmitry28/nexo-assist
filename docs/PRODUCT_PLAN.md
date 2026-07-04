@@ -150,8 +150,10 @@ URL → fan-out) и вместе с ним `listings` + **снимки цен** 
   ошибки опроса, не «0 результатов» — иначе ложные срабатывания на узких поисках);
   N ошибок подряд (порог 5) → уведомить юзера «обнови ссылку» + автопауза подписки;
   сброс при успехе. Чистка `seen` уже покрыта prune до `MAX_SEEN_PER_SUBSCRIPTION`.
-- **4.4 — Продуктовые метрики:** Prometheus counters/gauges (юзеры, подписки,
-  доставки, ошибки адаптеров) в `metrics.module`.
+- **4.4 — Продуктовые метрики — сделано:** Prometheus counters (`nexo_deliveries_total`,
+  `nexo_poll_errors_total`, `nexo_subscriptions_paused_total`) + gauges (`nexo_users`,
+  `nexo_active_subscriptions`) через фасад `WatchMetrics`; инкременты в планировщике,
+  снимок totals раз в прогон.
 - **4.5 — Админ-команда `/stats`:** только для админа (`ADMIN_TELEGRAM_ID`) —
   юзеры / подписки / последний прогон.
 - **4.6 — Алерты админу:** источник, у которого падают все поллы → уведомление в
