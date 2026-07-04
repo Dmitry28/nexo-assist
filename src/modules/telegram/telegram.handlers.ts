@@ -18,13 +18,16 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { NO_LINK_PREVIEW, formatCurrentListings, newListingsDigest } from './telegram.format';
+import {
+  MAX_MESSAGE_BUDGET_CHARS,
+  NO_LINK_PREVIEW,
+  formatCurrentListings,
+  newListingsDigest,
+} from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const EXPIRED = 'This prompt has expired — send the link again.';
-// /list bounds — char budget with headroom under Telegram's 4096-char message limit,
-// row cap under its ~100-button inline-keyboard limit.
-const MAX_LIST_CHARS = 3500;
+// /list row cap — stays under Telegram's ~100-button inline-keyboard limit.
 const MAX_LIST_ROWS = 50;
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
 const MAX_PENDING = 500;
@@ -186,7 +189,7 @@ export class TelegramHandlers {
     let length = 0;
     for (const [i, sub] of subs.entries()) {
       const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
-      if (length + line.length > MAX_LIST_CHARS || i >= MAX_LIST_ROWS) {
+      if (length + line.length > MAX_MESSAGE_BUDGET_CHARS || i >= MAX_LIST_ROWS) {
         lines.push(`…and ${subs.length - i} more — remove some to see the rest`);
         break;
       }

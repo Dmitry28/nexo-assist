@@ -61,7 +61,10 @@ export class WatchService {
     return listings.length;
   }
 
-  /** Fetch current listings and return those not seen before. Read-only. */
+  /**
+   * Fetch current listings and return those not seen before. Marks nothing seen
+   * (getSeen only refreshes `seenAt` on already-delivered ids for the prune window).
+   */
   async check(sub: Subscription): Promise<Listing[]> {
     const listings = await this.adapter(sub).fetch(sub.url);
     const seen = await this.subscriptions.getSeen(

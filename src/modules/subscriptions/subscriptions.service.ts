@@ -63,7 +63,11 @@ export class SubscriptionsService {
   }
 
   listByUser(telegramUserId: number): Promise<Subscription[]> {
-    return this.subs.find({ where: { user: { telegramId: telegramUserId } } });
+    // Ordered so /list numbering is stable across invocations.
+    return this.subs.find({
+      where: { user: { telegramId: telegramUserId } },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   listAll(): Promise<Subscription[]> {
