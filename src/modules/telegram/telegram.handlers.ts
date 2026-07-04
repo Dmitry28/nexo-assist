@@ -9,7 +9,13 @@ import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import type { SourceId } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import {
+  DuplicateSubscriptionError,
+  MAX_SUBSCRIPTIONS_PER_USER,
+  SubscriptionLimitError,
+  SubscriptionsService,
+} from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { NO_LINK_PREVIEW, formatCurrentListings, newListingsDigest } from './telegram.format';
@@ -97,19 +103,35 @@ export class TelegramHandlers {
     // The answer is cosmetic: if it fails (late/duplicate callback), still subscribe.
     await ctx.answerCallbackQuery().catch(() => undefined);
 
-    // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
     // ctx.from is the owner (takePending checked it) — capture their profile.
-    const sub = await this.subscriptions.add({
-      user: {
-        telegramId: candidate.userId,
-        username: ctx.from?.username,
-        firstName: ctx.from?.first_name,
-        lastName: ctx.from?.last_name,
-        language: ctx.from?.language_code,
-      },
-      source: candidate.source,
-      url: candidate.url,
-    });
+    let sub: Subscription;
+    try {
+      sub = await this.subscriptions.add({
+        user: {
+          telegramId: candidate.userId,
+          username: ctx.from?.username,
+          firstName: ctx.from?.first_name,
+          lastName: ctx.from?.last_name,
+          language: ctx.from?.language_code,
+        },
+        source: candidate.source,
+        url: candidate.url,
+      });
+    } catch (err) {
+      if (err instanceof DuplicateSubscriptionError) {
+        await ctx.editMessageText(`You're already watching this search.\n${candidate.url}`, {
+          link_preview_options: NO_LINK_PREVIEW,
+        });
+        return;
+      }
+      if (err instanceof SubscriptionLimitError) {
+        await ctx.editMessageText(
+          `You've reached the limit of ${MAX_SUBSCRIPTIONS_PER_USER} subscriptions — remove one via /list first.`,
+        );
+        return;
+      }
+      throw err;
+    }
 
     // NOTE: catch only the baseline — a failed message edit must fall through to bot.catch.
     // On failure the subscription is kept; the daily run baselines it silently.

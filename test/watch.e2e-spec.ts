@@ -13,7 +13,10 @@ import { Subscription } from '@/modules/subscriptions/entities/subscription.enti
 import { User } from '@/modules/subscriptions/entities/user.entity';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 import {
+  DuplicateSubscriptionError,
   MAX_SEEN_PER_SUBSCRIPTION,
+  MAX_SUBSCRIPTIONS_PER_USER,
+  SubscriptionLimitError,
   SubscriptionsService,
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
@@ -127,6 +130,22 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     await subscriptions.markSeen(sub.id, ids);
 
     expect((await subscriptions.getSeen(sub.id, ids)).size).toBe(MAX_SEEN_PER_SUBSCRIPTION);
+  });
+
+  it('rejects a duplicate url for the same user', async () => {
+    await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'dup' });
+    await expect(
+      subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'dup' }),
+    ).rejects.toBeInstanceOf(DuplicateSubscriptionError);
+  });
+
+  it('rejects once the per-user subscription limit is reached', async () => {
+    for (let i = 0; i < MAX_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: `u${i}` });
+    }
+    await expect(
+      subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'over' }),
+    ).rejects.toBeInstanceOf(SubscriptionLimitError);
   });
 
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {

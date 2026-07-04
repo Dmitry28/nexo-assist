@@ -6,6 +6,10 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import {
+  DuplicateSubscriptionError,
+  SubscriptionLimitError,
+} from '@/modules/subscriptions/subscriptions.service';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
@@ -138,6 +142,25 @@ describe('TelegramHandlers', () => {
     expect(subscriptions.add).toHaveBeenCalledWith(
       expect.objectContaining({ url: 'https://re.kufar.by/l/aaa' }),
     );
+  });
+
+  it('tells the user when already watching this url (duplicate)', async () => {
+    subscriptions.add.mockRejectedValue(new DuplicateSubscriptionError());
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
+    const ctx = await pressButton(`subscribe:${nonce}`);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(
+      expect.stringContaining('already watching'),
+      expect.anything(),
+    );
+    expect(watch.baseline).not.toHaveBeenCalled();
+  });
+
+  it('tells the user when the subscription limit is reached', async () => {
+    subscriptions.add.mockRejectedValue(new SubscriptionLimitError());
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
+    const ctx = await pressButton(`subscribe:${nonce}`);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('limit of'));
+    expect(watch.baseline).not.toHaveBeenCalled();
   });
 
   it("ignores another user's subscribe tap", async () => {

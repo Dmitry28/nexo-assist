@@ -14,6 +14,14 @@ import { User } from './entities/user.entity';
 // older has fallen out of the window and can't reappear as "new".
 export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 
+// Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
+export const MAX_SUBSCRIPTIONS_PER_USER = 50;
+
+/** The user already watches this exact URL. */
+export class DuplicateSubscriptionError extends Error {}
+/** The user hit MAX_SUBSCRIPTIONS_PER_USER. */
+export class SubscriptionLimitError extends Error {}
+
 /** Telegram account details captured from `ctx.from` at subscribe time. */
 export interface TelegramUserProfile {
   telegramId: number;
@@ -37,6 +45,14 @@ export class SubscriptionsService {
     url: string;
   }): Promise<Subscription> {
     const user = await this.upsertUser(input.user);
+    // NOTE: exact-URL dedup for now; full (userId, normalized_url) uniqueness lands with
+    // URL normalization (Phase 2.4). The bot flow is sequential, so a TOCTOU race is negligible.
+    if (await this.subs.existsBy({ userId: user.id, url: input.url })) {
+      throw new DuplicateSubscriptionError();
+    }
+    if ((await this.subs.countBy({ userId: user.id })) >= MAX_SUBSCRIPTIONS_PER_USER) {
+      throw new SubscriptionLimitError();
+    }
     return this.subs.save(
       this.subs.create({ userId: user.id, source: input.source, url: input.url }),
     );
