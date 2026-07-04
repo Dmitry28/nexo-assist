@@ -124,6 +124,24 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4']))].sort()).toEqual(['2', '3']);
   });
 
+  it('getSeen refreshes seenAt for in-window ids — pruning never drops still-visible listings', async () => {
+    const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u' });
+    await subscriptions.markSeen(sub.id, ['1']);
+    const [{ seenAt: before }] = await dataSource.query<{ seenAt: Date }[]>(
+      `SELECT "seenAt" FROM seen_listings WHERE "subscriptionId" = $1`,
+      [sub.id],
+    );
+
+    await new Promise((r) => setTimeout(r, 10));
+    await subscriptions.getSeen(sub.id, ['1']);
+
+    const [{ seenAt: after }] = await dataSource.query<{ seenAt: Date }[]>(
+      `SELECT "seenAt" FROM seen_listings WHERE "subscriptionId" = $1`,
+      [sub.id],
+    );
+    expect(after.getTime()).toBeGreaterThan(before.getTime());
+  });
+
   it('prunes the seen set to the most recent MAX per subscription', async () => {
     const sub = await subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: 'u' });
     const ids = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION + 5 }, (_, i) => `e${i}`);

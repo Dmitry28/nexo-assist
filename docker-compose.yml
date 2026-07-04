@@ -1,6 +1,8 @@
-# Local development / simple single-host deploy.
+# Local stack (not a deploy artifact — the deploy story incl. migrations is Phase 5).
 #   npm run db:up            # just Postgres (dev: run the app with npm run start:dev)
-#   docker compose up --build  # full stack (app + Postgres)
+#   npm run dev:docker       # full stack with hot-reload (override applies migrations)
+# NOTE: the base file alone runs the prod-like runtime image, which contains no
+# migration tooling — apply the schema first (npm run migration:run from the host).
 
 services:
   app:
@@ -19,7 +21,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://app:app@postgres:5432/app
     env_file:
-      # Optional: app boots on defaults from env.validation.ts without a .env file.
+      # NOTE: with APP_ENV=production a TELEGRAM_BOT_TOKEN is required — provide it
+      # here (.env) or via the environment; without it the container exits at boot.
       - path: .env
         required: false
     # Healthcheck is inherited from the image (see Dockerfile HEALTHCHECK).

@@ -134,7 +134,8 @@ proxy layers (e.g. a CDN in front of the ingress).
 ## Docker
 
 ```bash
-# Single image (production runtime)
+# Single image (production runtime; apply the schema first — the runtime image has
+# no migration tooling until the Phase-5 deploy wiring)
 docker build -t nexo-assist .
 docker run -p 3000:3000 --env-file .env nexo-assist
 
@@ -159,7 +160,7 @@ kubectl apply -k k8s/
 
 Includes liveness/readiness/startup probes, resource requests+limits, non-root +
 read-only-rootfs security context, and Prometheus scrape annotations. Runs as a
-single replica — long-polling bot with in-memory state (see the NOTE in the manifest).
+single replica — long-polling bot (one poller per token; in-memory pending prompts — see the NOTE in the manifest).
 
 ## Conventions
 

@@ -10,11 +10,11 @@ kubectl apply -k k8s/
 cd k8s && kustomize edit set image nexo-assist=registry/nexo-assist:<git-sha>
 ```
 
-| File              | Purpose                                                                                                                                                                          |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `configmap.yaml`  | Non-secret env. Credentials live in the `nexo-assist-secrets` Secret referenced by the deployment.                                                                               |
-| `deployment.yaml` | 1 replica (long-polling bot + in-memory state — see NOTE in the manifest), probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
-| `service.yaml`    | ClusterIP on port 80 → container port 3000.                                                                                                                                      |
+| File              | Purpose                                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `configmap.yaml`  | Non-secret env. Credentials live in the `nexo-assist-secrets` Secret referenced by the deployment.                                                                                         |
+| `deployment.yaml` | 1 replica (long-polling bot + in-memory pending prompts — see NOTE in the manifest), probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
+| `service.yaml`    | ClusterIP on port 80 → container port 3000.                                                                                                                                                |
 
 ## Probes
 

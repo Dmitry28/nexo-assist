@@ -10,8 +10,8 @@ import { Subscription } from './entities/subscription.entity';
 import { User } from './entities/user.entity';
 
 // Cap on stored seen rows per subscription. Kept above the source page-cap window
-// (MAX_PAGES × page size ≈ 250) so ids still reachable are never pruned — anything
-// older has fallen out of the window and can't reappear as "new".
+// (MAX_PAGES × page size ≈ 150, see paginate.ts) so ids still reachable are never
+// pruned — anything older has fallen out of the window and can't reappear as "new".
 export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
@@ -89,6 +89,15 @@ export class SubscriptionsService {
   async getSeen(subscriptionId: string, candidates: string[]): Promise<ReadonlySet<string>> {
     if (candidates.length === 0) return new Set();
     const rows = await this.seen.findBy({ subscriptionId, externalId: In(candidates) });
+    if (rows.length > 0) {
+      // NOTE: refresh seenAt for ids still in the page window, so the prune's "keep
+      // newest N" tracks window membership — otherwise a listing bumped back into the
+      // window could have its old seen row pruned and be re-delivered as "new".
+      await this.seen.update(
+        { subscriptionId, externalId: In(rows.map((r) => r.externalId)) },
+        { seenAt: new Date() },
+      );
+    }
     return new Set(rows.map((r) => r.externalId));
   }
 

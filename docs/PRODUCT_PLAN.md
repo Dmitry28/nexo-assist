@@ -152,6 +152,10 @@ URL → fan-out) и вместе с ним `listings` + **снимки цен** 
 ### Фаза 5 — Деплой в k8s (бесплатно)
 
 - Dockerize (multi-stage), Helm/Kustomize, Secrets/ConfigMaps.
+- **Миграции при деплое**: скомпилировать миграции в `dist` + JS data-source и гонять
+  `migration:run` в рантайм-образе (initContainer / entrypoint) — сейчас миграции
+  запускаются только с хоста/в dev-override. k8s Secret для `DATABASE_URL`; SSL с
+  верификацией сертификата (Neon CA) — закрыть TODO в `app.module.ts`.
 - Deployment (бот, webhook) + CronJob (скрейп) + Postgres (managed или CloudNativePG).
 - Oracle Cloud Always Free + k3s. CI/CD: GitHub Actions → registry → deploy.
 - Probes, ресурсные лимиты, graceful shutdown (в скелете есть).
