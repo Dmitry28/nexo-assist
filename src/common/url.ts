@@ -23,6 +23,27 @@ export function extractUrl(text: string): string | null {
   return url !== null && url.length <= MAX_URL_LENGTH ? url : null;
 }
 
+// Params that don't change a search's identity — pagination/order (adapters re-pin these
+// anyway) and tracking. Dropped so the same search dedups however the link was pasted.
+const VOLATILE_PARAMS = ['cursor', 'page', 'sort', 'sortType'];
+
+/**
+ * Canonical form of a search URL for dedup: lowercased host without `www.`, volatile and
+ * `utm_*` params dropped, remaining params sorted, no trailing slash or fragment.
+ * Heuristic and source-agnostic; refine per adapter only if a real collision shows up.
+ */
+export function normalizeUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.hash = '';
+  parsed.hostname = parsed.hostname.replace(/^www\./, '');
+  for (const key of [...parsed.searchParams.keys()]) {
+    if (VOLATILE_PARAMS.includes(key) || key.startsWith('utm_')) parsed.searchParams.delete(key);
+  }
+  parsed.searchParams.sort();
+  parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+  return parsed.toString();
+}
+
 /** Whether the URL's hostname is `host` or one of its subdomains (e.g. re.kufar.by). */
 export function matchesHost(url: string, host: string): boolean {
   let parsed: URL;
