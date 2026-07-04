@@ -12,6 +12,11 @@ import { TelegramService } from './telegram.service';
 
 const JOB_NAME = 'daily-watch';
 
+/** Base delay plus a random 0..jitter, in ms — paces polls so we don't hammer a source. */
+export function jitteredDelay(minMs: number, jitterMs: number, random = Math.random): number {
+  return minMs + Math.floor(random() * (jitterMs + 1));
+}
+
 /** Runs the daily subscription check and pushes new listings to each subscriber. */
 @Injectable()
 export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
@@ -41,7 +46,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   async runDaily(): Promise<void> {
-    for (const sub of await this.subscriptions.listAll()) {
+    const subs = await this.subscriptions.listAll();
+    for (const [i, sub] of subs.entries()) {
+      // Pace between polls (not before the first) so sources aren't hit back-to-back.
+      if (i > 0) await this.pace();
       try {
         const outcome = await this.watch.poll(sub);
         // A pending baseline was just seeded silently — deliver only fresh listings.
@@ -55,5 +63,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
       }
     }
+  }
+
+  private pace(): Promise<void> {
+    const ms = jitteredDelay(this.appConfig.watchMinDelayMs, this.appConfig.watchJitterMs);
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
