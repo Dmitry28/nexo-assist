@@ -10,7 +10,10 @@ import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import {
+  MAX_SEEN_PER_SUBSCRIPTION,
+  SubscriptionsService,
+} from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
 // Data-layer + watch flow against a real Postgres (docker locally, service in CI).
@@ -95,6 +98,14 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     await subscriptions.markSeen(sub.id, ['2', '3']); // '2' already seen — ignored, no error
 
     expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4']))].sort()).toEqual(['2', '3']);
+  });
+
+  it('prunes the seen set to the most recent MAX per subscription', async () => {
+    const sub = await subscriptions.add({ telegramUserId: 1, source: 'kufar', url: 'u' });
+    const ids = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION + 5 }, (_, i) => `e${i}`);
+    await subscriptions.markSeen(sub.id, ids);
+
+    expect((await subscriptions.getSeen(sub.id, ids)).size).toBe(MAX_SEEN_PER_SUBSCRIPTION);
   });
 
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {

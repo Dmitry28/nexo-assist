@@ -8,6 +8,11 @@ import type { SourceId } from '@/modules/sources/source-adapter';
 import { SeenListing } from './entities/seen-listing.entity';
 import { Subscription } from './entities/subscription.entity';
 
+// Cap on stored seen rows per subscription. Kept above the source page-cap window
+// (MAX_PAGES × page size ≈ 250) so ids still reachable are never pruned — anything
+// older has fallen out of the window and can't reappear as "new".
+export const MAX_SEEN_PER_SUBSCRIPTION = 300;
+
 @Injectable()
 export class SubscriptionsService {
   constructor(
@@ -78,5 +83,23 @@ export class SubscriptionsService {
       .values(externalIds.map((externalId) => ({ subscriptionId, externalId })))
       .orIgnore()
       .execute();
+    await this.pruneSeen(manager, subscriptionId);
+  }
+
+  // Keep only the newest MAX_SEEN_PER_SUBSCRIPTION rows; drop the rest so the table
+  // stays bounded. Raw SQL — TypeORM can't express "NOT IN (… ORDER BY … LIMIT …)".
+  // NOTE: columns are quoted camelCase (default TypeORM naming), not snake_case.
+  private async pruneSeen(manager: EntityManager, subscriptionId: string): Promise<void> {
+    await manager.query(
+      `DELETE FROM seen_listings
+       WHERE "subscriptionId" = $1
+         AND "externalId" NOT IN (
+           SELECT "externalId" FROM seen_listings
+           WHERE "subscriptionId" = $1
+           ORDER BY "seenAt" DESC, "externalId" DESC
+           LIMIT $2
+         )`,
+      [subscriptionId, MAX_SEEN_PER_SUBSCRIPTION],
+    );
   }
 }
