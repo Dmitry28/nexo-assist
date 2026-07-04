@@ -1,9 +1,10 @@
 # nexo-assist
 
-Production-ready [NestJS](https://nestjs.com) skeleton. Opinionated, batteries-included
-starting point for building real modules: validated config, structured logging, global
-error handling, request validation, OpenAPI docs, health checks, and a full lint/format/test
-pipeline.
+Telegram listing-watch bot: paste a kufar.by / realt.by search link and get new
+listings on a schedule. Built on a production-ready [NestJS](https://nestjs.com) 11
+base: validated config, structured logging, global error handling, OpenAPI docs,
+health checks, and a full lint/format/test pipeline. Product spec:
+[docs/PRODUCT.md](docs/PRODUCT.md).
 
 ## Stack
 
@@ -74,17 +75,14 @@ src/
 │   ├── configuration.ts     # Typed, namespaced config (app.*)
 │   └── env.validation.ts    # Env schema — app refuses to boot if invalid
 ├── common/                  # Cross-cutting building blocks
-│   ├── dto/                 # Pagination request/response DTOs
-│   └── filters/             # Global exception filter (consistent error JSON)
+│   ├── filters/             # Global exception filter (consistent error JSON)
+│   └── url.ts               # URL helpers (extract, host pinning, query params)
 ├── health/                  # Liveness + readiness probes (Terminus)
 ├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
-    └── users/               # Reference feature module (copy this shape)
-        ├── dto/             # Request DTOs (create/update)
-        ├── entities/        # API-facing models
-        ├── users.controller.ts
-        ├── users.service.ts # In-memory store — swap for a DB repo
-        └── users.module.ts
+    ├── sources/             # Source plugins: SourceAdapter registry + kufar/realt scrapers
+    ├── subscriptions/       # Domain: subscription store + watch (baseline/diff) logic
+    └── telegram/            # Bot: grammY handlers, daily watch scheduler, digests
 
 k8s/                         # Kubernetes manifests (Kustomize)
 docker-compose.yml           # Local stack
@@ -92,7 +90,7 @@ docker-compose.yml           # Local stack
 
 ## Adding a new module
 
-Mirror `src/modules/users/`. Full checklist:
+Mirror `src/modules/subscriptions/`. Full checklist:
 [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
 
 ## Configuration
@@ -144,8 +142,9 @@ Manifests live in `k8s/` (Kustomize). See `k8s/README.md`.
 kubectl apply -k k8s/
 ```
 
-Includes liveness/readiness/startup probes, resource requests+limits, HPA (2→10),
-non-root + read-only-rootfs security context, and Prometheus scrape annotations.
+Includes liveness/readiness/startup probes, resource requests+limits, non-root +
+read-only-rootfs security context, and Prometheus scrape annotations. Runs as a
+single replica — long-polling bot with in-memory state (see the NOTE in the manifest).
 
 ## Conventions
 
