@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryFailedError } from 'typeorm';
+import { In, IsNull, Not, QueryFailedError } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
 import { normalizeUrl } from '@/common/url';
@@ -49,8 +49,12 @@ export class SubscriptionsService {
     // Dedup on the normalized URL (a unique index backs it); the bot flow is sequential,
     // so the check-then-insert TOCTOU race is negligible.
     const normalizedUrl = normalizeUrl(input.url);
-    if (await this.subs.existsBy({ userId: user.id, normalizedUrl })) {
-      throw new DuplicateSubscriptionError();
+    const existing = await this.subs.findOneBy({ userId: user.id, normalizedUrl });
+    if (existing) {
+      // Re-sending a URL you already watch revives it if it was auto-paused (dead link /
+      // blocked); an active one is a real duplicate.
+      if (!existing.pausedAt) throw new DuplicateSubscriptionError();
+      return this.revive(existing);
     }
     if ((await this.subs.countBy({ userId: user.id })) >= MAX_SUBSCRIPTIONS_PER_USER) {
       throw new SubscriptionLimitError();
@@ -83,8 +87,55 @@ export class SubscriptionsService {
     });
   }
 
-  listAll(): Promise<Subscription[]> {
-    return this.subs.find();
+  /** Subscriptions the scheduler should poll — active only (paused ones are skipped). */
+  listActive(): Promise<Subscription[]> {
+    return this.subs.find({ where: { pausedAt: IsNull() } });
+  }
+
+  /** Count of active (non-paused) subscriptions — for metrics / admin stats. */
+  countActive(): Promise<number> {
+    return this.subs.countBy({ pausedAt: IsNull() });
+  }
+
+  /** Count of paused subscriptions — for admin stats. */
+  countPaused(): Promise<number> {
+    return this.subs.countBy({ pausedAt: Not(IsNull()) });
+  }
+
+  /** Count of users — for metrics / admin stats. */
+  countUsers(): Promise<number> {
+    return this.users.count();
+  }
+
+  /**
+   * Pause every currently-active subscription of a user — used after a Telegram 403
+   * (the user blocked the bot), so we stop scraping/delivering for them. Only touches
+   * active rows, so an existing pause timestamp is preserved.
+   */
+  async pauseAllForUser(userId: string): Promise<number> {
+    const result = await this.subs.update({ userId, pausedAt: IsNull() }, { pausedAt: new Date() });
+    return result.affected ?? 0;
+  }
+
+  /** Pause a single subscription — used when its URL looks dead (see consecutiveFailures). */
+  async pause(id: string): Promise<void> {
+    await this.subs.update({ id }, { pausedAt: new Date() });
+  }
+
+  /** Re-activate a paused subscription (user re-sent its URL): clear pause + failure streak. */
+  private async revive(sub: Subscription): Promise<Subscription> {
+    await this.subs.update({ id: sub.id }, { pausedAt: null, consecutiveFailures: 0 });
+    return this.subs.findOneByOrFail({ id: sub.id });
+  }
+
+  /** Increment a subscription's consecutive-failure streak by one (atomic). */
+  async bumpFailures(id: string): Promise<void> {
+    await this.subs.increment({ id }, 'consecutiveFailures', 1);
+  }
+
+  /** Clear the failure streak after a successful poll. */
+  async resetFailures(id: string): Promise<void> {
+    await this.subs.update({ id }, { consecutiveFailures: 0 });
   }
 
   /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */

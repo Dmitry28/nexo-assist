@@ -14,6 +14,8 @@ data:
   # Pacing between subscription polls: base delay + random 0..jitter (ms).
   WATCH_MIN_DELAY_MS: '2000'
   WATCH_JITTER_MS: '3000'
+  # Owner's Telegram id for the admin-only /stats command (optional, no default).
+  ADMIN_TELEGRAM_ID: '377250974'
   API_PREFIX: 'api'
   API_VERSION: '1'
   LOG_LEVEL: 'info'

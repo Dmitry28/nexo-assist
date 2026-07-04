@@ -15,6 +15,7 @@ export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => 
     throttleTtl: 60,
     throttleLimit: 100,
     telegramBotToken: undefined,
+    adminTelegramId: undefined,
     watchCron: '0 9 * * *',
     watchMinDelayMs: 2000,
     watchJitterMs: 3000,

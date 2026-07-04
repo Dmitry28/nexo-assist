@@ -1,3 +1,4 @@
+import { autoRetry } from '@grammyjs/auto-retry';
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Bot } from 'grammy';
 
@@ -34,6 +35,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     }
 
     const bot = new Bot(token);
+    // Respect Telegram rate limits automatically (waits out 429 retry_after).
+    bot.api.config.use(autoRetry());
     this.handlers.register(bot);
     bot.catch((err) => this.logger.error({ err }, 'Bot handler error'));
 

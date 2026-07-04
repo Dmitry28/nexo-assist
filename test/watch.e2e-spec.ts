@@ -8,6 +8,8 @@ import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
 import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-InitSchema';
 import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
 import { AddNormalizedUrl1783187484846 } from '@/database/migrations/1783187484846-AddNormalizedUrl';
+import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
+import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -42,6 +44,8 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             InitSchema1783163228738,
             AddUsers1783179934781,
             AddNormalizedUrl1783187484846,
+            AddPausedAt1783195101942,
+            AddConsecutiveFailures1783196783018,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -206,6 +210,74 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
         url: 'https://kufar.by/l/over',
       }),
     ).rejects.toBeInstanceOf(SubscriptionLimitError);
+  });
+
+  it('pauseAllForUser pauses every sub of a user; listActive then excludes them', async () => {
+    const a = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/a',
+    });
+    await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/b',
+    });
+    const other = await subscriptions.add({
+      user: { telegramId: 2 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/c',
+    });
+
+    expect(await subscriptions.pauseAllForUser(a.userId)).toBe(2); // both of user 1's subs
+
+    // Only user 1's subs are paused; user 2 (other) stays active.
+    const active = await subscriptions.listActive();
+    expect(active.map((s) => s.id)).toEqual([other.id]);
+    // pausedAt is stamped on the paused rows.
+    const [reloaded] = await subscriptions.listByUser(1);
+    expect(reloaded.pausedAt).toBeInstanceOf(Date);
+  });
+
+  it('bumpFailures increments, resetFailures clears, and pause pauses one subscription', async () => {
+    const s = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+
+    await subscriptions.bumpFailures(s.id);
+    await subscriptions.bumpFailures(s.id);
+    expect((await subscriptions.listByUser(1))[0].consecutiveFailures).toBe(2);
+
+    await subscriptions.resetFailures(s.id);
+    expect((await subscriptions.listByUser(1))[0].consecutiveFailures).toBe(0);
+
+    await subscriptions.pause(s.id);
+    expect(await subscriptions.listActive()).toEqual([]); // paused → excluded
+    expect((await subscriptions.listByUser(1))[0].pausedAt).toBeInstanceOf(Date);
+  });
+
+  it('re-adding a paused search revives it (clears pause + failure streak, same row)', async () => {
+    const s = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x?page=1',
+    });
+    await subscriptions.bumpFailures(s.id);
+    await subscriptions.pause(s.id);
+    expect(await subscriptions.listActive()).toEqual([]); // paused → not polled
+
+    // Same search (volatile params differ → same normalizedUrl) — should revive, not duplicate.
+    const revived = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x?page=9',
+    });
+    expect(revived.id).toBe(s.id); // same row, no duplicate created
+    expect(revived.pausedAt).toBeNull();
+    expect(revived.consecutiveFailures).toBe(0);
+    expect((await subscriptions.listActive()).map((x) => x.id)).toEqual([s.id]); // active again
   });
 
   it("remove deletes only the owner's subscription and cascades its seen rows", async () => {

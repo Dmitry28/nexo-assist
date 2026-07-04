@@ -16,6 +16,7 @@ start; more frequent once throttling/dedupe land).
 - Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet.
 - Buttons: Subscribe / Cancel / Show current / list / remove; non-production `/check`
   (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
+  Admin-only `/stats` (`ADMIN_TELEGRAM_ID`) reports users / active / paused / last run.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
@@ -63,6 +64,11 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   ~100), not one message per item and not a silent "N more" drop.
 - **Telegram limits:** throttle the fan-out through a queue; if a user blocked the
   bot (403) → pause their subscriptions.
+- **Dead link:** if a search keeps failing to poll (errors, not empty results) for
+  several runs in a row → tell the user to refresh it and pause that subscription.
+  Re-sending the same search link revives a paused subscription (clears the pause).
+- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`) is notified on every auto-pause
+  (403 / dead link) and when a whole source fails all its polls in a run.
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture

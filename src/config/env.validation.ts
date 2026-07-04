@@ -101,6 +101,11 @@ export class EnvironmentVariables {
   @IsNotEmpty({ message: 'TELEGRAM_BOT_TOKEN is required when APP_ENV=production' })
   TELEGRAM_BOT_TOKEN?: string;
 
+  /** Telegram id of the owner — enables the admin-only /stats command. Unset = no admin. */
+  @IsNumber()
+  @IsOptional()
+  ADMIN_TELEGRAM_ID?: number;
+
   /**
    * Cron for the daily subscription check. 5 fields only (min hour dom mon dow);
    * a 6th field would be seconds in the cron lib — avoided, we need daily granularity.

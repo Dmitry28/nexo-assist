@@ -37,6 +37,7 @@
     "prepare": "husky || true"
   },
   "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
     "@nestjs/common": "^11.1.27",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.1.27",

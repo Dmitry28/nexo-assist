@@ -22,8 +22,10 @@ import {
   MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
   formatCurrentListings,
+  formatStats,
   newListingsDigest,
 } from './telegram.format';
+import { WatchStatus } from './watch.status';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const EXPIRED = 'This prompt has expired — send the link again.';
@@ -51,11 +53,13 @@ export class TelegramHandlers {
     private readonly subscriptions: SubscriptionsService,
     private readonly watch: WatchService,
     private readonly registry: SourceRegistry,
+    private readonly status: WatchStatus,
   ) {}
 
   register(bot: Bot): void {
     bot.command('start', (ctx) => ctx.reply(`Hi! ${PROMPT}`));
     bot.command('list', (ctx) => this.showList(ctx));
+    bot.command('stats', (ctx) => this.onStats(ctx));
     // NOTE: /check is a manual test trigger — kept out of production.
     if (!this.appConfig.isProduction) {
       bot.command('check', (ctx) => this.onCheck(ctx));
@@ -203,6 +207,19 @@ export class TelegramHandlers {
     });
   }
 
+  /** Admin-only service snapshot. Silent for everyone else — don't reveal the command. */
+  private async onStats(ctx: Context): Promise<void> {
+    const adminId = this.appConfig.adminTelegramId;
+    if (adminId === undefined || ctx.from?.id !== adminId) return;
+
+    const [users, active, paused] = await Promise.all([
+      this.subscriptions.countUsers(),
+      this.subscriptions.countActive(),
+      this.subscriptions.countPaused(),
+    ]);
+    await ctx.reply(formatStats({ users, active, paused, lastRunAt: this.status.lastRunAt }));
+  }
+
   private async onCheck(ctx: Context): Promise<void> {
     const userId = ctx.from?.id;
     // Anonymous senders have no subscriptions to check.
@@ -214,31 +231,35 @@ export class TelegramHandlers {
       return;
     }
 
-    let hasFindings = false;
-    let hasFailures = false;
+    let replied = false;
     for (const sub of subs) {
-      try {
-        const outcome = await this.watch.poll(sub);
-        if (outcome.kind === 'nothing') continue;
-        hasFindings = true;
-        if (outcome.kind === 'baselined') {
-          await ctx.reply(
-            `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
-            { link_preview_options: NO_LINK_PREVIEW },
-          );
-          continue;
-        }
-        const { text, delivered } = newListingsDigest(outcome.listings);
-        await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-        await this.watch.markSeen(sub, delivered);
-      } catch (err) {
-        hasFailures = true;
-        this.logger.warn({ err }, `Check failed for ${sub.url}`);
-        await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
-      }
+      replied = (await this.checkOne(ctx, sub)) || replied;
     }
-    // Error replies already went out — a trailing "Nothing new." would contradict them.
-    if (!hasFindings && !hasFailures) await ctx.reply('Nothing new.');
+    // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
+    if (!replied) await ctx.reply('Nothing new.');
+  }
+
+  /** Poll one subscription and reply with its outcome. Returns true if it replied anything. */
+  private async checkOne(ctx: Context, sub: Subscription): Promise<boolean> {
+    try {
+      const outcome = await this.watch.poll(sub);
+      if (outcome.kind === 'nothing') return false;
+      if (outcome.kind === 'baselined') {
+        await ctx.reply(
+          `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
+          { link_preview_options: NO_LINK_PREVIEW },
+        );
+        return true;
+      }
+      const { text, delivered } = newListingsDigest(outcome.listings);
+      await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
+      await this.watch.markSeen(sub, delivered);
+      return true;
+    } catch (err) {
+      this.logger.warn({ err }, `Check failed for ${sub.url}`);
+      await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
+      return true;
+    }
   }
 
   private async onShowCurrent(ctx: Context): Promise<void> {
