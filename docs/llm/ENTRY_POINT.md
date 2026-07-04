@@ -37,6 +37,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 ## Core Rules
 
 - **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
+- **Decide, don't ask.** When a question comes up, investigate it yourself first (code, docs, live checks) and decide by common sense, standards and best practices. Ask the owner only what is genuinely important: product direction, destructive/irreversible actions, trade-offs only he can weigh.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - Follow existing NestJS module structure — mirror an existing module (`subscriptions`, `telegram`).
 - **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
