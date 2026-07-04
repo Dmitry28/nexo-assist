@@ -164,14 +164,22 @@ URL → fan-out) и вместе с ним `listings` + **снимки цен** 
 
 ### Фаза 5 — Деплой в k8s (бесплатно)
 
-- Dockerize (multi-stage), Helm/Kustomize, Secrets/ConfigMaps.
-- **Миграции при деплое**: скомпилировать миграции в `dist` + JS data-source и гонять
-  `migration:run` в рантайм-образе (initContainer / entrypoint) — сейчас миграции
-  запускаются только с хоста/в dev-override. k8s Secret для `DATABASE_URL`; SSL с
-  верификацией сертификата (Neon CA) — закрыть TODO в `app.module.ts`.
-- Deployment (бот, webhook) + CronJob (скрейп) + Postgres (managed или CloudNativePG).
-- Oracle Cloud Always Free + k3s. CI/CD: GitHub Actions → registry → deploy.
-- Probes, ресурсные лимиты, graceful shutdown (в скелете есть).
+- **Стек (решено):** k3s на Oracle Cloud Always Free; managed Postgres — Neon (free
+  tier); манифесты — Kustomize (без Helm); образ — существующий multi-stage Dockerfile.
+- **Миграции при деплое:** сделать `data-source.ts` env-aware (глобы от `__dirname`,
+  `{ts,js}`) — один файл работает и под ts-node (CLI), и под node (рантайм); prod-скрипт
+  `migration:run` без ts-node; запуск **initContainer**'ом (идемпотентно, до старта app).
+  `typeorm` уже в prod-зависимостях. Сейчас миграции гоняются только с хоста/в dev.
+- **Секреты:** `DATABASE_URL` (Neon) + `TELEGRAM_BOT_TOKEN` → k8s Secret
+  `nexo-assist-secrets` (sealed / external-secrets, не в репо); несекретное — configmap.
+- **SSL к Neon:** закрыть TODO в `app.module.ts` — `rejectUnauthorized: true` + Neon CA.
+- **Один Deployment:** long-polling бот + in-process scheduler (singleton, `Recreate` —
+  уже в манифесте). Отдельный scrape-CronJob и webhook — только под горизонтальное
+  масштабирование, не сейчас.
+- **CI/CD:** GitHub Actions → build → push в registry (GHCR) → `kubectl apply -k` /
+  `kustomize set image`. Сейчас CI только build+test.
+- Пробы, ресурс-лимиты, graceful shutdown — в скелете есть; добавить ожидание OTel
+  flush в shutdown (техбэклог).
 - **Из Фазы 4 (нужен живой деплой):** бюджет прокси (scrapfly) + backoff на бан.
 - **Все ошибки долетают до владельца (OT/алертинг).** Цель: не только продуктовые
   алерты 4.6 (автопаузы, провал источника), а **любое** необработанное исключение —
