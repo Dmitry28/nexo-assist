@@ -79,6 +79,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
         // through reviewed migrations (Phase 3.2+); autosync would risk data loss in prod.
         synchronize: false,
         // Managed Postgres (Neon) requires SSL; local docker doesn't.
+        // TODO: verify the server cert (rejectUnauthorized + Neon CA) when wiring deploy [M] — Phase 5.
         ssl: appConfig.isProduction || appConfig.isStaging ? { rejectUnauthorized: false } : false,
       }),
     }),

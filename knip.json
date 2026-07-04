@@ -1,6 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
-  "entry": ["src/main.ts", "test/**/*.e2e-spec.ts"],
+  "entry": [
+    "src/main.ts",
+    "test/**/*.e2e-spec.ts",
+    "src/database/data-source.ts",
+    "src/database/migrations/*.ts",
+    "src/modules/**/entities/*.entity.ts"
+  ],
   "project": ["src/**/*.ts", "test/**/*.ts"],
   "ignoreDependencies": ["pino-pretty"],
   "rules": { "enumMembers": "off" }

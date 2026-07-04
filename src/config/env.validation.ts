@@ -27,6 +27,9 @@ export enum AppEnv {
   Test = 'test',
 }
 
+/** Local docker Postgres — the default DB URL, shared with the migration CLI data-source. */
+export const DEFAULT_DATABASE_URL = 'postgres://app:app@localhost:5432/app';
+
 export enum LogLevel {
   Trace = 'trace',
   Debug = 'debug',
@@ -113,7 +116,7 @@ export class EnvironmentVariables {
    */
   @IsString()
   @IsOptional()
-  DATABASE_URL: string = 'postgres://app:app@localhost:5432/app';
+  DATABASE_URL: string = DEFAULT_DATABASE_URL;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

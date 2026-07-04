@@ -38,6 +38,8 @@ health checks, and a full lint/format/test pipeline. Product spec:
 ```bash
 npm install
 cp .env.example .env
+npm run db:up          # start local Postgres (docker)
+npm run migration:run  # create the schema
 npm run start:dev
 ```
 
@@ -49,19 +51,27 @@ npm run start:dev
 
 ## Scripts
 
-| Script                 | Description                       |
-| ---------------------- | --------------------------------- |
-| `npm run start:dev`    | Run with watch mode               |
-| `npm run start:prod`   | Run compiled output (`dist/main`) |
-| `npm run build`        | Compile to `dist/`                |
-| `npm run lint`         | ESLint (fails on warnings)        |
-| `npm run lint:fix`     | ESLint with autofix               |
-| `npm run format`       | Prettier write                    |
-| `npm run format:check` | Prettier check (CI)               |
-| `npm run typecheck`    | `tsc --noEmit`                    |
-| `npm test`             | Unit tests                        |
-| `npm run test:cov`     | Unit tests with coverage          |
-| `npm run test:e2e`     | End-to-end tests                  |
+| Script                                                         | Description                              |
+| -------------------------------------------------------------- | ---------------------------------------- |
+| `npm run start:dev`                                            | Run with watch mode                      |
+| `npm run start:prod`                                           | Run compiled output (`dist/main`)        |
+| `npm run build`                                                | Compile to `dist/`                       |
+| `npm run lint`                                                 | ESLint (fails on warnings)               |
+| `npm run lint:fix`                                             | ESLint with autofix                      |
+| `npm run format`                                               | Prettier write                           |
+| `npm run format:check`                                         | Prettier check (CI)                      |
+| `npm run typecheck`                                            | `tsc --noEmit`                           |
+| `npm test`                                                     | Unit tests                               |
+| `npm run test:cov`                                             | Unit tests with coverage                 |
+| `npm run test:e2e`                                             | End-to-end tests (needs the DB)          |
+| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)         |
+| `npm run db:up`                                                | Start local Postgres (docker)            |
+| `npm run db:down`                                              | Stop local Postgres                      |
+| `npm run db:reset`                                             | Recreate the DB (wipes data)             |
+| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes |
+| `npm run migration:run`                                        | Apply pending migrations                 |
+| `npm run migration:revert`                                     | Revert the last migration                |
+| `npm run migration:show`                                       | List migrations + status                 |
 
 ## Project structure
 
@@ -128,7 +138,7 @@ proxy layers (e.g. a CDN in front of the ingress).
 docker build -t nexo-assist .
 docker run -p 3000:3000 --env-file .env nexo-assist
 
-# Local stack (app + room for postgres/redis)
+# Local stack (app + Postgres)
 docker compose up --build
 ```
 
