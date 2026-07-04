@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 
 import type { SourceId } from '@/modules/sources/source-adapter';
@@ -13,6 +14,7 @@ import { User } from './user.entity';
 
 /** A user's request to watch one search URL. */
 @Entity('subscriptions')
+@Unique(['userId', 'normalizedUrl'])
 export class Subscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -30,6 +32,10 @@ export class Subscription {
 
   @Column({ type: 'text' })
   url: string;
+
+  // Canonical form of `url` for dedup — unique per user (see @Unique above).
+  @Column({ type: 'text' })
+  normalizedUrl: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

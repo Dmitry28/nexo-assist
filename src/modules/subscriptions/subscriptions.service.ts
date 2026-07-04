@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In } from 'typeorm';
+import { In, QueryFailedError } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
+import { normalizeUrl } from '@/common/url';
 import type { SourceId } from '@/modules/sources/source-adapter';
 
 import { SeenListing } from './entities/seen-listing.entity';
@@ -17,7 +18,7 @@ export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
 export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 
-/** The user already watches this exact URL. */
+/** The user already watches this search (matched by normalized URL). */
 export class DuplicateSubscriptionError extends Error {}
 /** The user hit MAX_SUBSCRIPTIONS_PER_USER. */
 export class SubscriptionLimitError extends Error {}
@@ -45,17 +46,29 @@ export class SubscriptionsService {
     url: string;
   }): Promise<Subscription> {
     const user = await this.upsertUser(input.user);
-    // NOTE: exact-URL dedup for now; full (userId, normalized_url) uniqueness lands with
-    // URL normalization (Phase 2.4). The bot flow is sequential, so a TOCTOU race is negligible.
-    if (await this.subs.existsBy({ userId: user.id, url: input.url })) {
+    // Dedup on the normalized URL (a unique index backs it); the bot flow is sequential,
+    // so the check-then-insert TOCTOU race is negligible.
+    const normalizedUrl = normalizeUrl(input.url);
+    if (await this.subs.existsBy({ userId: user.id, normalizedUrl })) {
       throw new DuplicateSubscriptionError();
     }
     if ((await this.subs.countBy({ userId: user.id })) >= MAX_SUBSCRIPTIONS_PER_USER) {
       throw new SubscriptionLimitError();
     }
-    return this.subs.save(
-      this.subs.create({ userId: user.id, source: input.source, url: input.url }),
-    );
+    try {
+      return await this.subs.save(
+        this.subs.create({ userId: user.id, source: input.source, url: input.url, normalizedUrl }),
+      );
+    } catch (err) {
+      // The unique index is the real guard — map a race that beat the existsBy check.
+      if (
+        err instanceof QueryFailedError &&
+        (err.driverError as { code?: string }).code === '23505'
+      ) {
+        throw new DuplicateSubscriptionError();
+      }
+      throw err;
+    }
   }
 
   has(id: string): Promise<boolean> {

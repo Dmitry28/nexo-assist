@@ -1,4 +1,4 @@
-import { extractUrl, matchesHost, withParam, withoutParam } from '../url';
+import { extractUrl, matchesHost, normalizeUrl, withParam, withoutParam } from '../url';
 
 describe('extractUrl', () => {
   it('pulls the first http(s) url from text', () => {
@@ -29,6 +29,28 @@ describe('matchesHost', () => {
     ['not a url', false],
   ])('matchesHost(%s, kufar.by) → %s', (url, expected) => {
     expect(matchesHost(url, 'kufar.by')).toBe(expected);
+  });
+});
+
+describe('normalizeUrl', () => {
+  it('lowercases host, strips www, drops volatile + utm params, sorts, trims slash', () => {
+    expect(
+      normalizeUrl(
+        'https://WWW.re.kufar.by/l/minsk/?sort=lst.d&price=1&cursor=abc&page=2&utm_source=x',
+      ),
+    ).toBe('https://re.kufar.by/l/minsk?price=1');
+  });
+
+  it('treats the same search as equal regardless of param order and pagination/sort', () => {
+    expect(normalizeUrl('https://kufar.by/x?b=2&a=1&page=3')).toBe(
+      normalizeUrl('https://kufar.by/x?a=1&sort=prc&b=2'),
+    );
+  });
+
+  it('drops realt sortType + page', () => {
+    expect(normalizeUrl('https://realt.by/sale/?sortType=createdAt&page=4&rooms=2')).toBe(
+      'https://realt.by/sale?rooms=2',
+    );
   });
 });
 
