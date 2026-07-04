@@ -35,10 +35,12 @@ export class WatchService {
     // (its seen set is wiped, so everything would otherwise look fresh).
     if (!sub.baselinedAt) {
       const count = await this.baseline(sub);
-      return this.subscriptions.has(sub.id) ? { kind: 'baselined', count } : { kind: 'nothing' };
+      return (await this.subscriptions.has(sub.id))
+        ? { kind: 'baselined', count }
+        : { kind: 'nothing' };
     }
     const fresh = await this.check(sub);
-    if (!this.subscriptions.has(sub.id) || fresh.length === 0) return { kind: 'nothing' };
+    if (fresh.length === 0 || !(await this.subscriptions.has(sub.id))) return { kind: 'nothing' };
     return { kind: 'fresh', listings: fresh };
   }
 
@@ -48,18 +50,27 @@ export class WatchService {
    */
   async baseline(sub: Subscription): Promise<number> {
     const listings = await this.adapter(sub).fetch(sub.url);
-    this.markSeen(sub, listings);
-    // NOTE: a later-page fetch failure yields a partial list (paginate keeps what it collected),
-    // so a partial baseline is still marked done — missed items surface as "new" later, bounded
-    // by the digest cap. Accepted until fetch reports completeness.
-    this.subscriptions.markBaselined(sub.id);
+    // NOTE: seed + mark-baselined in one transaction (seedBaseline). A later-page fetch
+    // failure yields a partial list (paginate keeps what it collected), so a partial
+    // baseline is still marked done — missed items surface as "new" later, bounded by the
+    // digest cap. Accepted until fetch reports completeness.
+    await this.subscriptions.seedBaseline(
+      sub.id,
+      listings.map((l) => l.externalId),
+    );
     return listings.length;
   }
 
-  /** Fetch current listings and return those not seen before. Read-only. */
+  /**
+   * Fetch current listings and return those not seen before. Marks nothing seen
+   * (getSeen only refreshes `seenAt` on already-delivered ids for the prune window).
+   */
   async check(sub: Subscription): Promise<Listing[]> {
     const listings = await this.adapter(sub).fetch(sub.url);
-    const seen = this.subscriptions.getSeen(sub.id);
+    const seen = await this.subscriptions.getSeen(
+      sub.id,
+      listings.map((l) => l.externalId),
+    );
     return listings.filter((l) => !seen.has(l.externalId));
   }
 
@@ -69,8 +80,8 @@ export class WatchService {
   }
 
   /** Mark listings as delivered so they are not sent again — call after a successful send. */
-  markSeen(sub: Subscription, listings: Listing[]): void {
-    this.subscriptions.markSeen(
+  markSeen(sub: Subscription, listings: Listing[]): Promise<void> {
+    return this.subscriptions.markSeen(
       sub.id,
       listings.map((l) => l.externalId),
     );

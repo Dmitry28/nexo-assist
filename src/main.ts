@@ -52,10 +52,17 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.port);
 
-  // Echo the effective (validated) config — mask secrets so they never hit logs.
-  const { telegramBotToken, ...safeConfig } = appConfig;
+  // Echo the effective (validated) config — mask secrets so they never hit logs
+  // (the bot token and the DB URL, which carries credentials).
+  const { telegramBotToken, databaseUrl, ...safeConfig } = appConfig;
   logger.log(
-    { config: { ...safeConfig, telegramBotToken: telegramBotToken ? '[set]' : undefined } },
+    {
+      config: {
+        ...safeConfig,
+        telegramBotToken: telegramBotToken ? '[set]' : undefined,
+        databaseUrl: databaseUrl ? '[set]' : undefined,
+      },
+    },
     'Bootstrap',
   );
   logger.log(`Application listening on port ${appConfig.port}`, 'Bootstrap');

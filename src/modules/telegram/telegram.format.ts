@@ -3,12 +3,12 @@ import type { Listing } from '@/modules/sources/source-adapter';
 /** Reusable "no link preview" message option. */
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
 
-// Digest caps: item count for readability, char budget with headroom under
-// Telegram's 4096-char message limit (an oversized send throws — and would then
-// be rebuilt oversized and fail on every retry).
+// Shared char budget with headroom under Telegram's 4096-char message limit (an
+// oversized send throws — and would then be rebuilt oversized and fail on every retry).
+export const MAX_MESSAGE_BUDGET_CHARS = 3500;
+// Digest item-count cap for readability.
 // DIGEST_LIMIT is exported for specs; production callers get the delivered slice.
 export const DIGEST_LIMIT = 10;
-const MAX_DIGEST_CHARS = 3500;
 // Clamp pathological titles — one huge line must not eat the char budget (it would
 // produce an item-less digest that delivers nothing and repeats forever).
 const MAX_TITLE_CHARS = 300;
@@ -34,7 +34,7 @@ function digest(listings: Listing[], header: string): { text: string; shown: Lis
   let length = header.length;
   for (const listing of listings) {
     const line = formatOne(listing);
-    if (shown.length >= DIGEST_LIMIT || length + line.length > MAX_DIGEST_CHARS) break;
+    if (shown.length >= DIGEST_LIMIT || length + line.length > MAX_MESSAGE_BUDGET_CHARS) break;
     lines.push(line);
     shown.push(listing);
     length += line.length + '\n\n'.length;

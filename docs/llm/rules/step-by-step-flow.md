@@ -10,5 +10,8 @@ the full-task loop is in [workflow.md](workflow.md).
 5. **Show the diff** / summary → wait for the user's review + approval.
 6. **Commit** via `/git-commit` — one focused commit. Then next step.
 
+**Review fixes are steps too.** After fixing review findings, show the fix diff and wait for
+approval before committing — no earlier approval ("push/PR ok" included) carries to a new commit.
+
 Track steps in a lean scratch file (table + current step) so progress survives context
 compression. One PR per phase bundles the step-commits ([github.md](github.md)).

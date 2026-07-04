@@ -9,16 +9,25 @@ import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import type { SourceId } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import {
+  DuplicateSubscriptionError,
+  MAX_SUBSCRIPTIONS_PER_USER,
+  SubscriptionLimitError,
+  SubscriptionsService,
+} from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { NO_LINK_PREVIEW, formatCurrentListings, newListingsDigest } from './telegram.format';
+import {
+  MAX_MESSAGE_BUDGET_CHARS,
+  NO_LINK_PREVIEW,
+  formatCurrentListings,
+  newListingsDigest,
+} from './telegram.format';
 
 const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
 const EXPIRED = 'This prompt has expired — send the link again.';
-// /list bounds — char budget with headroom under Telegram's 4096-char message limit,
-// row cap under its ~100-button inline-keyboard limit.
-const MAX_LIST_CHARS = 3500;
+// /list row cap — stays under Telegram's ~100-button inline-keyboard limit.
 const MAX_LIST_ROWS = 50;
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
 const MAX_PENDING = 500;
@@ -97,12 +106,35 @@ export class TelegramHandlers {
     // The answer is cosmetic: if it fails (late/duplicate callback), still subscribe.
     await ctx.answerCallbackQuery().catch(() => undefined);
 
-    // TODO: dedup — skip if the user already has this url [L] (with the DB slice).
-    const sub = this.subscriptions.add({
-      telegramUserId: candidate.userId,
-      source: candidate.source,
-      url: candidate.url,
-    });
+    // ctx.from is the owner (takePending checked it) — capture their profile.
+    let sub: Subscription;
+    try {
+      sub = await this.subscriptions.add({
+        user: {
+          telegramId: candidate.userId,
+          username: ctx.from?.username,
+          firstName: ctx.from?.first_name,
+          lastName: ctx.from?.last_name,
+          language: ctx.from?.language_code,
+        },
+        source: candidate.source,
+        url: candidate.url,
+      });
+    } catch (err) {
+      if (err instanceof DuplicateSubscriptionError) {
+        await ctx.editMessageText(`You're already watching this search.\n${candidate.url}`, {
+          link_preview_options: NO_LINK_PREVIEW,
+        });
+        return;
+      }
+      if (err instanceof SubscriptionLimitError) {
+        await ctx.editMessageText(
+          `You've reached the limit of ${MAX_SUBSCRIPTIONS_PER_USER} subscriptions — remove one via /list first.`,
+        );
+        return;
+      }
+      throw err;
+    }
 
     // NOTE: catch only the baseline — a failed message edit must fall through to bot.catch.
     // On failure the subscription is kept; the daily run baselines it silently.
@@ -144,7 +176,7 @@ export class TelegramHandlers {
     // Anonymous senders (e.g. channel posts) have no subscriptions to list.
     if (userId === undefined) return;
 
-    const subs = this.subscriptions.listByUser(userId);
+    const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
       await ctx.reply(`No subscriptions yet. ${PROMPT}`);
       return;
@@ -157,7 +189,7 @@ export class TelegramHandlers {
     let length = 0;
     for (const [i, sub] of subs.entries()) {
       const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
-      if (length + line.length > MAX_LIST_CHARS || i >= MAX_LIST_ROWS) {
+      if (length + line.length > MAX_MESSAGE_BUDGET_CHARS || i >= MAX_LIST_ROWS) {
         lines.push(`…and ${subs.length - i} more — remove some to see the rest`);
         break;
       }
@@ -176,7 +208,7 @@ export class TelegramHandlers {
     // Anonymous senders have no subscriptions to check.
     if (userId === undefined) return;
 
-    const subs = this.subscriptions.listByUser(userId);
+    const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
       await ctx.reply(`No subscriptions yet. ${PROMPT}`);
       return;
@@ -198,7 +230,7 @@ export class TelegramHandlers {
         }
         const { text, delivered } = newListingsDigest(outcome.listings);
         await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-        this.watch.markSeen(sub, delivered);
+        await this.watch.markSeen(sub, delivered);
       } catch (err) {
         hasFailures = true;
         this.logger.warn({ err }, `Check failed for ${sub.url}`);
@@ -214,7 +246,7 @@ export class TelegramHandlers {
     const id = this.matchParam(ctx);
     const sub =
       userId !== undefined && id !== undefined
-        ? this.subscriptions.listByUser(userId).find((s) => s.id === id)
+        ? (await this.subscriptions.listByUser(userId)).find((s) => s.id === id)
         : undefined;
     if (!sub) {
       await ctx.answerCallbackQuery('Subscription not found.');
@@ -242,7 +274,7 @@ export class TelegramHandlers {
       return;
     }
 
-    const removed = this.subscriptions.remove(id, userId);
+    const removed = await this.subscriptions.remove(id, userId);
     await ctx.answerCallbackQuery(removed ? 'Removed' : 'Already gone');
   }
 

@@ -25,6 +25,15 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "check:dead-code": "knip",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres",
+    "dev:docker": "docker compose up --build",
+    "typeorm": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
+    "migration:generate": "npm run typeorm -- migration:generate -d src/database/data-source.ts",
+    "migration:run": "npm run typeorm -- migration:run -d src/database/data-source.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts",
+    "migration:show": "npm run typeorm -- migration:show -d src/database/data-source.ts",
     "prepare": "husky || true"
   },
   "dependencies": {
@@ -36,6 +45,7 @@
     "@nestjs/swagger": "^11.4.5",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
+    "@nestjs/typeorm": "^11.0.3",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/auto-instrumentations-node": "^0.78.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
@@ -48,11 +58,13 @@
     "grammy": "^1.43.0",
     "helmet": "^8.0.0",
     "nestjs-pino": "^4.1.0",
+    "pg": "^8.22.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "typeorm": "^1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -64,6 +76,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.13.2",
     "@types/supertest": "^7.2.0",
+    "dotenv": "^17.4.2",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
@@ -78,6 +91,8 @@
     "prettier": "^3.9.4",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.62.1"
   },

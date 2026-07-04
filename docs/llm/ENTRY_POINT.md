@@ -43,7 +43,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
 - Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
-- **Keep product docs current:** on any change to product behavior or architecture, update [docs/PRODUCT.md](../PRODUCT.md) (how the product works) and [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap) in the same change.
+- **Keep docs current:** update **every** doc a change affects, in the same change — [docs/PRODUCT.md](../PRODUCT.md) (behavior) + [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap) for product/architecture; [README.md](../../README.md) for scripts, setup, commands, or stack; and the relevant `docs/llm/` rule when a convention changes.
 
 ## Reference Repos (local)
 

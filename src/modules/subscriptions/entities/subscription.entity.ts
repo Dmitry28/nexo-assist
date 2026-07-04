@@ -1,12 +1,40 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+
 import type { SourceId } from '@/modules/sources/source-adapter';
 
-/** A user's request to watch one search URL. In-memory for now. */
-export interface Subscription {
+import { User } from './user.entity';
+
+/** A user's request to watch one search URL. */
+@Entity('subscriptions')
+export class Subscription {
+  @PrimaryGeneratedColumn('uuid')
   id: string;
-  telegramUserId: number;
+
+  @Column('uuid')
+  userId: string;
+
+  // NOTE: eager — the scheduler needs user.telegramId to deliver without a second query.
+  @ManyToOne(() => User, { eager: true, onDelete: 'CASCADE', nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user: User;
+
+  @Column({ type: 'varchar' })
   source: SourceId;
+
+  @Column({ type: 'text' })
   url: string;
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
+
   /** When the seen set was seeded. Unset = baseline still pending (e.g. it failed on subscribe). */
+  @Column({ type: 'timestamptz', nullable: true })
   baselinedAt?: Date;
 }

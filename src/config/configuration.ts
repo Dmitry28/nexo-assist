@@ -30,6 +30,8 @@ export interface AppConfig {
   telegramBotToken: string | undefined;
   /** Cron expression for the daily subscription check. */
   watchCron: string;
+  /** Postgres connection URL (local docker by default; Neon in staging/prod). */
+  databaseUrl: string;
 }
 
 /** Derived `appEnv` flags — the single mapping, shared with test fixtures. */
@@ -67,5 +69,6 @@ export default registerAs('app', (): AppConfig => {
     throttleLimit: env.THROTTLE_LIMIT,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
     watchCron: env.WATCH_CRON,
+    databaseUrl: env.DATABASE_URL,
   };
 });
