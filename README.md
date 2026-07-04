@@ -134,15 +134,20 @@ proxy layers (e.g. a CDN in front of the ingress).
 ## Docker
 
 ```bash
-# Single image
+# Single image (production runtime)
 docker build -t nexo-assist .
 docker run -p 3000:3000 --env-file .env nexo-assist
 
-# Local stack (app + Postgres)
-docker compose up --build
+# Full local dev stack — Postgres + app with hot-reload (runs migrations, watches src/)
+npm run dev:docker            # = docker compose up --build
 ```
 
 Multi-stage build, runs as non-root, ships only production dependencies, with a `HEALTHCHECK`.
+
+**Dev in Docker:** `docker-compose.override.yml` (auto-merged by `docker compose`) builds the
+`dev` image stage, bind-mounts the source, and runs `nest start --watch` — editing `src/**`
+on the host reloads inside the container. `node_modules` stays from the image (anonymous
+volume). To run only the database instead, use `npm run db:up` and `npm run start:dev` on the host.
 
 ## Kubernetes
 
