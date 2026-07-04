@@ -15,3 +15,7 @@ approval before committing — no earlier approval ("push/PR ok" included) carri
 
 Track steps in a lean scratch file (table + current step) so progress survives context
 compression. One PR per phase bundles the step-commits ([github.md](github.md)).
+
+**Before opening the phase PR**, run a full `/logic-review` then `/review-code` over the whole
+accumulated diff (`dev..HEAD`), not just the last step — it catches cross-step integration
+issues the per-step reviews miss. Fix findings, then open the PR.
