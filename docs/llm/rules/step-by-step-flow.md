@@ -7,7 +7,7 @@ the full-task loop is in [workflow.md](workflow.md).
 2. **Implement** the approved step — focused and atomic.
 3. **Verify** — `/verify-task-result` (lint / typecheck / tests); for behavioral changes exercise the path.
 4. **Review** — `/logic-review` then `/review-code` on this step's changes; fix findings, re-review until clean. Every step, not just the last.
-5. **Show the diff** / summary → wait for the user's review + approval.
+5. **Show the diff** + a plain-language summary (what changed & why, understandable to a non-implementer) → wait for the user's review + approval.
 6. **Commit** via `/git-commit` — one focused commit. Then next step.
 
 **Review fixes are steps too.** After fixing review findings, show the fix diff and wait for

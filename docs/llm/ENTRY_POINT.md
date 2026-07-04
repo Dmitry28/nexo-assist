@@ -41,6 +41,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - Follow existing NestJS module structure — mirror an existing module (`subscriptions`, `telegram`).
 - **Talk to the user concisely** — clear, to the point, no filler. State facts only; explicitly mark assumptions and anything not yet verified.
+- **Explain purpose, plainly.** Before acting, say _why_ (what problem it solves / what it enables). When done, say _what_ changed and _why_ in plain language a non-implementer follows — the intent and effect, not a diff dump. File/line detail is a supplement, never the whole report.
 - Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep docs current:** update **every** doc a change affects, in the same change — [docs/PRODUCT.md](../PRODUCT.md) (behavior) + [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap) for product/architecture; [README.md](../../README.md) for scripts, setup, commands, or stack; and the relevant `docs/llm/` rule when a convention changes.
