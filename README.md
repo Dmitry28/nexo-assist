@@ -51,27 +51,28 @@ npm run start:dev
 
 ## Scripts
 
-| Script                                                         | Description                              |
-| -------------------------------------------------------------- | ---------------------------------------- |
-| `npm run start:dev`                                            | Run with watch mode                      |
-| `npm run start:prod`                                           | Run compiled output (`dist/main`)        |
-| `npm run build`                                                | Compile to `dist/`                       |
-| `npm run lint`                                                 | ESLint (fails on warnings)               |
-| `npm run lint:fix`                                             | ESLint with autofix                      |
-| `npm run format`                                               | Prettier write                           |
-| `npm run format:check`                                         | Prettier check (CI)                      |
-| `npm run typecheck`                                            | `tsc --noEmit`                           |
-| `npm test`                                                     | Unit tests                               |
-| `npm run test:cov`                                             | Unit tests with coverage                 |
-| `npm run test:e2e`                                             | End-to-end tests (needs the DB)          |
-| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)         |
-| `npm run db:up`                                                | Start local Postgres (docker)            |
-| `npm run db:down`                                              | Stop local Postgres                      |
-| `npm run db:reset`                                             | Recreate the DB (wipes data)             |
-| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes |
-| `npm run migration:run`                                        | Apply pending migrations                 |
-| `npm run migration:revert`                                     | Revert the last migration                |
-| `npm run migration:show`                                       | List migrations + status                 |
+| Script                                                         | Description                                                     |
+| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `npm run start:dev`                                            | Run with watch mode                                             |
+| `npm run start:prod`                                           | Run compiled output (`dist/main`)                               |
+| `npm run build`                                                | Compile to `dist/`                                              |
+| `npm run lint`                                                 | ESLint (fails on warnings)                                      |
+| `npm run lint:fix`                                             | ESLint with autofix                                             |
+| `npm run format`                                               | Prettier write                                                  |
+| `npm run format:check`                                         | Prettier check (CI)                                             |
+| `npm run typecheck`                                            | `tsc --noEmit`                                                  |
+| `npm test`                                                     | Unit tests                                                      |
+| `npm run test:cov`                                             | Unit tests with coverage                                        |
+| `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                 |
+| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                |
+| `npm run db:up`                                                | Start local Postgres (docker)                                   |
+| `npm run db:down`                                              | Stop local Postgres                                             |
+| `npm run db:reset`                                             | Recreate the DB (wipes data)                                    |
+| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes                        |
+| `npm run migration:run`                                        | Apply pending migrations                                        |
+| `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer) |
+| `npm run migration:revert`                                     | Revert the last migration                                       |
+| `npm run migration:show`                                       | List migrations + status                                        |
 
 ## Project structure
 
@@ -154,7 +155,8 @@ volume). To run only the database instead, use `npm run db:up` and `npm run star
 
 ## Kubernetes
 
-Manifests live in `k8s/` (Kustomize). See `k8s/README.md`.
+Manifests live in `k8s/` (Kustomize). See `k8s/README.md` for the manifest reference
+and [`docs/DEPLOY.md`](docs/DEPLOY.md) for a step-by-step deploy + DevOps learning guide.
 
 ```bash
 kubectl apply -k k8s/
