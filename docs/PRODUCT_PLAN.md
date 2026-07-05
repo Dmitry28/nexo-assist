@@ -178,8 +178,12 @@ URL → fan-out) и вместе с ним `listings` + **снимки цен** 
 - **Один Deployment:** long-polling бот + in-process scheduler (singleton, `Recreate` —
   уже в манифесте). Отдельный scrape-CronJob и webhook — только под горизонтальное
   масштабирование, не сейчас.
-- **CI/CD:** GitHub Actions → build → push в registry (GHCR) → `kubectl apply -k` /
-  `kustomize set image`. Сейчас CI только build+test.
+- **CI/CD:** GitHub Actions → build → push в GHCR (сделано, тег по sha) → деплой
+  `kubectl apply -k` / `kustomize set image`.
+- **Окружения:** сейчас — **только prod** (деплой с `main`). **Позже — dev/staging:**
+  один кластер, два namespace (`nexo-dev`/`nexo-prod`), Kustomize base + overlays; push
+  в `dev` → dev, в `main` → prod. Требует **отдельного бота** (свой токен — один токен =
+  один поллер) и **отдельной БД** (ветка Neon) для dev; образ общий (по sha).
 - Пробы, ресурс-лимиты, graceful shutdown — в скелете есть; добавить ожидание OTel
   flush в shutdown (техбэклог).
 - **Из Фазы 4 (нужен живой деплой):** бюджет прокси (scrapfly) + backoff на бан.
