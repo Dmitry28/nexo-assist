@@ -122,6 +122,94 @@ Dockerfile), на push в `dev`/`main` — сборка + пуш. Теги: `sha
 один образ, завтра другой) → для деплоя пинуем **неизменяемый** `sha-<commit>`: точно
 знаешь, что запущено, и откат = просто прежний sha. gha-кэш ускоряет пересборку.
 
+## Шаг 4 — Runbook: поднять кластер и задеплоить (делаешь ты, позже)
+
+Пошагово, с командами. Пока — **только prod** (один namespace). Бот на long-polling
+ходит наружу сам, поэтому **входящие порты для бота не нужны** (ни ingress, ни домен).
+
+### 4.1 Oracle Cloud — бесплатная VM
+
+1. Заведи аккаунт (нужна карта для верификации, списаний нет на Always Free).
+2. Compute → Instances → Create: shape **VM.Standard.A1.Flex** (ARM Ampere, Always
+   Free), напр. 2 OCPU / 12 GB, образ **Ubuntu 24.04**. Добавь свой SSH-ключ.
+   - _Каприз:_ ARM часто «Out of capacity» — повтори через время / смени AD/регион.
+3. Запиши публичный IP. В Security List оставь открытым только **22 (SSH)** — API
+   кластера наружу не открываем (ходим через SSH-туннель, см. 4.4).
+
+### 4.2 Neon — prod-база
+
+Создай проект → возьми **pooled** `DATABASE_URL` (вида
+`postgres://user:pass@ep-xxx-pooler.neon.tech/db?sslmode=require`). SSL уже включён.
+
+### 4.3 BotFather — prod-токен
+
+`/newbot` → сохрани `TELEGRAM_BOT_TOKEN` (для dev позже заведёшь **отдельного** бота).
+
+### 4.4 Установить k3s и забрать доступ
+
+```bash
+ssh ubuntu@<VM_IP>
+# Лёгкий однонодовый k8s. Отключаем traefik/servicelb — входящий трафик не нужен.
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik --disable servicelb" sh -
+sudo cat /etc/rancher/k3s/k3s.yaml   # это kubeconfig; server = https://127.0.0.1:6443
+```
+
+Скопируй содержимое в локальный `~/.kube/config`. Оставь `server: https://127.0.0.1:6443`
+и работай **через SSH-туннель** (безопасно, не открываем API наружу):
+
+```bash
+ssh -L 6443:127.0.0.1:6443 ubuntu@<VM_IP>   # держи открытым в отдельном терминале
+kubectl get nodes                            # проверка: нода Ready
+```
+
+### 4.5 Образ из GHCR
+
+CI уже пушит `ghcr.io/dmitry28/nexo-assist:sha-<...>` (шаг 5a). По умолчанию пакет
+**приватный** → сделай его **public** (GitHub → Packages → package → Settings →
+Change visibility). Тогда кластеру не нужен pull-секрет. _(Приватный вариант —
+`kubectl create secret docker-registry ...` с PAT `read:packages` + `imagePullSecrets`.)_
+
+### 4.6 Секреты и деплой
+
+```bash
+kubectl create secret generic nexo-assist-secrets \
+  --from-literal=TELEGRAM_BOT_TOKEN='<prod-token>' \
+  --from-literal=DATABASE_URL='<neon-url>'
+
+# Запинить свежий образ по sha (тег из GitHub → Packages или из CI-лога):
+# в k8s/kustomization.yaml добавь блок images (см. ниже), затем:
+kubectl apply -k k8s/
+```
+
+`images` в `k8s/kustomization.yaml` (пинним оба контейнера — app и initContainer):
+
+```yaml
+images:
+  - name: nexo-assist
+    newName: ghcr.io/dmitry28/nexo-assist
+    newTag: sha-<commit>
+```
+
+### 4.7 Проверка
+
+```bash
+kubectl get pods -w                       # initContainer 'migrate' → Completed, app → Running
+kubectl logs deploy/nexo-assist -c migrate   # миграции применились
+kubectl logs deploy/nexo-assist -f           # "Bot @... started"
+kubectl port-forward deploy/nexo-assist 3000:3000   # затем curl /api/v1/health/ready
+```
+
+Напиши боту в Telegram — должен ответить.
+
+### 4.8 Если что-то не так
+
+- **ImagePullBackOff** — пакет приватный → сделай public (4.5) или заведи pull-секрет.
+- **Init:CrashLoopBackOff** (migrate) — проверь `DATABASE_URL` в секрете и логи
+  initContainer'а; частая причина — неверный URL/SSL.
+- **CrashLoopBackOff** (app) — `kubectl logs`; обычно нет `TELEGRAM_BOT_TOKEN` или
+  конфликт `409` (второй поллер на том же токене — не запускай бота ещё где-то).
+- **Oracle "Out of capacity"** — повторяй создание VM / другой регион.
+
 ## Полезные команды
 
 ```bash
@@ -146,5 +234,5 @@ kubectl create secret generic nexo-assist-secrets \
 - k3s: https://docs.k3s.io/
 - Neon: https://neon.tech/docs/introduction
 
-_Дальше гайд растёт: шаг 4 (поднять кластер + деплой), шаг 5b (CD: авто-деплой в
-кластер), шаг 6 (observability/алертинг)._
+_Дальше гайд растёт: шаг 5b (CD: авто-деплой в кластер вместо ручного `apply`),
+шаг 6 (observability/алертинг), позже — dev-окружение (overlays)._
