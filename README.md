@@ -155,7 +155,8 @@ volume). To run only the database instead, use `npm run db:up` and `npm run star
 
 ## Kubernetes
 
-Manifests live in `k8s/` (Kustomize). See `k8s/README.md`.
+Manifests live in `k8s/` (Kustomize). See `k8s/README.md` for the manifest reference
+and [`docs/DEPLOY.md`](docs/DEPLOY.md) for a step-by-step deploy + DevOps learning guide.
 
 ```bash
 kubectl apply -k k8s/

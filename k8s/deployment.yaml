@@ -35,6 +35,43 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+      # Apply DB migrations before the app starts. Same image, plain node on the compiled
+      # data-source (migration:run:prod). Idempotent (TypeORM migrations table); a failure
+      # here blocks startup, so the app never runs against an unmigrated schema.
+      initContainers:
+        - name: migrate
+          image: nexo-assist:latest # kept in sync with the app image by CD (kustomize sets both)
+          imagePullPolicy: IfNotPresent
+          command:
+            [
+              'node',
+              './node_modules/typeorm/cli.js',
+              'migration:run',
+              '-d',
+              'dist/database/data-source.js',
+            ]
+          envFrom:
+            - configMapRef:
+                name: nexo-assist-config
+            # DATABASE_URL lives in the Secret (Neon URL has a password) — see README.
+            - secretRef:
+                name: nexo-assist-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: '1'
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: app
           image: nexo-assist:latest # set by your CD pipeline (e.g. registry/nexo-assist:<sha>)

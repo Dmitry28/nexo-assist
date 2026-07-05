@@ -24,7 +24,16 @@ cd k8s && kustomize edit set image nexo-assist=registry/nexo-assist:<git-sha>
 
 ## Secrets
 
-Create a `Secret` named `nexo-assist-secrets` with `TELEGRAM_BOT_TOKEN` **before**
-applying — the deployment references it, and production refuses to boot without
-the token. Never commit real secrets — use a sealed-secrets / external-secrets
+Create a `Secret` named `nexo-assist-secrets` with `TELEGRAM_BOT_TOKEN` and
+`DATABASE_URL` (the Neon URL — it carries a password) **before** applying: the
+app refuses to boot without the token, and the `migrate` initContainer needs the
+database URL. For example:
+
+```bash
+kubectl create secret generic nexo-assist-secrets \
+  --from-literal=TELEGRAM_BOT_TOKEN='123:abc' \
+  --from-literal=DATABASE_URL='postgres://user:pass@ep-xxx.neon.tech/db?sslmode=require'
+```
+
+Never commit real secrets — for GitOps use a sealed-secrets / external-secrets
 operator or your platform's secret manager.
