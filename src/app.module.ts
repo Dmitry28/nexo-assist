@@ -78,9 +78,11 @@ import { TelegramModule } from './modules/telegram/telegram.module';
         // NOTE: never auto-create/alter tables from entities — schema changes go only
         // through reviewed migrations (Phase 3.2+); autosync would risk data loss in prod.
         synchronize: false,
-        // Managed Postgres (Neon) requires SSL; local docker doesn't. Verify the server
-        // cert (rejectUnauthorized) to prevent MITM — Neon's cert chains to a public root,
-        // so Node's default CA bundle validates it (add a custom CA only if that changes).
+        // Managed Postgres (Neon) requires SSL; local docker doesn't. Cert verification
+        // (anti-MITM) is driven by `sslmode=verify-full` in DATABASE_URL — pg lets the URL
+        // govern SSL when sslmode is set (see DEPLOY.md), and verify-full is stable across
+        // pg versions. This option is a fallback: verify for prod/staging if the URL omits
+        // sslmode, and disable TLS for local docker.
         ssl: appConfig.isProduction || appConfig.isStaging ? { rejectUnauthorized: true } : false,
       }),
     }),

@@ -32,7 +32,7 @@ database URL. For example:
 ```bash
 kubectl create secret generic nexo-assist-secrets \
   --from-literal=TELEGRAM_BOT_TOKEN='123:abc' \
-  --from-literal=DATABASE_URL='postgres://user:pass@ep-xxx.neon.tech/db?sslmode=require'
+  --from-literal=DATABASE_URL='postgres://user:pass@ep-xxx.neon.tech/db?sslmode=verify-full'
 ```
 
 Never commit real secrets — for GitOps use a sealed-secrets / external-secrets
