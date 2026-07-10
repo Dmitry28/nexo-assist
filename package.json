@@ -28,10 +28,10 @@
     "prepare": "husky || true"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.27",
+    "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.0",
-    "@nestjs/core": "^11.1.27",
-    "@nestjs/platform-express": "^11.1.27",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
     "@nestjs/swagger": "^11.4.5",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
@@ -53,13 +53,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@nestjs/cli": "^11.0.23",
+    "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.0.0",
-    "@nestjs/testing": "^11.1.27",
+    "@nestjs/testing": "^11.1.28",
     "@types/compression": "^1.7.5",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.13.2",
+    "@types/node": "^24.13.3",
     "@types/supertest": "^7.2.0",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
@@ -69,14 +69,14 @@
     "globals": "^17.7.0",
     "husky": "^9.1.7",
     "jest": "^30.4.2",
-    "knip": "^6.24.0",
+    "knip": "^6.26.0",
     "lint-staged": "^17.0.8",
     "pino-pretty": "^13.0.0",
-    "prettier": "^3.9.4",
+    "prettier": "^3.9.5",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.62.1"
+    "typescript-eslint": "^8.63.0"
   },
   "lint-staged": {
     "*.ts": [
