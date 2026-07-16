@@ -127,8 +127,15 @@ Dockerfile), на push в `dev`/`main` — сборка + пуш. Теги: `sha
 
 ## Шаг 4 — Runbook: поднять кластер и задеплоить (делаешь ты, позже)
 
-Пошагово, с командами. Пока — **только prod** (один namespace). Бот на long-polling
-ходит наружу сам, поэтому **входящие порты для бота не нужны** (ни ingress, ни домен).
+Пошагово, с командами. Пока — **только prod**, деплой в namespace `default`. Бот на
+long-polling ходит наружу сам, поэтому **входящие порты для бота не нужны** (ни ingress,
+ни домен). На первый раз заложи ~1 час.
+
+### 4.0 Что нужно локально (prerequisites)
+
+- `kubectl` (проверь: `kubectl version --client`), `ssh`, `git`.
+- Аккаунт GitHub (образ уже в GHCR после мержа в `main` — шаг 5a).
+- SSH-ключ (`ssh-keygen`, если нет) — публичную часть добавишь в VM при создании.
 
 ### 4.1 Oracle Cloud — бесплатная VM
 
@@ -155,16 +162,30 @@ Dockerfile), на push в `dev`/`main` — сборка + пуш. Теги: `sha
 ssh ubuntu@<VM_IP>
 # Лёгкий однонодовый k8s. Отключаем traefik/servicelb — входящий трафик не нужен.
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik --disable servicelb" sh -
+
+# ⚠️ Oracle Ubuntu идёт с жёсткими iptables (дефолтный REJECT) — из-за них поды/CoreDNS
+# часто не стартуют или не видят друг друга. Разреши подсети k3s (поды/сервисы) и сохрани:
+sudo iptables -I INPUT -s 10.42.0.0/16 -j ACCEPT
+sudo iptables -I INPUT -s 10.43.0.0/16 -j ACCEPT
+sudo netfilter-persistent save
+
+sudo k3s kubectl get nodes           # проверка прямо на VM: нода Ready
 sudo cat /etc/rancher/k3s/k3s.yaml   # это kubeconfig; server = https://127.0.0.1:6443
 ```
 
-Скопируй содержимое в локальный `~/.kube/config`. Оставь `server: https://127.0.0.1:6443`
-и работай **через SSH-туннель** (безопасно, не открываем API наружу):
+Работать можно двумя способами:
 
-```bash
-ssh -L 6443:127.0.0.1:6443 ubuntu@<VM_IP>   # держи открытым в отдельном терминале
-kubectl get nodes                            # проверка: нода Ready
-```
+- **Прямо на VM:** `sudo k3s kubectl ...` (kubectl уже стоит с k3s) — проще всего.
+- **С локальной машины через SSH-туннель** (безопасно, API наружу не открываем):
+  сохрани kubeconfig в **отдельный** файл (не затирай существующий `~/.kube/config`),
+  оставь `server: https://127.0.0.1:6443`:
+
+  ```bash
+  # локально, в отдельном терминале — туннель держать открытым:
+  ssh -L 6443:127.0.0.1:6443 ubuntu@<VM_IP>
+  export KUBECONFIG=~/.kube/nexo.yaml   # сюда сохрани содержимое k3s.yaml
+  kubectl get nodes                     # нода Ready
+  ```
 
 ### 4.5 Образ из GHCR
 
@@ -185,7 +206,8 @@ kubectl create secret generic nexo-assist-secrets \
 kubectl apply -k k8s/
 ```
 
-`images` в `k8s/kustomization.yaml` (пинним оба контейнера — app и initContainer):
+`images` в `k8s/kustomization.yaml` (пинним оба контейнера — app и initContainer;
+sha-тег возьми в GitHub → Packages → nexo-assist):
 
 ```yaml
 images:
@@ -193,6 +215,9 @@ images:
     newName: ghcr.io/dmitry28/nexo-assist
     newTag: sha-<commit>
 ```
+
+> Это ручной пин для первого деплоя (коммитить не обязательно). Позже **5b (CD)**
+> будет подставлять свежий sha автоматически при каждом мерже в `main`.
 
 ### 4.7 Проверка
 
@@ -212,6 +237,9 @@ kubectl port-forward deploy/nexo-assist 3000:3000   # затем curl /api/v1/he
   initContainer'а; частая причина — неверный URL/SSL.
 - **CrashLoopBackOff** (app) — `kubectl logs`; обычно нет `TELEGRAM_BOT_TOKEN` или
   конфликт `409` (второй поллер на том же токене — не запускай бота ещё где-то).
+- **Поды/CoreDNS не стартуют, DNS/pull-таймауты внутри кластера** — почти всегда
+  iptables Oracle Ubuntu режет трафик k3s. Разреши подсети и сохрани (см. 4.4):
+  `sudo iptables -I INPUT -s 10.42.0.0/16 -j ACCEPT && sudo iptables -I INPUT -s 10.43.0.0/16 -j ACCEPT && sudo netfilter-persistent save`.
 - **Oracle "Out of capacity"** — повторяй создание VM / другой регион.
 - **`exec format error`** в логах пода — несовпадение архитектуры образа и ноды.
   У нас образ мультиарх (amd64+arm64), так что не должно возникать; если возникло —
