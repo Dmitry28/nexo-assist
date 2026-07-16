@@ -16,7 +16,7 @@ import { deadSubscriptionNotice, newListingsDigest } from './telegram.format';
 import { TelegramService } from './telegram.service';
 import { WatchStatus } from './watch.status';
 
-const JOB_NAME = 'daily-watch';
+export const JOB_NAME = 'daily-watch';
 
 // Consecutive failed polls before a subscription is treated as dead: warn the user, auto-pause.
 export const MAX_CONSECUTIVE_FAILURES = 5;
@@ -61,7 +61,14 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // would fetch sources only to fail on delivery (notify throws without a bot).
     if (this.appConfig.isTest || !this.appConfig.telegramBotToken) return;
 
-    const job = new CronJob(this.appConfig.watchCron, () => void this.runDaily());
+    // Catch here so a run-wide failure (e.g. the initial listActive() DB call) is logged
+    // and skips the run — an unhandled rejection would trip the fatal handler in main.ts
+    // and kill the whole bot.
+    const job = new CronJob(this.appConfig.watchCron, () => {
+      void this.runDaily().catch((err: unknown) => {
+        this.logger.error({ err }, 'Daily watch run failed');
+      });
+    });
     this.scheduler.addCronJob(JOB_NAME, job);
     job.start();
     this.logger.log(`Daily watch scheduled: ${this.appConfig.watchCron}`);
