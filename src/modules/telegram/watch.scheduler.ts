@@ -179,7 +179,13 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       // Count the delivery right after the send — a later markSeen failure re-delivers next
       // run (no loss), so the metric must reflect the message that actually reached the user.
       this.metrics.recordDelivery(sub.source);
-      await this.watch.markSeen(sub, delivered);
+      // Isolate markSeen: the digest already reached the user, so a bookkeeping failure here
+      // is not a delivery failure (and not a 403) — log it distinctly; items resurface next run.
+      try {
+        await this.watch.markSeen(sub, delivered);
+      } catch (err) {
+        this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
+      }
     } catch (err) {
       if (isBotBlocked(err)) return true;
       this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);

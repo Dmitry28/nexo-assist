@@ -121,16 +121,22 @@ describe('WatchScheduler.runDaily', () => {
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('counts a delivery even when markSeen fails afterward', async () => {
+  it('counts a delivery and logs distinctly when markSeen fails afterward', async () => {
     const { subscriptions, watch, metrics, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
     watch.markSeen.mockRejectedValue(new Error('db down')); // send succeeded, bookkeeping failed
-    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
     expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
+    // A markSeen failure after delivery is not a delivery failure — it must log distinctly.
+    expect(errorSpy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('markSeen'));
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('Delivery failed'),
+    );
   });
 
   it('auto-pauses a user on 403 and skips their remaining subscriptions', async () => {
