@@ -11,7 +11,12 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
-import { jitteredDelay, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
+import {
+  JOB_NAME,
+  jitteredDelay,
+  MAX_CONSECUTIVE_FAILURES,
+  WatchScheduler,
+} from '../watch.scheduler';
 import type { WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
@@ -45,17 +50,18 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     setTotals: jest.fn(),
   };
   const status = { markRun: jest.fn() };
+  const registry = new SchedulerRegistry();
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
     makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0, ...configOverrides }),
-    new SchedulerRegistry(),
+    registry,
     subscriptions as unknown as SubscriptionsService,
     watch as unknown as WatchService,
     telegram as unknown as TelegramService,
     metrics as unknown as WatchMetrics,
     status as unknown as WatchStatus,
   );
-  return { subscriptions, watch, telegram, metrics, status, scheduler };
+  return { subscriptions, watch, telegram, metrics, status, scheduler, registry };
 };
 
 describe('WatchScheduler.runDaily', () => {
@@ -113,6 +119,24 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(watch.markSeen).not.toHaveBeenCalled();
+  });
+
+  it('counts a delivery and logs distinctly when markSeen fails afterward', async () => {
+    const { subscriptions, watch, metrics, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.markSeen.mockRejectedValue(new Error('db down')); // send succeeded, bookkeeping failed
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
+    // A markSeen failure after delivery is not a delivery failure — it must log distinctly.
+    expect(errorSpy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('markSeen'));
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('Delivery failed'),
+    );
   });
 
   it('auto-pauses a user on 403 and skips their remaining subscriptions', async () => {
@@ -302,6 +326,30 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(timeout).toHaveBeenCalledTimes(2); // between 3 polls, not before the first
+  });
+});
+
+describe('WatchScheduler daily job', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('logs and swallows a run-wide failure instead of crashing the process', async () => {
+    const { subscriptions, registry, scheduler } = build({ telegramBotToken: 'token' });
+    // The initial listActive() sits outside the per-subscription try/catch; a DB blip here
+    // must not escape the cron callback (an unhandled rejection would trip main.ts's exit).
+    subscriptions.listActive.mockRejectedValue(new Error('db down'));
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    scheduler.onModuleInit();
+    const job = registry.getCronJob(JOB_NAME);
+    await job.fireOnTick(); // invoke the guarded callback
+    await new Promise((resolve) => setImmediate(resolve)); // let the .catch settle
+    await job.stop();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error) }),
+      'Daily watch run failed',
+    );
   });
 });
 

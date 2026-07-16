@@ -9,9 +9,9 @@ export const MAX_MESSAGE_BUDGET_CHARS = 3500;
 // Digest item-count cap for readability.
 // DIGEST_LIMIT is exported for specs; production callers get the delivered slice.
 export const DIGEST_LIMIT = 10;
-// Clamp pathological titles — one huge line must not eat the char budget (it would
-// produce an item-less digest that delivers nothing and repeats forever).
-const MAX_TITLE_CHARS = 300;
+// Clamp a pathological listing — one huge line (long title OR link) must not eat the char
+// budget, which would produce an item-less digest that delivers nothing and repeats forever.
+const MAX_LINE_CHARS = 500;
 
 function price(listing: Listing): string {
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
@@ -20,11 +20,8 @@ function price(listing: Listing): string {
 }
 
 function formatOne(listing: Listing): string {
-  const title =
-    listing.title.length > MAX_TITLE_CHARS
-      ? `${listing.title.slice(0, MAX_TITLE_CHARS)}…`
-      : listing.title;
-  return `${title}\n${price(listing)}\n${listing.link}`;
+  const line = `${listing.title}\n${price(listing)}\n${listing.link}`;
+  return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}…` : line;
 }
 
 /** A listings digest under `header`: items up to the caps, then an "…and N more" footer. */

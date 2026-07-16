@@ -19,8 +19,9 @@ data:
   API_PREFIX: 'api'
   API_VERSION: '1'
   LOG_LEVEL: 'info'
-  # Restrict to your real origin(s) in production, e.g. 'https://app.example.com'.
-  CORS_ORIGIN: '*'
+  # Empty = block all cross-origin (the bot has no browser client; health/metrics are
+  # server-to-server and unaffected). Set your real origin(s) if a browser client is added.
+  CORS_ORIGIN: ''
   THROTTLE_TTL: '60'
   THROTTLE_LIMIT: '100'
   # Set to your collector to enable tracing (leave unset to disable):

@@ -9,12 +9,9 @@ describe('fetchHtml', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  /** A Response whose final URL is set — constructed Responses default to ''. */
-  const responseAt = (url: string): Response => {
-    const res = new Response('<html>ok</html>', { status: 200 });
-    Object.defineProperty(res, 'url', { value: url });
-    return res;
-  };
+  /** A 3xx redirect response pointing at `location`. */
+  const redirectTo = (location: string): Response =>
+    new Response(null, { status: 301, headers: { location } });
 
   it('returns the body on success', async () => {
     fetchMock.mockResolvedValue(new Response('<html>ok</html>', { status: 200 }));
@@ -22,17 +19,39 @@ describe('fetchHtml', () => {
     expect(await fetchHtml({ url: 'https://x.by', host: 'x.by' })).toBe('<html>ok</html>');
   });
 
-  it('accepts a redirect that stays on the pinned host', async () => {
-    fetchMock.mockResolvedValue(responseAt('https://re.x.by/normalized'));
+  it('follows a redirect that stays on the pinned host', async () => {
+    fetchMock
+      .mockResolvedValueOnce(redirectTo('https://re.x.by/normalized'))
+      .mockResolvedValueOnce(new Response('<html>ok</html>', { status: 200 }));
 
     expect(await fetchHtml({ url: 'https://x.by/l', host: 'x.by' })).toBe('<html>ok</html>');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://re.x.by/normalized', expect.anything());
   });
 
-  it('throws when a redirect leaves the pinned host — no SSRF via the source', async () => {
-    fetchMock.mockResolvedValue(responseAt('https://evil.com/x'));
+  it('throws before following a redirect off the pinned host — no SSRF via the source', async () => {
+    fetchMock.mockResolvedValue(redirectTo('https://evil.com/x'));
 
     await expect(fetchHtml({ url: 'https://x.by/l', host: 'x.by' })).rejects.toThrow(
       'Redirected off',
+    );
+    // The off-host hop is rejected before it is ever requested.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves a relative redirect Location against the current URL', async () => {
+    fetchMock
+      .mockResolvedValueOnce(redirectTo('/normalized'))
+      .mockResolvedValueOnce(new Response('<html>ok</html>', { status: 200 }));
+
+    expect(await fetchHtml({ url: 'https://x.by/l', host: 'x.by' })).toBe('<html>ok</html>');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://x.by/normalized', expect.anything());
+  });
+
+  it('throws on a redirect loop past the hop cap', async () => {
+    fetchMock.mockResolvedValue(redirectTo('https://x.by/next'));
+
+    await expect(fetchHtml({ url: 'https://x.by/l', host: 'x.by' })).rejects.toThrow(
+      'Too many redirects',
     );
   });
 

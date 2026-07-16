@@ -68,6 +68,7 @@ jobs:
 
   docker-and-k8s:
     runs-on: ubuntu-latest
+    needs: build-and-test # never publish an image from a commit that failed lint/typecheck/tests
     permissions:
       contents: read
       packages: write # push the image to GHCR

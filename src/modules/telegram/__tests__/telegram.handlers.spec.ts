@@ -263,6 +263,21 @@ describe('TelegramHandlers', () => {
     expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
   });
 
+  it('/check keeps the delivered digest when markSeen fails — no contradictory error', async () => {
+    const s = sub({ url: 'u1' });
+    subscriptions.listByUser.mockResolvedValue([s]);
+    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.markSeen.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const ctx = makeCtx({ userId: 1 });
+    await bot.commands.get('check')!(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('🆕 1 new'), expect.anything());
+    expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Could not check'));
+    expect(ctx.reply).not.toHaveBeenCalledWith('Nothing new.');
+  });
+
   it('/check reports a failing subscription without a contradictory "Nothing new."', async () => {
     subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
     watch.poll.mockRejectedValue(new Error('outage'));

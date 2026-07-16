@@ -24,7 +24,7 @@ start; more frequent once throttling/dedupe land).
   pinned to the source's host.
 - Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the
   seen set survive restarts; seen is pruned to a bounded window per subscription;
-  per-user subscription limit + duplicate-URL guard.
+  per-user limit on **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
 - Deployment: **single replica** (long-polling bot + in-memory pending prompts; see k8s NOTE);
   production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
   the process so the orchestrator restarts it.

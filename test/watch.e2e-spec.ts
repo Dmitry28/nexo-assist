@@ -212,6 +212,48 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     ).rejects.toBeInstanceOf(SubscriptionLimitError);
   });
 
+  it('does not count paused subscriptions toward the per-user limit', async () => {
+    for (let i = 0; i < MAX_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscriptions.add({
+        user: { telegramId: 1 },
+        source: 'kufar',
+        url: `https://kufar.by/l/${i}`,
+      });
+    }
+    // Pause one so only MAX-1 remain active — a slot frees up for a live search.
+    const [first] = await subscriptions.listByUser(1);
+    await subscriptions.pause(first.id);
+
+    const added = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/live',
+    });
+    expect(added.id).toBeDefined();
+  });
+
+  it('counts a revive toward the active limit', async () => {
+    for (let i = 0; i < MAX_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscriptions.add({
+        user: { telegramId: 1 },
+        source: 'kufar',
+        url: `https://kufar.by/l/${i}`,
+      });
+    }
+    // Pause one, then take the freed slot with a live search → MAX active + 1 paused.
+    const [paused] = await subscriptions.listByUser(1);
+    await subscriptions.pause(paused.id);
+    await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/live',
+    });
+    // Re-sending the paused URL would revive it past the active cap → rejected.
+    await expect(
+      subscriptions.add({ user: { telegramId: 1 }, source: 'kufar', url: paused.url }),
+    ).rejects.toBeInstanceOf(SubscriptionLimitError);
+  });
+
   it('pauseAllForUser pauses every sub of a user; listActive then excludes them', async () => {
     const a = await subscriptions.add({
       user: { telegramId: 1 },

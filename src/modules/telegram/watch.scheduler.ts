@@ -16,7 +16,7 @@ import { deadSubscriptionNotice, newListingsDigest } from './telegram.format';
 import { TelegramService } from './telegram.service';
 import { WatchStatus } from './watch.status';
 
-const JOB_NAME = 'daily-watch';
+export const JOB_NAME = 'daily-watch';
 
 // Consecutive failed polls before a subscription is treated as dead: warn the user, auto-pause.
 export const MAX_CONSECUTIVE_FAILURES = 5;
@@ -61,7 +61,14 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // would fetch sources only to fail on delivery (notify throws without a bot).
     if (this.appConfig.isTest || !this.appConfig.telegramBotToken) return;
 
-    const job = new CronJob(this.appConfig.watchCron, () => void this.runDaily());
+    // Catch here so a run-wide failure (e.g. the initial listActive() DB call) is logged
+    // and skips the run — an unhandled rejection would trip the fatal handler in main.ts
+    // and kill the whole bot.
+    const job = new CronJob(this.appConfig.watchCron, () => {
+      void this.runDaily().catch((err: unknown) => {
+        this.logger.error({ err }, 'Daily watch run failed');
+      });
+    });
     this.scheduler.addCronJob(JOB_NAME, job);
     job.start();
     this.logger.log(`Daily watch scheduled: ${this.appConfig.watchCron}`);
@@ -169,8 +176,16 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     try {
       const { text, delivered } = newListingsDigest(listings);
       await this.telegram.notify(sub.user.telegramId, text);
-      await this.watch.markSeen(sub, delivered);
+      // Count the delivery right after the send — a later markSeen failure re-delivers next
+      // run (no loss), so the metric must reflect the message that actually reached the user.
       this.metrics.recordDelivery(sub.source);
+      // Isolate markSeen: the digest already reached the user, so a bookkeeping failure here
+      // is not a delivery failure (and not a 403) — log it distinctly; items resurface next run.
+      try {
+        await this.watch.markSeen(sub, delivered);
+      } catch (err) {
+        this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
+      }
     } catch (err) {
       if (isBotBlocked(err)) return true;
       this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);

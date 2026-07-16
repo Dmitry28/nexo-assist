@@ -22,7 +22,7 @@ health checks, and a full lint/format/test pipeline. Product spec:
 | Tracing       | OpenTelemetry (OTLP, opt-in)                        |
 | Security      | `helmet`, CORS, `compression`                       |
 | Tests         | Jest (unit) + Supertest (e2e)                       |
-| Lint / Format | ESLint 9 (flat config) + Prettier 3                 |
+| Lint / Format | ESLint 10 (flat config) + Prettier 3                |
 | Git hooks     | Husky + lint-staged                                 |
 | CI            | GitHub Actions                                      |
 | Container     | Multi-stage Dockerfile + docker-compose             |
@@ -137,8 +137,8 @@ proxy layers (e.g. a CDN in front of the ingress).
 ## Docker
 
 ```bash
-# Single image (production runtime; apply the schema first — the runtime image has
-# no migration tooling until the Phase-5 deploy wiring)
+# Single image (production runtime). Apply the schema first — migrations run from this
+# same image via `npm run migration:run:prod` (as the k8s initContainer does).
 docker build -t nexo-assist .
 docker run -p 3000:3000 --env-file .env nexo-assist
 
