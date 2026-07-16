@@ -253,7 +253,13 @@ export class TelegramHandlers {
       }
       const { text, delivered } = newListingsDigest(outcome.listings);
       await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-      await this.watch.markSeen(sub, delivered);
+      // The digest is delivered — a failed markSeen must not surface as "Could not check"
+      // (that would contradict what the user just saw). Log it; the items resurface next run.
+      try {
+        await this.watch.markSeen(sub, delivered);
+      } catch (err) {
+        this.logger.warn({ err }, `markSeen failed after /check delivery for ${sub.url}`);
+      }
       return true;
     } catch (err) {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);

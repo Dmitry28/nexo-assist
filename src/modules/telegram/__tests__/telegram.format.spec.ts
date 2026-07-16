@@ -29,6 +29,15 @@ describe('newListingsDigest', () => {
     expect(text.length).toBeLessThan(4096);
   });
 
+  it('clamps a pathological link too — a single huge link still delivers one item', () => {
+    const { text, delivered } = newListingsDigest([
+      listing(1, { link: `https://x.by/${'x'.repeat(5000)}` }),
+    ]);
+
+    expect(delivered).toHaveLength(1);
+    expect(text.length).toBeLessThan(4096);
+  });
+
   it('caps by characters too — oversized items fold into the "more" footer', () => {
     const longLinks = Array.from({ length: 10 }, (_, i) =>
       listing(i + 1, { link: `https://re.kufar.by/vi/${'x'.repeat(400)}${i}` }),

@@ -176,8 +176,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     try {
       const { text, delivered } = newListingsDigest(listings);
       await this.telegram.notify(sub.user.telegramId, text);
-      await this.watch.markSeen(sub, delivered);
+      // Count the delivery right after the send — a later markSeen failure re-delivers next
+      // run (no loss), so the metric must reflect the message that actually reached the user.
       this.metrics.recordDelivery(sub.source);
+      await this.watch.markSeen(sub, delivered);
     } catch (err) {
       if (isBotBlocked(err)) return true;
       this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);

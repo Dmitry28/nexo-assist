@@ -121,6 +121,18 @@ describe('WatchScheduler.runDaily', () => {
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
+  it('counts a delivery even when markSeen fails afterward', async () => {
+    const { subscriptions, watch, metrics, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.markSeen.mockRejectedValue(new Error('db down')); // send succeeded, bookkeeping failed
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
+  });
+
   it('auto-pauses a user on 403 and skips their remaining subscriptions', async () => {
     const { subscriptions, watch, telegram, metrics, scheduler } = build();
     // Two subs owned by the same user (userId 1); pausing them affects 2 rows.
