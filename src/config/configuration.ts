@@ -69,7 +69,12 @@ export default registerAs('app', (): AppConfig => {
     apiPrefix: env.API_PREFIX,
     apiVersion: env.API_VERSION,
     corsOrigins:
-      env.CORS_ORIGIN === '*' ? '*' : env.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+      env.CORS_ORIGIN === '*'
+        ? '*'
+        : // filter(Boolean): an empty CORS_ORIGIN → an empty allowlist (no cross-origin), not [''].
+          env.CORS_ORIGIN.split(',')
+            .map((origin) => origin.trim())
+            .filter(Boolean),
     logLevel: env.LOG_LEVEL,
     throttleTtl: env.THROTTLE_TTL,
     throttleLimit: env.THROTTLE_LIMIT,
