@@ -29,12 +29,14 @@ async function bootstrap(): Promise<void> {
   // Last-resort safety nets. Node's default behaviour leaves the process in an unknown
   // state — log via pino, then exit so the orchestrator (k8s / docker) can restart us.
   const logger = app.get(Logger);
+  // NOTE: pass the text as `msg` inside the object — nestjs-pino treats a trailing string
+  // arg as the log *context*, not the message, so a positional message would be lost here.
   process.on('uncaughtException', (error) => {
-    logger.fatal({ err: error }, 'uncaughtException — exiting');
+    logger.fatal({ err: error, msg: 'uncaughtException — exiting' });
     process.exit(1);
   });
   process.on('unhandledRejection', (reason) => {
-    logger.fatal({ err: reason }, 'unhandledRejection — exiting');
+    logger.fatal({ err: reason, msg: 'unhandledRejection — exiting' });
     process.exit(1);
   });
 
