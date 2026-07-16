@@ -1,8 +1,8 @@
-# Local stack (not a deploy artifact — the deploy story incl. migrations is Phase 5).
+# Local stack (not a deploy artifact — see docs/DEPLOY.md for the deploy story).
 #   npm run db:up            # just Postgres (dev: run the app with npm run start:dev)
 #   npm run dev:docker       # full stack with hot-reload (override applies migrations)
-# NOTE: the base file alone runs the prod-like runtime image, which contains no
-# migration tooling — apply the schema first (npm run migration:run from the host).
+# NOTE: the base file alone runs the prod-like runtime image and does not auto-apply
+# migrations — apply the schema first (npm run migration:run from the host).
 
 services:
   app:
