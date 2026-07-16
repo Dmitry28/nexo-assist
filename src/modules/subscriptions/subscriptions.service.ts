@@ -50,21 +50,23 @@ export class SubscriptionsService {
     // so the check-then-insert TOCTOU race is negligible.
     const normalizedUrl = normalizeUrl(input.url);
     const existing = await this.subs.findOneBy({ userId: user.id, normalizedUrl });
-    if (existing) {
-      // Re-sending a URL you already watch revives it if it was auto-paused (dead link /
-      // blocked); an active one is a real duplicate.
-      if (!existing.pausedAt) throw new DuplicateSubscriptionError();
-      return this.revive(existing);
-    }
-    if ((await this.subs.countBy({ userId: user.id })) >= MAX_SUBSCRIPTIONS_PER_USER) {
+    // Re-sending a URL you already watch revives it if it was auto-paused (dead link /
+    // blocked); an active one is a real duplicate.
+    if (existing && !existing.pausedAt) throw new DuplicateSubscriptionError();
+
+    // Count active only — auto-paused subs create no scraping load, so they must not lock a
+    // user out. A revive reactivates a paused sub, so it's capped the same as a fresh add.
+    const activeCount = await this.subs.countBy({ userId: user.id, pausedAt: IsNull() });
+    if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) {
       throw new SubscriptionLimitError();
     }
+    if (existing) return this.revive(existing); // paused (checked above) → reactivate
     try {
       return await this.subs.save(
         this.subs.create({ userId: user.id, source: input.source, url: input.url, normalizedUrl }),
       );
     } catch (err) {
-      // The unique index is the real guard — map a race that beat the existsBy check.
+      // The unique index is the real guard — map a race that beat the findOneBy check.
       if (
         err instanceof QueryFailedError &&
         (err.driverError as { code?: string }).code === '23505'
