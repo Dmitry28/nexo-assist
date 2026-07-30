@@ -8,7 +8,7 @@
 
 - **Приложение:** наш Docker-образ → **k3s** (лёгкий Kubernetes) на **Hetzner Cloud**
   (сервер **CX23**, Ubuntu 24.04, ~€6.5/мес). Настоящий k8s → максимум DevOps-опыта.
-- **База:** **Neon** — managed Postgres (free tier). Бэкапы/аптайм — на их стороне.
+- **База:** managed Postgres — **Supabase** (free tier). Бэкапы/аптайм — на их стороне.
 - **Портируемо:** апп = образ, БД = строка `DATABASE_URL`. Переезд на другой хост —
   смена таргета, не переписывание.
 
@@ -189,7 +189,7 @@ data-source (Шаг 1).
 
 **Что:** в Deployment добавлен initContainer `migrate` — тот же образ, прогоняет
 миграции (той же командой, что `migration:run:prod`) до старта бота. Упал → Pod не поднимется (не работаем на битой
-схеме). `DATABASE_URL` кладётся в Secret (в нём пароль Neon), а не в ConfigMap.
+схеме). `DATABASE_URL` кладётся в Secret (в нём пароль БД), а не в ConfigMap.
 
 **Концепт — почему initContainer, а не «внутри приложения»:** миграции отделены от
 рантайма — приложение не должно менять схему при каждом старте (гонки при нескольких
@@ -202,7 +202,7 @@ Secret в кластере не коммитится; для GitOps исполь
 
 ### Шаг 3 — верификация TLS-сертификата к базе
 
-**Что:** проверка сертификата Neon включается через `sslmode=verify-full` в
+**Что:** проверка сертификата БД включается через `sslmode=verify-full` в
 `DATABASE_URL` (§4.2). Драйвер `pg` отдаёт управление SSL строке подключения, когда в
 ней есть `sslmode`, поэтому именно URL — источник правды; в `app.module.ts` оставлен
 запасной `rejectUnauthorized: true` (если URL вдруг без `sslmode`), а локально TLS
@@ -211,7 +211,7 @@ Secret в кластере не коммитится; для GitOps исполь
 **Концепт — шифрование ≠ аутентификация.** Просто шифрование не проверяет, _с кем_
 говорим — можно подставить свой сертификат (MITM) и читать/подменять трафик (пароли,
 данные). `verify-full` проверяет, что серт выдан доверенным CA **и** валиден для этого
-хоста. Свой CA не нужен: серт Neon подписан публичным корнем из набора Node. (Берём
+хоста. Свой CA не нужен: серт провайдера (Supabase/Neon) подписан публичным корнем из набора Node. (Берём
 `verify-full`, а не `require`: `require` в новых версиях `pg` перестанет проверять серт.)
 
 ### Шаг 5a — CI: сборка и публикация образа в GHCR
@@ -255,11 +255,25 @@ long-polling ходит наружу сам, поэтому **входящие �
 3. Запиши публичный IP. В Security List оставь открытым только **22 (SSH)** — API
    кластера наружу не открываем (ходим через SSH-туннель, см. 4.4).
 
-### 4.2 Neon — prod-база
+### 4.2 Managed Postgres — prod-база (Supabase)
 
-Создай проект → возьми **pooled** `DATABASE_URL` и поставь `sslmode=verify-full`
-(проверка сертификата, не просто шифрование — см. Шаг 3), вида
-`postgres://user:pass@ep-xxx-pooler.neon.tech/db?sslmode=verify-full`.
+Managed = БД обслуживает провайдер (бэкапы, аптайм, обновления), и она живёт **отдельно
+от сервера** — переживёт пересборку кластера.
+
+**Supabase** (https://supabase.com, регистрация через GitHub, free tier): New project →
+регион **Европа** (рядом с сервером) → **сохрани сгенерированный пароль БД**. Затем
+**Connect → Session pooler** (порт `5432`; IPv4 и работает для миграций — в отличие от
+transaction pooler на 6543), подставь пароль и допиши `?sslmode=verify-full`
+(проверка сертификата, не просто шифрование — см. Шаг 3):
+
+```
+postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=verify-full
+```
+
+- ⚠️ Если в пароле есть `@ : / ? # & %` — **percent-encode** их (`@` → `%40`), иначе URL
+  распарсится неверно (эти символы в URL — разделители).
+- _Neon_ (https://neon.tech) — равноценная альтернатива; у нас его консоль не открылась,
+  поэтому взяли Supabase. Смена провайдера = только новый `DATABASE_URL`.
 
 ### 4.3 BotFather — prod-токен
 
@@ -381,14 +395,14 @@ API кластера не выставляем в интернет; при ут�
 - [ ] **GitHub → Packages:** после первого мержа в `main` убедись, что образ
       `ghcr.io/dmitry28/nexo-assist` появился; сделай пакет **public** (§4.5).
 - [ ] **Oracle Cloud:** создать Always Free ARM VM (Ubuntu 24.04), SSH (§4.1).
-- [ ] **Neon:** прод-БД, взять `DATABASE_URL` с `sslmode=verify-full` (§4.2).
+- [ ] **Managed Postgres (Supabase):** прод-БД, взять `DATABASE_URL` с `sslmode=verify-full` (§4.2).
 - [ ] **BotFather:** прод-токен (§4.3).
 - [ ] **На VM:** поставить k3s + **фикс iptables** (§4.4).
 - [ ] **kubectl:** доступ к кластеру (туннель или на VM) (§4.4).
 - [ ] **Secret** `nexo-assist-secrets` (токен + `DATABASE_URL`) (§4.6).
 - [ ] **Деплой:** запинить sha образа + `kubectl apply -k k8s/` (§4.6).
 - [ ] **Проверить:** поды, миграции, `/health`, ответ бота (§4.7).
-- [ ] _(позже)_ dev-окружение: 2-й бот, ветка Neon, Kustomize overlays.
+- [ ] _(позже)_ dev-окружение: 2-й бот, отдельная БД, Kustomize overlays.
 
 Всё, что я делаю за тебя (код/конфиг): Dockerfile, манифесты k8s, CI, миграции,
 learning-гайд. Что делаешь ты: поднимаешь инфраструктуру по этому чек-листу (я рядом).
@@ -415,7 +429,8 @@ kubectl create secret generic nexo-assist-secrets \
 - Probes: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
 - Kustomize: https://kubectl.docs.kubernetes.io/guides/introduction/kustomize/
 - k3s: https://docs.k3s.io/
-- Neon: https://neon.tech/docs/introduction
+- Supabase: https://supabase.com/docs/guides/database/connecting-to-postgres
+- Neon (альтернатива): https://neon.tech/docs/introduction
 
 _Дальше гайд растёт: шаг 5b (CD: авто-деплой в кластер вместо ручного `apply`),
 шаг 6 (observability/алертинг), позже — dev-окружение (overlays)._
