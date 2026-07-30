@@ -4,6 +4,16 @@
 
 **nexo-assist** — a Telegram listing-watch bot (kufar/realt and more) on a NestJS 11 base. New features live in `src/modules/<feature>/`, mirroring an existing module. Product spec: [docs/PRODUCT.md](../PRODUCT.md).
 
+## Project Docs (`docs/`)
+
+| Doc                                   | What it holds — read it when…                                                                                                                                                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PRODUCT.md](../PRODUCT.md)           | **What** the product does: user-facing behavior, bot commands, delivery rules. Update when behavior changes.                                                                                                                              |
+| [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) | **Where we're going**: phases/roadmap, decisions table, tech backlog. Update when scope, order or a decision changes.                                                                                                                     |
+| [PRODUCT_TECH.md](../PRODUCT_TECH.md) | **What runs where**: runtime topology (app on Hetzner/k3s, DB on Supabase, kufar proxy on Oracle), infra decisions, constraints, config/secret inventory, costs. Update when infrastructure changes. No secrets/IPs — the repo is public. |
+| [DEPLOY.md](../DEPLOY.md)             | **How to deploy + DevOps learning guide**: concepts explained plainly, per-file breakdown, provisioning runbook, troubleshooting, incident lessons. Update after each deploy step.                                                        |
+| [llm/](.)                             | Instructions for LLMs: this entry point + `rules/` (conventions) + `commands/`.                                                                                                                                                           |
+
 ## Key Commands
 
 ```bash
@@ -45,7 +55,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **Explain purpose, plainly.** Before acting, say _why_ (what problem it solves / what it enables). When done, say _what_ changed and _why_ in plain language a non-implementer follows — the intent and effect, not a diff dump. File/line detail is a supplement, never the whole report.
 - Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
-- **Keep docs current:** update **every** doc a change affects, in the same change — [docs/PRODUCT.md](../PRODUCT.md) (behavior) + [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap) for product/architecture; [README.md](../../README.md) for scripts, setup, commands, or stack; and the relevant `docs/llm/` rule when a convention changes.
+- **Keep docs current:** update **every** doc a change affects, in the same change — see the Project Docs table above for which is which: [PRODUCT.md](../PRODUCT.md) (behavior), [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap/decisions), [PRODUCT_TECH.md](../PRODUCT_TECH.md) (infra/runtime reality), [DEPLOY.md](../DEPLOY.md) (deploy steps + lessons), [README.md](../../README.md) (scripts, setup, commands, stack), and the relevant `docs/llm/` rule when a convention changes.
 
 ## Reference Repos (local)
 
