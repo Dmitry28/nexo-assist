@@ -1,3 +1,5 @@
+import { ProxyAgent } from 'undici';
+
 import { matchesHost } from '@/common/url';
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -16,6 +18,21 @@ const HEADERS = {
   'Accept-Language': 'ru-RU,ru;q=0.9',
 };
 
+// Some sources block datacenter IP ranges, so their requests must leave through a proxy
+// (see PRODUCT_TECH.md). The address is a deployment detail — read from the environment
+// where it's used, like the OTEL_* vars in tracing.ts; it is declared and validated in
+// env.validation.ts. Kept out of AppConfig on purpose: it carries credentials and the
+// bootstrap logs the whole config object.
+// One agent per address: it pools connections instead of opening a tunnel per request.
+let proxyAgentCache: { url: string; agent: ProxyAgent } | undefined;
+
+function proxyAgent(): ProxyAgent | undefined {
+  const url = process.env.SCRAPE_PROXY_URL;
+  if (!url) return undefined;
+  if (proxyAgentCache?.url !== url) proxyAgentCache = { url, agent: new ProxyAgent(url) };
+  return proxyAgentCache.agent;
+}
+
 /**
  * Fetch following redirects manually, validating every hop against `host` *before* it is
  * requested. The default `redirect: 'follow'` issues each intermediate request first and only
@@ -27,10 +44,19 @@ async function fetchFollowingHost(
   url: string,
   host: string,
   signal: AbortSignal,
+  useProxy: boolean,
 ): Promise<Response> {
+  // `dispatcher` is undici's per-request transport hook (undici powers global fetch); it is
+  // absent from the DOM RequestInit types, hence the widened local type.
+  const init: RequestInit & { dispatcher?: ProxyAgent } = {
+    signal,
+    headers: HEADERS,
+    redirect: 'manual',
+  };
+  if (useProxy) init.dispatcher = proxyAgent();
   let currentUrl = url;
   for (let hop = 0; ; hop++) {
-    const res = await fetch(currentUrl, { signal, headers: HEADERS, redirect: 'manual' });
+    const res = await fetch(currentUrl, init);
     if (!REDIRECT_STATUSES.has(res.status)) return res;
     if (hop >= MAX_REDIRECTS) throw new Error(`Too many redirects for ${url}`);
     const location = res.headers.get('location');
@@ -47,12 +73,23 @@ async function fetchFollowingHost(
  * Fetch a page's HTML with a browser UA, timeout and size guards, pinned to `host`.
  * Throws on any failure — a failed fetch must stay distinguishable from an empty
  * search result, otherwise baseline/check silently treat outages as "no listings".
+ *
+ * `useProxy` routes the request through SCRAPE_PROXY_URL (for sources that block
+ * datacenter IPs). No proxy configured → the request goes out directly.
  */
-export async function fetchHtml({ url, host }: { url: string; host: string }): Promise<string> {
+export async function fetchHtml({
+  url,
+  host,
+  useProxy = false,
+}: {
+  url: string;
+  host: string;
+  useProxy?: boolean;
+}): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchFollowingHost(url, host, controller.signal);
+    const res = await fetchFollowingHost(url, host, controller.signal, useProxy);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} for ${url}`);
     }

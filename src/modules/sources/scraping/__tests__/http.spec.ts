@@ -76,4 +76,43 @@ describe('fetchHtml', () => {
 
     await expect(fetchHtml({ url: 'https://x.by', host: 'x.by' })).rejects.toThrow('network down');
   });
+
+  describe('proxy', () => {
+    const proxyEnv = process.env.SCRAPE_PROXY_URL;
+    afterEach(() => {
+      if (proxyEnv === undefined) delete process.env.SCRAPE_PROXY_URL;
+      else process.env.SCRAPE_PROXY_URL = proxyEnv;
+    });
+
+    /** undici's per-request transport hook (absent from the DOM RequestInit types) — set
+     *  only when the request must be proxied. */
+    const dispatcherOf = (init: unknown): unknown => (init as { dispatcher?: unknown }).dispatcher;
+
+    it('routes through the proxy when the source asks for it and one is configured', async () => {
+      process.env.SCRAPE_PROXY_URL = 'http://user:pass@proxy.test:8888';
+      fetchMock.mockResolvedValue(new Response('<html>ok</html>', { status: 200 }));
+
+      await fetchHtml({ url: 'https://x.by', host: 'x.by', useProxy: true });
+
+      expect(dispatcherOf(fetchMock.mock.calls[0][1])).toBeDefined();
+    });
+
+    it('fetches directly when the source does not ask for a proxy', async () => {
+      process.env.SCRAPE_PROXY_URL = 'http://user:pass@proxy.test:8888';
+      fetchMock.mockResolvedValue(new Response('<html>ok</html>', { status: 200 }));
+
+      await fetchHtml({ url: 'https://x.by', host: 'x.by' });
+
+      expect(dispatcherOf(fetchMock.mock.calls[0][1])).toBeUndefined();
+    });
+
+    it('fetches directly when no proxy is configured, even if the source asks', async () => {
+      delete process.env.SCRAPE_PROXY_URL;
+      fetchMock.mockResolvedValue(new Response('<html>ok</html>', { status: 200 }));
+
+      await fetchHtml({ url: 'https://x.by', host: 'x.by', useProxy: true });
+
+      expect(dispatcherOf(fetchMock.mock.calls[0][1])).toBeUndefined();
+    });
+  });
 });

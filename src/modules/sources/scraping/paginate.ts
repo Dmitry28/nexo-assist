@@ -29,18 +29,21 @@ export async function paginate({
   host,
   parsePage,
   logger,
+  useProxy,
 }: {
   firstUrl: string;
   host: string;
   parsePage: (html: string, page: number) => ParsedPage;
   logger: Logger;
+  /** Route fetches through SCRAPE_PROXY_URL — for sources that block datacenter IPs. */
+  useProxy?: boolean;
 }): Promise<Listing[]> {
   const byId = new Map<string, Listing>();
   let url: string | null = firstUrl;
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
     let parsed: ParsedPage;
     try {
-      parsed = parsePage(await fetchHtml({ url, host }), page);
+      parsed = parsePage(await fetchHtml({ url, host, useProxy }), page);
     } catch (err) {
       if (page === 1) throw err;
       logger.warn(
