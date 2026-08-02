@@ -7,6 +7,14 @@ resources:
   - configmap.yaml
   - deployment.yaml
   - service.yaml
+
+# The image actually deployed. Pinned by commit sha (immutable) — `latest`/branch tags
+# float, so you'd never know what's running or how to roll back. One entry rewrites both
+# the app and the migrate initContainer. CD bumps this on release.
+images:
+  - name: nexo-assist
+    newName: ghcr.io/dmitry28/nexo-assist
+    newTag: sha-5546532
 # NOTE: no HPA/PDB — the app is a single-replica long-polling bot with in-memory
 # state; autoscaling/disruption budgets return with webhook + DB (Phase 3+).
 

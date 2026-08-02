@@ -115,6 +115,17 @@ export class EnvironmentVariables {
   @IsOptional()
   WATCH_CRON: string = '0 9 * * *';
 
+  /**
+   * HTTP proxy for sources that block datacenter IPs (kufar — see PRODUCT_TECH.md).
+   * Unset = every source is fetched directly. Consumed in the scraping transport
+   * (`sources/scraping/http.ts`), deliberately not exposed via AppConfig: it carries
+   * credentials and the bootstrap logs the config object.
+   */
+  @IsString()
+  @Matches(/^https?:\/\/\S+$/, { message: 'SCRAPE_PROXY_URL must be an http(s) URL' })
+  @IsOptional()
+  SCRAPE_PROXY_URL?: string;
+
   /** Base pause between subscription polls, in ms — paces the scraper off a source. */
   @IsNumber()
   @Min(0)

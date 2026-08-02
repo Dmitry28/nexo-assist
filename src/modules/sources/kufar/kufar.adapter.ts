@@ -37,6 +37,9 @@ export class KufarAdapter implements SourceAdapter {
         };
       },
       logger: this.logger,
+      // Kufar blocks datacenter IP ranges (403 «Доступ ограничен» from our host), so its
+      // requests must leave through SCRAPE_PROXY_URL — see PRODUCT_TECH.md. realt needs no proxy.
+      useProxy: true,
     });
   }
 }

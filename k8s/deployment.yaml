@@ -35,6 +35,14 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        # Managed Postgres (Supabase) uses its OWN root CA, which isn't in Node's public
+        # trust store — without it `sslmode=verify-full` fails with SELF_SIGNED_CERT_IN_CHAIN.
+        # Mounted (not a secret — a public cert) and trusted via NODE_EXTRA_CA_CERTS, which
+        # covers both the app and the migrate initContainer with zero code.
+        # Create it once:  kubectl create configmap db-ca --from-file=ca.crt=<downloaded>.crt
+        - name: db-ca
+          configMap:
+            name: db-ca
       # Apply DB migrations before the app starts. Same image, plain node on the compiled
       # data-source (migration:run:prod). Idempotent (TypeORM migrations table); a failure
       # here blocks startup, so the app never runs against an unmigrated schema.
@@ -53,7 +61,7 @@ spec:
           envFrom:
             - configMapRef:
                 name: nexo-assist-config
-            # DATABASE_URL lives in the Secret (Neon URL has a password) — see README.
+            # DATABASE_URL lives in the Secret (the URL carries a password) — see README.
             - secretRef:
                 name: nexo-assist-secrets
           resources:
@@ -66,6 +74,9 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/ssl/db
+              readOnly: true
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -129,6 +140,9 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/ssl/db
+              readOnly: true
           # Container-level hardening.
           securityContext:
             allowPrivilegeEscalation: false
