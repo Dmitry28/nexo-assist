@@ -1,4 +1,5 @@
-import { ProxyAgent } from 'undici';
+import { fetch, ProxyAgent } from 'undici';
+import type { Dispatcher, RequestInit, Response } from 'undici';
 
 import { matchesHost } from '@/common/url';
 
@@ -23,6 +24,8 @@ const HEADERS = {
 // where it's used, like the OTEL_* vars in tracing.ts; it is declared and validated in
 // env.validation.ts. Kept out of AppConfig on purpose: it carries credentials and the
 // bootstrap logs the whole config object.
+// NOTE: fetch and ProxyAgent must come from the SAME undici — Node's built-in fetch runs on
+// its own internal copy and rejects this package's dispatcher ("invalid onRequestStart method").
 // One agent per address: it pools connections instead of opening a tunnel per request.
 let proxyAgentCache: { url: string; agent: ProxyAgent } | undefined;
 
@@ -46,9 +49,8 @@ async function fetchFollowingHost(
   signal: AbortSignal,
   useProxy: boolean,
 ): Promise<Response> {
-  // `dispatcher` is undici's per-request transport hook (undici powers global fetch); it is
-  // absent from the DOM RequestInit types, hence the widened local type.
-  const init: RequestInit & { dispatcher?: ProxyAgent } = {
+  // `dispatcher` is undici's per-request transport hook — set only when this source is proxied.
+  const init: RequestInit & { dispatcher?: Dispatcher } = {
     signal,
     headers: HEADERS,
     redirect: 'manual',

@@ -14,7 +14,7 @@ resources:
 images:
   - name: nexo-assist
     newName: ghcr.io/dmitry28/nexo-assist
-    newTag: sha-5546532
+    newTag: sha-67dbb0e
 # NOTE: no HPA/PDB — the app is a single-replica long-polling bot with in-memory
 # state; autoscaling/disruption budgets return with webhook + DB (Phase 3+).
 

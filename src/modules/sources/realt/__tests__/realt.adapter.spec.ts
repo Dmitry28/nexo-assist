@@ -3,6 +3,8 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
+import { undiciFetchMock } from '@/__tests__/helpers/undici';
+
 import { RealtAdapter } from '../realt.adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
@@ -21,12 +23,11 @@ const realtPage = (codes: number[], totalCount: number): string =>
   '</script>';
 
 describe('RealtAdapter', () => {
+  const fetchMock = undiciFetchMock();
   let adapter: RealtAdapter;
-  let fetchMock: jest.SpyInstance;
 
   beforeEach(() => {
     adapter = new RealtAdapter();
-    fetchMock = jest.spyOn(global, 'fetch');
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
   });
