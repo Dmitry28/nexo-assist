@@ -113,3 +113,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Deploy the commit that was just built. Only on a push to dev (never from a PR — a fork must
+  # not be able to reach the cluster) and only after tests AND the image are green.
+  deploy:
+    needs: [build-and-test, docker-and-k8s]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    # One deploy at a time; a newer commit supersedes an older one still waiting.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    steps:
+      # No kubeconfig or cluster port is exposed: we SSH in, and the key on the server is
+      # restricted to running deploy.sh (see deploy/setup-server.sh), so it can do nothing else.
+      - name: Deploy over SSH
+        env:
+          CD_SSH_KEY: ${{ secrets.CD_SSH_KEY }}
+          CD_HOST: ${{ secrets.CD_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$CD_SSH_KEY" > ~/.ssh/cd_key
+          chmod 600 ~/.ssh/cd_key
+          ssh-keyscan -H "$CD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # The sha is the only argument the server accepts; it validates it before use.
+          ssh -i ~/.ssh/cd_key -o BatchMode=yes deploy@"$CD_HOST" "${{ github.sha }}"
