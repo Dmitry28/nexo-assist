@@ -178,12 +178,14 @@ URL → fan-out) и вместе с ним `listings` + **снимки цен** 
 - **Один Deployment:** long-polling бот + in-process scheduler (singleton, `Recreate` —
   уже в манифесте). Отдельный scrape-CronJob и webhook — только под горизонтальное
   масштабирование, не сейчас.
-- **CI/CD:** GitHub Actions → build → push в GHCR (сделано, тег по sha) → деплой
-  `kubectl apply -k` / `kustomize set image`.
-- **Окружения:** сейчас — **только prod** (деплой с `main`). **Позже — dev/staging:**
-  один кластер, два namespace (`nexo-dev`/`nexo-prod`), Kustomize base + overlays; push
-  в `dev` → dev, в `main` → prod. Требует **отдельного бота** (свой токен — один токен =
-  один поллер) и **отдельной БД** (ветка Neon) для dev; образ общий (по sha).
+- **CI/CD — сделано.** Мерж в `dev` → тесты → мультиарх-образ в GHCR (тег по sha) → джоба
+  `deploy` заходит по SSH ключом, ограниченным одной командой, и выкатывает тот же коммит
+  ([`deploy/deploy.sh`](../deploy/deploy.sh)). API кластера наружу закрыт, kubeconfig в GitHub
+  не хранится. Подготовка/переезд хоста — [`deploy/setup-server.sh`](../deploy/setup-server.sh).
+- **Окружения:** сейчас **одно** — деплой с `dev` (там же и разработка). **Позже — dev/prod:**
+  один кластер, два namespace, Kustomize base + overlays; push в `dev` → dev, в `main` → prod
+  (стабильные релизы). Требует **отдельного бота** (один токен = один поллер) и **отдельной БД**
+  для dev; образ общий (по sha).
 - Пробы, ресурс-лимиты, graceful shutdown — в скелете есть; добавить ожидание OTel
   flush в shutdown (техбэклог).
 - **✅ Прокси на уровне источника — сделано.** `kufar.by` блокирует IP-диапазоны
