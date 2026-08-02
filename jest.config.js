@@ -10,6 +10,8 @@ module.exports = {
   coveragePathIgnorePatterns: ['\\.module\\.ts$', 'main\\.ts$', '\\.dto\\.ts$'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  // Stubs undici's fetch so no unit spec can reach the network (see the file's NOTE).
+  setupFilesAfterEnv: ['<rootDir>/__tests__/setup/mock-undici-fetch.ts'],
   clearMocks: true,
   maxWorkers: '50%',
   moduleNameMapper: {

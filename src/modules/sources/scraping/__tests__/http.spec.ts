@@ -1,12 +1,10 @@
+import { undiciFetchMock } from '@/__tests__/helpers/undici';
+
 import { fetchHtml } from '../http';
 
+const fetchMock = undiciFetchMock();
+
 describe('fetchHtml', () => {
-  let fetchMock: jest.SpyInstance;
-
-  beforeEach(() => {
-    fetchMock = jest.spyOn(global, 'fetch');
-  });
-
   afterEach(() => jest.restoreAllMocks());
 
   /** A 3xx redirect response pointing at `location`. */

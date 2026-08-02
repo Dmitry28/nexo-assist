@@ -1,19 +1,18 @@
 import { Logger } from '@nestjs/common';
 
 import { makeListing } from '@/__tests__/helpers/listing';
+import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
 import { paginate } from '../paginate';
 import type { ParsedPage } from '../paginate';
 
 describe('paginate', () => {
+  const fetchMock = undiciFetchMock();
   const logger = new Logger('test');
-  let fetchMock: jest.SpyInstance;
 
   beforeEach(() => {
     // A fresh Response per call — its body can only be read once; parsePage ignores the content.
-    fetchMock = jest
-      .spyOn(global, 'fetch')
-      .mockImplementation(() => Promise.resolve(new Response('<html></html>')));
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('<html></html>')));
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
   });
 
