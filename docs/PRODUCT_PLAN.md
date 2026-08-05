@@ -342,6 +342,10 @@ Read-only админка для обзора всего сервиса (не д�
   собранного Docker-образа (`docker run` + health-check); dependabot
   docker-ecosystem (пиннинг/бампы базовых образов `node`/`postgres`).
 - **OTel:** дождаться flush в shutdown-хуке (сейчас `void sdk.shutdown()`).
+- **TypeScript 7** (dependabot PR #48 закрыт 2026-08-05). Мажор с новым компилятором;
+  сейчас установка падает (`ERESOLVE`): `ts-jest@29` не принимает `typescript@7` как peer.
+  Обновлять отдельным проходом, когда подтянутся `ts-jest` / `typescript-eslint` / `nest build` —
+  красный PR в открытых висеть не должен, dependabot откроет новый на совместимой версии.
 
 ## 5. Из land-scraper: взять / учесть
 
