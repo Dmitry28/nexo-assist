@@ -10,6 +10,7 @@ import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUs
 import { AddNormalizedUrl1783187484846 } from '@/database/migrations/1783187484846-AddNormalizedUrl';
 import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
 import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
+import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -46,6 +47,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             AddNormalizedUrl1783187484846,
             AddPausedAt1783195101942,
             AddConsecutiveFailures1783196783018,
+            EnableRowLevelSecurity1785920305000,
           ],
           migrationsRun: true,
           synchronize: false,
