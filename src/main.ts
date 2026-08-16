@@ -1,15 +1,20 @@
-// Must be first: starts OpenTelemetry before any instrumented module loads.
+// Must be first: starts error reporting, then OpenTelemetry, before any instrumented module loads.
+import './sentry';
 import './tracing';
 
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as Sentry from '@sentry/nestjs';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
 import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
+
+// How long to wait for a crash report to reach Sentry before exiting anyway.
+const SENTRY_FLUSH_MS = 2000;
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
@@ -31,14 +36,17 @@ async function bootstrap(): Promise<void> {
   const logger = app.get(Logger);
   // NOTE: pass the text as `msg` inside the object — nestjs-pino treats a trailing string
   // arg as the log *context*, not the message, so a positional message would be lost here.
-  process.on('uncaughtException', (error) => {
-    logger.fatal({ err: error, msg: 'uncaughtException — exiting' });
-    process.exit(1);
-  });
-  process.on('unhandledRejection', (reason) => {
-    logger.fatal({ err: reason, msg: 'unhandledRejection — exiting' });
-    process.exit(1);
-  });
+  // NOTE: report BEFORE exiting and wait for the send — process.exit() would otherwise kill the
+  // in-flight request and the crash we most want to hear about would never arrive.
+  const reportAndExit = (err: unknown, msg: string): void => {
+    logger.fatal({ err, msg });
+    Sentry.captureException(err);
+    void Sentry.flush(SENTRY_FLUSH_MS).finally(() => process.exit(1));
+  };
+  process.on('uncaughtException', (error) => reportAndExit(error, 'uncaughtException — exiting'));
+  process.on('unhandledRejection', (reason) =>
+    reportAndExit(reason, 'unhandledRejection — exiting'),
+  );
 
   // Swagger / OpenAPI (disabled in production).
   if (!appConfig.isProduction) {

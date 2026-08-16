@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { CronJob } from 'cron';
 import { GrammyError } from 'grammy';
 
@@ -67,6 +68,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     const job = new CronJob(this.appConfig.watchCron, () => {
       void this.runDaily().catch((err: unknown) => {
         this.logger.error({ err }, 'Daily watch run failed');
+        Sentry.captureException(err);
       });
     });
     this.scheduler.addCronJob(JOB_NAME, job);
@@ -93,7 +95,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         result = await this.processSubscription(sub);
       } catch (err) {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
+        // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
+        Sentry.captureException(err);
         continue;
       }
       this.tallySource(sourceStats, sub.source, result === 'poll-failed');
@@ -155,12 +159,14 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       outcome = await this.watch.poll(sub);
     } catch (err) {
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
+      Sentry.captureException(err);
       this.metrics.recordPollError(sub.source);
       // Guard the bookkeeping so a DB hiccup can't hide a poll failure from the source
       // tally — otherwise a broken adapter + failing write would suppress the outage alert.
-      await this.recordFailure(sub).catch((e: unknown) =>
-        this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`),
-      );
+      await this.recordFailure(sub).catch((e: unknown) => {
+        this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`);
+        Sentry.captureException(e);
+      });
       return 'poll-failed';
     }
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
@@ -189,6 +195,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       if (isBotBlocked(err)) return true;
       this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);
+      Sentry.captureException(err);
     }
     return false;
   }
@@ -222,6 +229,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       this.logger.error({ err }, `Failed to pause user ${userId} after 403`);
+      Sentry.captureException(err);
     }
   }
 
