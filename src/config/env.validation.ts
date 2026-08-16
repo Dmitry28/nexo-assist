@@ -116,6 +116,16 @@ export class EnvironmentVariables {
   WATCH_CRON: string = '0 9 * * *';
 
   /**
+   * Sentry DSN — where unhandled errors are reported. Unset = reporting off (local, tests).
+   * Read where it's used (`src/sentry.ts`), like the OTEL_* vars; declared here so an invalid
+   * value fails at boot instead of silently disabling reporting.
+   */
+  @IsString()
+  @Matches(/^https?:\/\/\S+$/, { message: 'SENTRY_DSN must be an http(s) URL' })
+  @IsOptional()
+  SENTRY_DSN?: string;
+
+  /**
    * HTTP proxy for sources that block datacenter IPs (kufar — see PRODUCT_TECH.md).
    * Unset = every source is fetched directly. Consumed in the scraping transport
    * (`sources/scraping/http.ts`), deliberately not exposed via AppConfig: it carries

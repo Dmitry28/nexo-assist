@@ -1,5 +1,10 @@
+// The scheduler swallows per-subscription errors on purpose (one bad sub must not stop the run),
+// so it must report them instead — this mock lets the tests assert that guarantee.
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
+
 import { Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { GrammyError } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
@@ -175,6 +180,18 @@ describe('WatchScheduler.runDaily', () => {
 
     expect(telegram.notify).toHaveBeenCalledTimes(2); // user 2 still attempted
     expect(telegram.notify).toHaveBeenLastCalledWith(2, expect.stringContaining('🆕'));
+  });
+
+  it('reports a swallowed poll failure — a caught error must not stay invisible', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
+    const boom = new Error('source down');
+    watch.poll.mockRejectedValue(boom);
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(boom);
   });
 
   it('bumps the failure streak on a poll error without warning below the threshold', async () => {
