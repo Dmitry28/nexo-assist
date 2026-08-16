@@ -19,12 +19,14 @@ docs/llm/
 ├── ENTRY_POINT.md           # Always-loaded context (project description, key commands)
 ├── README.md                # This file
 ├── mcp.example.json         # MCP servers reference (context7, github)
-├── rules/                   # Background knowledge (one doc per topic, one skill per doc)
+├── rules/                   # Background knowledge (one doc per topic)
 │   ├── development-philosophy.md  # DRY, KISS, SOLID
 │   ├── code-style.md              # Naming, NestJS conventions
 │   ├── typescript.md              # Type safety rules
 │   ├── architecture.md            # Module structure, layer responsibilities
 │   ├── workflow.md                # Plan → Implement → Verify → Fix
+│   ├── step-by-step-flow.md       # Per-step review before each commit
+│   ├── github.md                  # Branches, PR lifecycle, approval
 │   ├── code-review.md             # CCR labels, Pattern Check, triggers, process checks
 │   ├── logic-review.md            # Behavior vs task: AC traceability, edge cases
 │   ├── debugging.md               # Systematic debugging — Iron Law + 5 phases
