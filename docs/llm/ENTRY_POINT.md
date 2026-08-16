@@ -49,13 +49,13 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
 - **Decide, don't ask.** When a question comes up, investigate it yourself first (code, docs, live checks) and decide by common sense, standards and best practices. Ask the owner only what is genuinely important: product direction, destructive/irreversible actions, trade-offs only he can weigh.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
-- **Log tech debt.** Spot over-complicated code you're not refactoring now → add it to the «Технический бэклог» in [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) so it isn't lost.
+- **Fix it or log it — never walk past it.** Noticed a real problem outside the current scope? Verify it's real (read the code), then **fix it now** if it's small, safe and in a file you're already touching; otherwise leave a marker — a `TODO [H|M|L]` at the code it affects ([rules/code-style.md](rules/code-style.md#comments)) for a local issue, an entry in the «Технический бэклог» of [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) for anything larger. Never silently expand scope with a big fix.
 - **Nothing important lives only in chat.** Anything worth knowing later — a decision and its reasoning, a non-obvious constraint, a diagnosis, a workaround, an incident and its fix — must land somewhere durable **in the same change**: the right doc (see the Project Docs table) or a `NOTE:`/comment at the code it constrains (format: [rules/code-style.md](rules/code-style.md)). Rule of thumb: if the next person (or the next session) would ask "why is this like that?" — write it down where they'll look.
 - Follow existing NestJS module structure — mirror an existing module (`subscriptions`, `telegram`).
 - **Talk plainly.** Concise, facts only, no filler; mark assumptions and anything unverified. Before acting say _why_; when done say _what_ changed and _why_ — in language a non-implementer follows, never a diff dump.
 - **Teach as you go.** The owner is new to DevOps/infra, so every infra, deploy, k8s, network or security step comes with the **concept in simple words** (what it is, why we need it, what breaks without it), and every diagnosis shows the reasoning (symptom → what it means → fix). Plain analogies over jargon; if an explanation didn't land, re-explain simpler. Durable versions live in [DEPLOY.md](../DEPLOY.md).
 - **Never commit, push or merge without the owner's review.** Implement → show the diff + a plain summary → wait for explicit approval. Everything counts: code, manifests, configs, docs. **Never auto-merge** (no background merges) — report the CI result, then ask.
-- Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
+- Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass. Then `/refine` before opening the PR.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep docs current:** update **every** doc a change affects, in the same change — see the Project Docs table above for which is which: [PRODUCT.md](../PRODUCT.md) (behavior), [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap/decisions), [PRODUCT_TECH.md](../PRODUCT_TECH.md) (infra/runtime reality), [DEPLOY.md](../DEPLOY.md) (deploy steps + lessons), [README.md](../../README.md) (scripts, setup, commands, stack), and the relevant `docs/llm/` rule when a convention changes.
 
@@ -78,6 +78,7 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Development philosophy | [rules/development-philosophy.md](rules/development-philosophy.md) |
 | Code review            | [rules/code-review.md](rules/code-review.md)                       |
 | Logic review           | [rules/logic-review.md](rules/logic-review.md)                     |
+| Refine (final pass)    | [rules/refine.md](rules/refine.md)                                 |
 | Debugging              | [rules/debugging.md](rules/debugging.md)                           |
 | Testing                | [rules/testing.md](rules/testing.md)                               |
 | Workflow               | [rules/workflow.md](rules/workflow.md)                             |

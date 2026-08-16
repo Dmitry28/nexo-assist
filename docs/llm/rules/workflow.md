@@ -36,7 +36,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 ## 4. Fix
 
 - Address failures immediately — don't defer issues to later milestones.
-- Minor non-critical improvements can be left as `// TODO:` comments to address later.
+- Improvements that surface mid-loop: **fix it or log it** (ENTRY_POINT § Core Rules) — don't let them derail the current milestone.
 - If the same approach fails 2+ times — **stop, reflect on why, ask the user instead of retrying.**
 
 _(Repeat steps 2–4 for each milestone)_
@@ -53,9 +53,10 @@ _(Repeat steps 2–4 for each milestone)_
 4. Run `/review-code` over all branch changes.
 5. Fix any issues found in steps 1–4, then re-run the relevant review — repeat until clean.
 6. Update docs if architecture/patterns/logic changed.
-7. **Propose a TODO for any real issue you notice but don't fix in current scope** — pre-existing inconsistencies, dead code, optimization opportunities, edge cases. Verify it's real (read the code); don't TODO speculative concerns. Format: see [comment rules](code-style.md#comments).
+7. Sweep the issues you noticed along the way — pre-existing inconsistencies, dead code, edge cases — and apply **fix it or log it** (ENTRY_POINT § Core Rules).
 8. **Reflection** — improve **repo-tracked** instructions (`docs/llm/`, `.claude/skills/`) so the next contributor avoids the same friction. **Not personal memory — only files committed to the repo.** Edit when an instruction misled you, was easy to skip, or missed a pattern you used. Each edit: specific (cite file/section), minimal (one focused change). Skip if nothing came up — don't invent improvements to fill the slot.
-9. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
+9. Run `/refine` — fresh-eyes pass over the finished result and over any `.md` touched ([refine.md](refine.md)). **Required before every PR.**
+10. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
 
 ---
 
