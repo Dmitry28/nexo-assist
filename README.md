@@ -73,6 +73,10 @@ npm run start:dev
 | `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer) |
 | `npm run migration:revert`                                     | Revert the last migration                                       |
 | `npm run migration:show`                                       | List migrations + status                                        |
+| `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster                       |
+| `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)              |
+| `npm run k8s:status`                                           | Pods in the cluster                                             |
+| `npm run k8s:logs`                                             | Follow the bot's logs                                           |
 
 ## Project structure
 
