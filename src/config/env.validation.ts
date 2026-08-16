@@ -1,6 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -124,6 +125,15 @@ export class EnvironmentVariables {
   @Matches(/^https?:\/\/\S+$/, { message: 'SENTRY_DSN must be an http(s) URL' })
   @IsOptional()
   SENTRY_DSN?: string;
+
+  /**
+   * Force error reporting on outside production/staging — for testing the reporting path
+   * locally. Normally the stage decides (see `src/sentry.ts`), so the DSN can stay in `.env`
+   * without local runs sending anything.
+   */
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  SENTRY_ENABLED?: string;
 
   /**
    * HTTP proxy for sources that block datacenter IPs (kufar — see PRODUCT_TECH.md).
