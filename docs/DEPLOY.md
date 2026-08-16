@@ -7,7 +7,7 @@
 ## Куда деплоим (решено)
 
 - **Приложение:** наш Docker-образ → **k3s** (лёгкий Kubernetes) на **Hetzner Cloud**
-  (сервер **CX23**, Ubuntu 24.04, ~€6.5/мес). Настоящий k8s → максимум DevOps-опыта.
+  (сервер **CX23**, Ubuntu 26.04, ~€6.5/мес). Настоящий k8s → максимум DevOps-опыта.
 - **База:** managed Postgres — **Supabase** (free tier). Бэкапы/аптайм — на их стороне.
 - **Портируемо:** апп = образ, БД = строка `DATABASE_URL`. Переезд на другой хост —
   смена таргета, не переписывание.
@@ -30,16 +30,40 @@
 
 ## Как код попадает в прод (общая картина)
 
+От мержа до работающего пода всё делает автоматика — руками запускать нечего:
+
 ```
-код → docker build → образ → push в registry (GHCR) → k8s тянет образ → запускает Pod
-                                                         ↑
-                                     манифесты (Kustomize) описывают ЧТО запускать
+мерж PR в dev
+   │
+   ├─► build-and-test ─ lint, типы, тесты, миграции, e2e (чистая машина + Postgres)
+   │        ↓ только если зелёное
+   ├─► docker-and-k8s ─ валидация манифестов → мультиарх-образ → GHCR sha-<коммит>
+   │        ↓ только если зелёное
+   └─► deploy ───────── SSH на сервер → deploy.sh: checkout коммита → пин его образа →
+                        kubectl apply -k → rollout status → не поднялось =
+                        автооткат и красная джоба
 ```
 
 1. **Собираем образ** (Dockerfile) — самодостаточный «архив» приложения.
 2. **Кладём в registry** (GitHub Container Registry) — склад образов, откуда кластер качает.
 3. **Кластер применяет манифесты** (`kubectl apply -k k8s/`) — декларативно: ты
    описываешь _желаемое состояние_, k8s его достигает и поддерживает.
+
+| Что                                     | Кто отвечает   | Где смотреть                        |
+| --------------------------------------- | -------------- | ----------------------------------- |
+| Тесты, сборка образа, деплой            | GitHub Actions | Actions → прогон коммита            |
+| Хранение образов                        | GHCR           | GitHub → Packages                   |
+| Запуск, миграции, перезапуски, здоровье | k3s на сервере | `npm run k8s:status`, `k8s:logs`    |
+| База и бэкапы                           | Supabase       | панель Supabase                     |
+| Ошибки приложения                       | Sentry         | панель Sentry                       |
+| Алерты уровня кластера (под лежит)      | **никто**      | пробел, см. PRODUCT_PLAN «Осталось» |
+
+Две вещи, которые легко упустить:
+
+- **Деплоится только `dev`** (`if: github.ref == 'refs/heads/dev'`). Мерж в `main` соберёт
+  образ, но в кластер он не поедет: окружение пока одно.
+- **О провале деплоя узнаёшь из красной джобы** `deploy` (GitHub шлёт уведомление). Логи
+  сломанного пода скрипт выгружает в лог джобы **до** отката — в кластере их уже не будет.
 
 ## Концепции простыми словами
 
@@ -72,14 +96,17 @@
 
 ## Наши файлы
 
-| Файл                                                  | Что описывает                                                           |
-| ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`Dockerfile`](../Dockerfile)                         | как собрать образ (multi-stage, non-root, healthcheck)                  |
-| [`k8s/deployment.yaml`](../k8s/deployment.yaml)       | Pod: initContainer миграций + контейнер бота, пробы, лимиты, hardening  |
-| [`k8s/configmap.yaml`](../k8s/configmap.yaml)         | несекретные env                                                         |
-| [`k8s/service.yaml`](../k8s/service.yaml)             | внутренний адрес                                                        |
-| [`k8s/kustomization.yaml`](../k8s/kustomization.yaml) | что собрать вместе                                                      |
-| Secret `nexo-assist-secrets`                          | `TELEGRAM_BOT_TOKEN` + `DATABASE_URL` (создаётся в кластере, не в репо) |
+| Файл                                                      | Что описывает                                                          |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [`Dockerfile`](../Dockerfile)                             | как собрать образ (multi-stage, non-root, healthcheck)                 |
+| [`k8s/deployment.yaml`](../k8s/deployment.yaml)           | Pod: initContainer миграций + контейнер бота, пробы, лимиты, hardening |
+| [`k8s/configmap.yaml`](../k8s/configmap.yaml)             | несекретные env                                                        |
+| [`k8s/service.yaml`](../k8s/service.yaml)                 | внутренний адрес                                                       |
+| [`k8s/kustomization.yaml`](../k8s/kustomization.yaml)     | что собрать вместе                                                     |
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | тесты → образ в GHCR → деплой в кластер                                |
+| [`deploy/`](../deploy)                                    | скрипты: подготовка хоста, деплой, секреты, туннель                    |
+| Secret `nexo-assist-secrets`                              | токен бота, `DATABASE_URL`, прокси, Sentry (в кластере, не в репо)     |
+| ConfigMap `db-ca`                                         | корневой CA Supabase (публичный, но тоже заводится руками)             |
 
 ## Разбор каждого DevOps-файла (как работает / что делать тебе)
 
@@ -143,7 +170,9 @@ data-source (Шаг 1).
 Объединяет configmap + deployment + service; сюда добавляется блок `images:` для пина
 образа по sha (пинит оба контейнера — app и initContainer).
 
-- **Тебе:** при ручном деплое вписать sha (§4.6); позже CD (5b) сделает сам.
+- **Тебе:** ничего. `deploy.sh` сам переписывает `newTag` на sha деплоя; закоммиченный
+  тег — устаревший плейсхолдер, поэтому перед ручным `apply` его нужно запинить
+  (рецепт — в [`k8s/README.md`](../k8s/README.md)).
 
 ### `k8s/README.md` — краткий справочник по манифестам
 
@@ -151,14 +180,17 @@ data-source (Шаг 1).
 
 - **Тебе:** прочитать перед первым деплоем.
 
-### `.github/workflows/ci.yml` — CI (и будущий CD)
+### `.github/workflows/ci.yml` — CI и CD
 
-Два джоба: **build-and-test** (lint / format / typecheck / knip / юниты / build /
-миграции / e2e против сервиса Postgres) и **docker-and-k8s** (валидирует манифесты,
-собирает мультиарх-образ, пушит в GHCR на push в `dev`/`main`).
+Три джобы: **build-and-test** (lint / format / typecheck / knip / юниты / build /
+миграции / e2e против сервиса Postgres), **docker-and-k8s** (валидирует манифесты,
+собирает мультиарх-образ, пушит в GHCR на push в `dev`/`main`) и **deploy** — только на
+push в `dev`, выкатывает этот же коммит в кластер (Шаг 5b).
 
-- **Тебе:** ничего — работает само. После первого мержа в `main` проверь, что образ
-  появился в **GitHub → Packages**.
+Верхний `concurrency` отменяет устаревшие прогоны, **кроме `dev`**: там отмена оборвала бы
+SSH-сессию посреди деплоя, и `deploy.sh` не успел бы откатиться — бот остался бы лежать.
+
+- **Тебе:** ничего — работает само. Результат: Actions → прогон мержа.
 
 ### npm-скрипты (DevOps)
 
@@ -271,7 +303,7 @@ Dockerfile), на push в `dev`/`main` — сборка + пуш. Теги: `sha
 k3s kubectl rollout undo deployment/nexo-assist
 
 # 2. Или выкатить конкретный прошлый коммит (его образ уже лежит в GHCR):
-sudo -u deploy SSH_ORIGINAL_COMMAND=<sha> /usr/local/bin/deploy.sh
+sudo -u deploy /usr/local/bin/deploy.sh <sha>
 ```
 
 **Важно: откат возвращает под, но не базу и не конфиг.** `rollout undo` умеет вернуть только
@@ -305,32 +337,30 @@ sudo bash deploy/setup-server.sh   # пользователь, доступ к �
 затем положить новый приватный ключ в `CD_SSH_KEY` и новый адрес в `CD_HOST`. Скрипт
 идемпотентный — повторный запуск безопасен.
 
-## Шаг 4 — Runbook: поднять кластер и задеплоить (делаешь ты, позже)
+## Шаг 4 — Runbook: поднять кластер и задеплоить
 
-Пошагово, с командами. Пока — **только prod**, деплой в namespace `default`. Бот на
+Среда уже поднята в этом порядке — держим его для **пересоздания или переезда** (и как
+карту, что где живёт). Пока — **только prod**, деплой в namespace `default`. Бот на
 long-polling ходит наружу сам, поэтому **входящие порты для бота не нужны** (ни ingress,
-ни домен). На первый раз заложи ~1 час.
-
-> **Мы деплоим на Hetzner** (см. «Почему Hetzner»). Шаг 4.1 ниже написан под Oracle как
-> исходный план — на Hetzner отличия: сервер создаёшь в Hetzner Console (Ubuntu 24.04,
-> CX23, свой SSH-ключ), сеть/публичный IP из коробки (VCN не нужен), пользователь —
-> **`root`** (не `ubuntu`), а **iptables-фикс в 4.4 не нужен** (он только для Oracle).
-> Полный runbook под Hetzner обновлю после успешного деплоя.
+ни домен). На всё — ~1 час.
 
 ### 4.0 Что нужно локально (prerequisites)
 
 - `kubectl` (проверь: `kubectl version --client`), `ssh`, `git`.
-- Аккаунт GitHub (образ уже в GHCR после мержа в `main` — шаг 5a).
-- SSH-ключ (`ssh-keygen`, если нет) — публичную часть добавишь в VM при создании.
+- Аккаунт GitHub (образ попадает в GHCR после мержа в `dev` — шаг 5a).
+- SSH-ключ (`ssh-keygen`, если нет) — публичную часть добавишь на сервер при создании.
 
-### 4.1 Oracle Cloud — бесплатная VM
+### 4.1 Hetzner Cloud — сервер
 
-1. Заведи аккаунт (нужна карта для верификации, списаний нет на Always Free).
-2. Compute → Instances → Create: shape **VM.Standard.A1.Flex** (ARM Ampere, Always
-   Free), напр. 2 OCPU / 12 GB, образ **Ubuntu 24.04**. Добавь свой SSH-ключ.
-   - _Каприз:_ ARM часто «Out of capacity» — повтори через время / смени AD/регион.
-3. Запиши публичный IP. В Security List оставь открытым только **22 (SSH)** — API
-   кластера наружу не открываем (ходим через SSH-туннель, см. 4.4).
+1. Hetzner Console → Add Server: **Ubuntu 26.04**, тип **CX23**, регион в ЕС, свой
+   SSH-ключ. Сеть и публичный IP выдаются из коробки — настраивать нечего.
+2. Запиши публичный IP (в репозиторий он не попадает — см. «Учебный инцидент» ниже).
+   Наружу открыт только **22 (SSH)**; API кластера (`6443`) не публикуем — к нему ходим
+   через туннель (§4.4).
+3. Пользователь по умолчанию — **`root`** (в отличие от Oracle, где `ubuntu`).
+
+_Бесплатная альтернатива — Oracle Always Free (ARM `A1`), см. «Почему Hetzner»: там
+дополнительно собирается VCN и нужен iptables-фикс из §4.4._
 
 ### 4.2 Managed Postgres — prod-база (Supabase)
 
@@ -359,23 +389,30 @@ postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/p
 ### 4.4 Установить k3s и забрать доступ
 
 ```bash
-ssh ubuntu@<VM_IP>
+ssh root@<IP сервера>
 # Лёгкий однонодовый k8s. Отключаем traefik/servicelb — входящий трафик не нужен.
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik --disable servicelb" sh -
 
-# ⚠️ Oracle Ubuntu идёт с жёсткими iptables (дефолтный REJECT) — из-за них поды/CoreDNS
-# часто не стартуют или не видят друг друга. Разреши подсети k3s (поды/сервисы) и сохрани:
-sudo iptables -I INPUT -s 10.42.0.0/16 -j ACCEPT
-sudo iptables -I INPUT -s 10.43.0.0/16 -j ACCEPT
-sudo netfilter-persistent save
+k3s kubectl get nodes                # проверка прямо на сервере: нода Ready
+cat /etc/rancher/k3s/k3s.yaml        # это kubeconfig; server = https://127.0.0.1:6443
 
-sudo k3s kubectl get nodes           # проверка прямо на VM: нода Ready
-sudo cat /etc/rancher/k3s/k3s.yaml   # это kubeconfig; server = https://127.0.0.1:6443
+# Подготовка хоста к CD: пользователь deploy, доступ к кластеру, чекаут репозитория,
+# скрипт деплоя, CD-ключ (печатается путь), отключение входа по паролю + fail2ban.
+curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
 ```
+
+Приватный CD-ключ, путь которого напечатает скрипт, положи в GitHub Secret `CD_SSH_KEY`,
+адрес сервера — в `CD_HOST`. После этого деплой идёт сам (§5b).
+
+> **Только для Oracle:** их Ubuntu идёт с жёсткими iptables (дефолтный `REJECT`) — поды и
+> CoreDNS не стартуют или не видят друг друга. Разреши подсети k3s и сохрани:
+> `iptables -I INPUT -s 10.42.0.0/16 -j ACCEPT`, то же для `10.43.0.0/16`, затем
+> `netfilter-persistent save`. На Hetzner не нужно.
 
 Работать можно двумя способами:
 
-- **Прямо на VM:** `sudo k3s kubectl ...` (kubectl уже стоит с k3s) — проще всего.
+- **Прямо на VM:** `k3s kubectl ...` (kubectl приходит вместе с k3s) — проще всего.
+  Мы заходим как `root`, поэтому `sudo` не нужен; из-под обычного пользователя — `sudo k3s kubectl`.
 - **С локальной машины через SSH-туннель** (безопасно, API наружу не открываем):
   сохрани kubeconfig в **отдельный** файл (не затирай существующий `~/.kube/config`),
   оставь `server: https://127.0.0.1:6443`:
@@ -400,28 +437,26 @@ Change visibility). Тогда кластеру не нужен pull-секре�
 
 ### 4.6 Секреты и деплой
 
+Единственное, чего нет в git и что заводится руками, — Secret и CA-сертификат базы:
+
 ```bash
-kubectl create secret generic nexo-assist-secrets \
-  --from-literal=TELEGRAM_BOT_TOKEN='<prod-token>' \
-  --from-literal=DATABASE_URL='<neon-url>'
+npm run k8s:secrets   # deploy/secrets.sh — скрытый ввод; TELEGRAM_BOT_TOKEN,
+                      # DATABASE_URL, SCRAPE_PROXY_URL, SENTRY_DSN
 
-# Запинить свежий образ по sha (тег из GitHub → Packages или из CI-лога):
-# в k8s/kustomization.yaml добавь блок images (см. ниже), затем:
-kubectl apply -k k8s/
+# Публичный корневой CA провайдера (скачать в панели Supabase). Без него verify-full
+# падает с SELF_SIGNED_CERT_IN_CHAIN — см. «Первый деплой», п.2:
+kubectl create configmap db-ca --from-file=ca.crt=<скачанный>.crt
 ```
 
-`images` в `k8s/kustomization.yaml` (пинним оба контейнера — app и initContainer;
-sha-тег возьми в GitHub → Packages → nexo-assist):
+Дальше деплой делает CD: мерж в `dev` → тесты → образ → выкатка (§5b). Тег в
+`k8s/kustomization.yaml` уже закоммичен и служит плейсхолдером — `deploy.sh` подставляет
+sha деплоя сам, править руками не нужно.
 
-```yaml
-images:
-  - name: nexo-assist
-    newName: ghcr.io/dmitry28/nexo-assist
-    newTag: sha-<commit>
+Ручной деплой нужен только если CI недоступен — на сервере:
+
+```bash
+sudo -u deploy /usr/local/bin/deploy.sh <sha>
 ```
-
-> Это ручной пин для первого деплоя (коммитить не обязательно). Позже **5b (CD)**
-> будет подставлять свежий sha автоматически при каждом мерже в `main`.
 
 ### 4.7 Проверка
 
@@ -536,6 +571,53 @@ fail2ban-client status sshd                                   # jail актив�
 **Почему SSH нельзя закрыть по IP:** через него ходит наш CD с GitHub Actions, а у их раннеров
 широкие диапазоны адресов. Поэтому упор на ключи + fail2ban, а не на список разрешённых IP.
 
+## Учебный инцидент: проверка «пароль выключен» врала из-за `grep -q`
+
+**Что случилось:** `setup-server.sh` падал с «password auth still on», хотя пароль был выключен.
+Та же команда, набранная руками, отрабатывала верно. Расхождение — в `set -o pipefail`.
+
+**Как устроена ловушка.** Строка была такой:
+
+```bash
+sshd -T | grep -qx 'passwordauthentication no'
+```
+
+`grep -q` завершается **сразу на первом совпадении** — ему больше нечего искать. Но `sshd -T`
+в этот момент ещё печатает остальные полсотни строк, и пишет он уже в **закрытую трубу**.
+Система убивает его сигналом `SIGPIPE` (код 141). Дальше вступает `pipefail`: он берёт код
+самой правой **неуспешной** команды в конвейере. Итог — grep нашёл совпадение (код 0), но
+конвейер вернул 141, то есть «не нашёл».
+
+Проверяется одной строкой:
+
+```bash
+bash -c 'set -o pipefail; sshd -T | grep -qx "passwordauthentication no"; echo ${PIPESTATUS[*]}'
+# 141 0  ← sshd убит, grep успешен
+```
+
+**Это гонка, а не гарантия.** Если `sshd -T` успел дописать весь вывод в буфер трубы раньше,
+чем `grep -q` завершился, писать в закрытую трубу уже некому — и конвейер вернёт `0 0`.
+Поэтому такая ошибка ловится не всегда и на другой машине может «не воспроизводиться».
+Тем хуже: баг, который проявляется через раз, живёт в скрипте долго.
+
+**Как починили:** сначала забираем вывод в переменную, потом ищем в ней — трубы нет, убивать
+некого:
+
+```bash
+SSHD_EFFECTIVE=$(sshd -T)
+grep -qx 'passwordauthentication no' <<<"$SSHD_EFFECTIVE" || { ...; exit 1; }
+```
+
+**Когда это кусается, а когда нет.** Опасна связка: досрочно выходящая команда (`grep -q`,
+`head`) **в конвейере** вместе с `pipefail`. Если grep читает **файл** (`grep -qF ... "$AUTH"`
+в том же скрипте) — конвейера нет, проблемы нет. Без `-q` grep дочитывает ввод до конца, и
+SIGPIPE не возникает.
+
+**Урок:** `set -euo pipefail` — правильная привычка, но она превращает досрочный выход из
+конвейера в ложную ошибку. И более общий: **проверка тоже может быть сломана**. Здесь она
+сработала «в безопасную сторону» (ложная тревога, скрипт остановился), но такая же ошибка
+с обратным знаком молча пропустила бы дыру.
+
 ## Учебный инцидент: таблицы были открыты через публичный API провайдера
 
 **Что случилось:** Supabase прислал алерт «Table publicly accessible — RLS not enabled».
@@ -582,26 +664,27 @@ PostgREST) для браузерных приложений. В такой мо�
 **Урок:** секреты / kubeconfig / токены **никогда** не вставляем в чат, логи, скриншоты;
 API кластера не выставляем в интернет; при утечке — ротация ключа + ограничение доступа.
 
-## Что от тебя требуется — чек-лист
+## Чек-лист среды — выполнен; держим для пересоздания
 
-Автоматика (CI, сборка образа, тесты) работает сама. Ручное — только подъём прод-среды:
+Тесты, сборка образа и деплой идут сами. Руками — только пункты ниже, и только при
+подъёме или переезде среды:
 
-- [ ] **GitHub → Packages:** после первого мержа в `main` убедись, что образ
-      `ghcr.io/dmitry28/nexo-assist` появился; сделай пакет **public** (§4.5).
-- [ ] **Oracle Cloud:** создать Always Free ARM VM (Ubuntu 24.04), SSH (§4.1).
-- [ ] **Managed Postgres (Supabase):** прод-БД, взять `DATABASE_URL` с `sslmode=verify-full` (§4.2).
-- [ ] **BotFather:** прод-токен (§4.3).
-- [ ] **На VM:** поставить k3s + **фикс iptables** (§4.4).
-- [ ] **kubectl:** доступ к кластеру (туннель или на VM) (§4.4).
-- [ ] **Защита SSH:** `deploy/setup-server.sh` (шаг 6) → проверить `sshd -T | grep -i passwordauth`
-      (должно быть `no`) и `fail2ban-client status sshd`.
-- [ ] **Secret** `nexo-assist-secrets` (токен + `DATABASE_URL`) (§4.6).
-- [ ] **Деплой:** запинить sha образа + `kubectl apply -k k8s/` (§4.6).
-- [ ] **Проверить:** поды, миграции, `/health`, ответ бота (§4.7).
+- [x] **Hetzner:** сервер CX23, Ubuntu 26.04, наружу только SSH (§4.1).
+- [x] **Managed Postgres (Supabase):** `DATABASE_URL` с `sslmode=verify-full` (§4.2).
+- [x] **BotFather:** прод-токен (§4.3).
+- [x] **На сервере:** k3s, затем `deploy/setup-server.sh` — пользователь `deploy`, CD-ключ,
+      отключение входа по паролю, fail2ban (§4.4). Проверка:
+      `sshd -T | grep -i passwordauth` → `no`, `fail2ban-client status sshd`.
+- [x] **GitHub Secrets:** `CD_SSH_KEY` (приватный CD-ключ) и `CD_HOST` (адрес сервера).
+- [x] **GitHub → Packages:** пакет `ghcr.io/dmitry28/nexo-assist` сделан **public** (§4.5).
+- [x] **В кластере:** Secret `nexo-assist-secrets` (`npm run k8s:secrets`) и ConfigMap
+      `db-ca` — единственное, чего нет в git (§4.6).
+- [x] **kubectl с ноутбука:** `npm run k8s:tunnel` (§4.4).
+- [x] **Проверено:** поды, миграции, `/health`, ответ бота (§4.7).
 - [ ] _(позже)_ dev-окружение: 2-й бот, отдельная БД, Kustomize overlays.
 
-Всё, что я делаю за тебя (код/конфиг): Dockerfile, манифесты k8s, CI, миграции,
-learning-гайд. Что делаешь ты: поднимаешь инфраструктуру по этому чек-листу (я рядом).
+Что делаю я: код, манифесты, CI/CD, миграции, этот гайд. Что делаешь ты: держишь
+инфраструктуру и секреты (я рядом).
 
 ## Скрипты в `deploy/` (рутина одной командой)
 
@@ -653,9 +736,11 @@ kubectl kustomize k8s/
 # Проверить манифесты без применения (клиентская валидация):
 kubectl apply --dry-run=client -k k8s/
 
-# Создать секрет (пример — реальные значения не коммитить):
-kubectl create secret generic nexo-assist-secrets \
-  --from-literal=TELEGRAM_BOT_TOKEN='...' --from-literal=DATABASE_URL='...'
+# Завести/обновить секреты (скрытый ввод — значения не попадают в историю оболочки):
+npm run k8s:secrets
+
+# Что реально запущено сейчас:
+npm run k8s:status
 ```
 
 ## Ссылки
@@ -669,5 +754,7 @@ kubectl create secret generic nexo-assist-secrets \
 - Supabase: https://supabase.com/docs/guides/database/connecting-to-postgres
 - Neon (альтернатива): https://neon.tech/docs/introduction
 
-_Дальше гайд растёт: шаг 5b (CD: авто-деплой в кластер вместо ручного `apply`),
-шаг 6 (observability/алертинг), позже — dev-окружение (overlays)._
+_Дальше гайд растёт: алерты уровня Kubernetes (рестарты и недоступность пода — Sentry о них
+не знает по определению), dev-окружение (Kustomize overlays), позже — секреты в git
+(SOPS + age) и GitOps. Статус и приоритеты — [PRODUCT_PLAN.md](PRODUCT_PLAN.md), «Осталось
+по фазе»._

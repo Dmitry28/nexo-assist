@@ -60,8 +60,14 @@ sshd -t || { echo "sshd config invalid — 01-hardening.conf not applied" >&2; e
 systemctl reload ssh
 # Verify by fact, not by the file existing: a base image whose sshd_config lacks the
 # "Include /etc/ssh/sshd_config.d/*.conf" line ignores the drop-in entirely.
-sshd -T | grep -qx 'passwordauthentication no' \
-  || { echo "password auth still on — does /etc/ssh/sshd_config have 'Include /etc/ssh/sshd_config.d/*.conf'?" >&2; exit 1; }
+# NOTE: capture first, don't pipe into `grep -q`. Under `set -o pipefail` that combination
+# reports failure even on a match: grep -q exits at the first hit, sshd -T dies writing to the
+# closed pipe (SIGPIPE, 141), and pipefail surfaces the 141. Cost us a false "still on" alarm.
+SSHD_EFFECTIVE=$(sshd -T) || { echo "sshd -T failed — cannot verify effective config" >&2; exit 1; }
+if ! grep -qx 'passwordauthentication no' <<<"$SSHD_EFFECTIVE"; then
+  echo "password auth still on — does /etc/ssh/sshd_config have 'Include /etc/ssh/sshd_config.d/*.conf'?" >&2
+  exit 1
+fi
 
 # fail2ban bans repeat offenders. With passwords off, brute force cannot succeed anyway —
 # this is log/CPU hygiene and cover for any other service we expose later.
