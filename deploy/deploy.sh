@@ -29,8 +29,57 @@ git -C "$REPO_DIR" checkout --quiet --force "$SHA"
 # is only a placeholder for manual applies — CD always deploys the image of the deployed commit.
 sed -i "s|newTag: .*|newTag: sha-${SHORT}|" "$REPO_DIR/k8s/kustomization.yaml"
 
+# Remember what is live BEFORE we change anything: a bare `rollout undo` means "one revision
+# back", which is NOT the same as "what was running". Re-deploying the sha already live creates
+# no new revision, so a bare undo would then downgrade a release further than intended.
+# Empty on the very first deploy (no Deployment yet) — handled in the rollback branch.
+REV_BEFORE=$(k3s kubectl get deployment/nexo-assist \
+  -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' 2>/dev/null || true)
+
 echo "deploy: applying manifests"
 k3s kubectl apply -k "$REPO_DIR/k8s/"
-# Fail the CD job if the new pod never becomes ready (broken migrations, missing image, ...).
-k3s kubectl rollout status deployment/nexo-assist --timeout=180s
+
+# Roll back if the new pod never becomes ready (broken migrations, missing image, crash on boot).
+# This matters more than usual here: one replica with strategy Recreate means the old pod is
+# stopped BEFORE the new one starts, so a bad deploy leaves the bot down — and CD is automatic,
+# so nobody is necessarily watching. Reverting restores the last pod template that did run.
+#
+# NOTE: reverts the pod template only — not the DB schema and not the ConfigMap/Secret.
+# See docs/DEPLOY.md § «Откат» for what that means in practice.
+#
+# Timeout: a healthy deploy (fresh image pull + migrate initContainer + startupProbe) measured
+# ~22 s, so 180 s is ample. Deliberately not longer: with Recreate the bot is already down while
+# we wait, so a bigger budget only stretches the outage on a genuinely broken release, whereas
+# a premature rollback costs a failed release, not availability.
+if ! k3s kubectl rollout status deployment/nexo-assist --timeout=180s; then
+  echo "deploy: ${SHORT} failed to become ready — rolling back" >&2
+  # The checkout stays on the failed commit with its tag pinned in kustomization.yaml —
+  # say so on EVERY failure path, since the next step a human takes is often `apply -k`.
+  echo "deploy: host checkout left at ${SHORT} — do NOT 'apply -k' it manually" >&2
+
+  # Capture the evidence FIRST: rolling back scales the failed ReplicaSet to zero and its pod
+  # (with the reason it died) disappears. This job log becomes the only record. `|| true` —
+  # diagnostics must never be the thing that stops us from restoring service.
+  {
+    echo "deploy: --- why it failed (pod state, then logs) ---"
+    k3s kubectl describe pod -l app.kubernetes.io/name=nexo-assist 2>&1 | tail -40 || true
+    k3s kubectl logs -l app.kubernetes.io/name=nexo-assist --all-containers --tail=100 2>&1 || true
+    echo "deploy: --- end diagnostics ---"
+  } >&2
+
+  if [[ -z "$REV_BEFORE" ]]; then
+    echo "deploy: no previous revision (first deploy) — the bot is DOWN, fix it by hand" >&2
+    exit 1
+  fi
+  k3s kubectl rollout undo deployment/nexo-assist --to-revision="$REV_BEFORE" || {
+    echo "deploy: rollback to revision ${REV_BEFORE} failed — the bot is DOWN, fix it by hand" >&2
+    exit 1
+  }
+  if k3s kubectl rollout status deployment/nexo-assist --timeout=180s; then
+    echo "deploy: rolled back — the bot is up on the previous version, ${SHORT} was NOT deployed" >&2
+  else
+    echo "deploy: ROLLBACK ALSO FAILED — the bot is DOWN, fix it by hand" >&2
+  fi
+  exit 1
+fi
 echo "deploy: ${IMAGE}:sha-${SHORT} is live"

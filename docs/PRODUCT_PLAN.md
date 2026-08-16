@@ -356,6 +356,10 @@ Read-only админка для обзора всего сервиса (не д�
   собранного Docker-образа (`docker run` + health-check); dependabot
   docker-ecosystem (пиннинг/бампы базовых образов `node`/`postgres`).
 - **OTel:** дождаться flush в shutdown-хуке (сейчас `void sdk.shutdown()`).
+- **ConfigMap через `configMapGenerator`.** Сейчас у ConfigMap фиксированное имя, поэтому
+  `apply -k` правит его на месте, и автооткат деплоя (`rollout undo`) конфиг не возвращает —
+  откатывается только шаблон пода. С `configMapGenerator` имя несёт хеш содержимого, версия
+  конфига едет внутри шаблона пода и откатывается вместе с ним.
 - **TypeScript 7** (dependabot PR #48 закрыт 2026-08-05). Мажор с новым компилятором;
   сейчас установка падает (`ERESOLVE`): `ts-jest@29` не принимает `typescript@7` как peer.
   Обновлять отдельным проходом, когда подтянутся `ts-jest` / `typescript-eslint` / `nest build` —
