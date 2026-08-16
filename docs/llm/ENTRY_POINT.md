@@ -55,7 +55,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - **Talk plainly.** Concise, facts only, no filler; mark assumptions and anything unverified. Before acting say _why_; when done say _what_ changed and _why_ — in language a non-implementer follows, never a diff dump.
 - **Teach as you go.** The owner is new to DevOps/infra, so every infra, deploy, k8s, network or security step comes with the **concept in simple words** (what it is, why we need it, what breaks without it), and every diagnosis shows the reasoning (symptom → what it means → fix). Plain analogies over jargon; if an explanation didn't land, re-explain simpler. Durable versions live in [DEPLOY.md](../DEPLOY.md).
 - **Never commit, push or merge without the owner's review.** Implement → show the diff + a plain summary → wait for explicit approval. Everything counts: code, manifests, configs, docs. **Never auto-merge** (no background merges) — report the CI result, then ask.
-- Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass.
+- Reviewing a PR or changes → `/logic-review` then `/review-code` (the skills, in that order), not a manual pass. Then `/refine` before opening the PR.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep docs current:** update **every** doc a change affects, in the same change — see the Project Docs table above for which is which: [PRODUCT.md](../PRODUCT.md) (behavior), [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap/decisions), [PRODUCT_TECH.md](../PRODUCT_TECH.md) (infra/runtime reality), [DEPLOY.md](../DEPLOY.md) (deploy steps + lessons), [README.md](../../README.md) (scripts, setup, commands, stack), and the relevant `docs/llm/` rule when a convention changes.
 
@@ -78,6 +78,7 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Development philosophy | [rules/development-philosophy.md](rules/development-philosophy.md) |
 | Code review            | [rules/code-review.md](rules/code-review.md)                       |
 | Logic review           | [rules/logic-review.md](rules/logic-review.md)                     |
+| Refine (final pass)    | [rules/refine.md](rules/refine.md)                                 |
 | Debugging              | [rules/debugging.md](rules/debugging.md)                           |
 | Testing                | [rules/testing.md](rules/testing.md)                               |
 | Workflow               | [rules/workflow.md](rules/workflow.md)                             |

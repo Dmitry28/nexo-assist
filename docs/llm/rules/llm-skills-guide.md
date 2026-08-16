@@ -17,6 +17,10 @@ Rules and skills must be:
 - **Essential only** — no redundant explanations or excessive examples.
 - **Non-obvious only** — skip what an LLM can easily infer from the code.
 - **Actionable** — focus on what to do, not what not to do.
+- **Idiomatic** — skill/command mechanics follow the
+  [Claude Code docs](https://docs.claude.com/en/docs/claude-code) and
+  [Cookbook](https://github.com/anthropics/claude-cookbooks); don't invent local conventions
+  where an official one exists.
 
 ## Cross-references
 

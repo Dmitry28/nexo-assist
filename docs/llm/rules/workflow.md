@@ -55,7 +55,8 @@ _(Repeat steps 2–4 for each milestone)_
 6. Update docs if architecture/patterns/logic changed.
 7. **Propose a TODO for any real issue you notice but don't fix in current scope** — pre-existing inconsistencies, dead code, optimization opportunities, edge cases. Verify it's real (read the code); don't TODO speculative concerns. Format: see [comment rules](code-style.md#comments).
 8. **Reflection** — improve **repo-tracked** instructions (`docs/llm/`, `.claude/skills/`) so the next contributor avoids the same friction. **Not personal memory — only files committed to the repo.** Edit when an instruction misled you, was easy to skip, or missed a pattern you used. Each edit: specific (cite file/section), minimal (one focused change). Skip if nothing came up — don't invent improvements to fill the slot.
-9. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
+9. Run `/refine` — fresh-eyes pass over the finished result and over any `.md` touched ([refine.md](refine.md)). **Required before every PR.**
+10. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
 
 ---
 

@@ -29,6 +29,7 @@ docs/llm/
 │   ├── logic-review.md            # Behavior vs task: AC traceability, edge cases
 │   ├── debugging.md               # Systematic debugging — Iron Law + 5 phases
 │   ├── testing.md                 # AAA, fixtures, error paths, console rules
+│   ├── refine.md                  # Final pass before a PR — result + `.md` instructions
 │   └── llm-skills-guide.md        # How to create/modify skills
 └── commands/                # Instructions behind user-invocable skills
     ├── git/
