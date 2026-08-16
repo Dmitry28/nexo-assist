@@ -16,7 +16,11 @@ set -euo pipefail
 # Pin our kubeconfig explicitly: an inherited KUBECONFIG may point at a completely different
 # cluster, and "it worked" against the wrong one is the worst possible outcome.
 KUBECONFIG_FILE=${NEXO_KUBECONFIG:-$HOME/.kube/nexo.yaml}
-HOST=${CD_HOST:-65.109.143.106}
+# No default on purpose: this repo is public, and a server address here is a ready-made target
+# (the box already sees ~40k failed SSH logins a week from untargeted scanning). Keep it in your
+# shell profile:  export CD_HOST=nexo  — with a matching `Host nexo` block in ~/.ssh/config.
+# NOTE: an ssh-config alias alone is not enough; this variable is what the script reads.
+HOST=${CD_HOST:?set CD_HOST to the server address}
 USER_AT=${TUNNEL_USER:-root}
 KEY=${SSH_KEY:-~/.ssh/nexo-assist}
 PORT=6443
