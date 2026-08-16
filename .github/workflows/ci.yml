@@ -8,7 +8,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded runs are cancelled to save minutes — but never on `dev`, which deploys.
+  # Cancelling there kills the SSH session mid-deploy, so deploy.sh dies before its rollback
+  # can run and the bot stays down. On other refs there is nothing to leave half-done.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 jobs:
   build-and-test:
