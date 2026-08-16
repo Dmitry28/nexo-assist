@@ -11,7 +11,15 @@ export const MAX_MESSAGE_BUDGET_CHARS = 3500;
 export const DIGEST_LIMIT = 10;
 // Clamp a pathological listing — one huge line (long title OR link) must not eat the char
 // budget, which would produce an item-less digest that delivers nothing and repeats forever.
-const MAX_LINE_CHARS = 500;
+// Exported for specs.
+export const MAX_LINE_CHARS = 500;
+
+/**
+ * Cut `text` down to at most `max` chars, ellipsis included. Drops a trailing lone surrogate so
+ * a cut landing inside an emoji doesn't leave half of it behind (listing titles carry emoji).
+ */
+const truncate = (text: string, max: number): string =>
+  `${text.slice(0, Math.max(0, max - 1)).replace(/[\uD800-\uDBFF]$/, '')}…`;
 
 function price(listing: Listing): string {
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
@@ -20,8 +28,16 @@ function price(listing: Listing): string {
 }
 
 function formatOne(listing: Listing): string {
-  const line = `${listing.title}\n${price(listing)}\n${listing.link}`;
-  return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}…` : line;
+  // Truncate the TITLE, never the link: the item is marked seen once delivered, so a listing
+  // that arrives without its link is lost for good — the whole point of the message is gone.
+  const tail = `\n${price(listing)}\n${listing.link}`;
+  const titleBudget = MAX_LINE_CHARS - tail.length;
+  const title =
+    listing.title.length > titleBudget ? truncate(listing.title, titleBudget) : listing.title;
+  const line = `${title}${tail}`;
+  // Backstop for an absurdly long link, where trimming the title alone can't bring the line down.
+  // Nothing useful survives such a link anyway; the cap keeps one item from starving the digest.
+  return line.length > MAX_LINE_CHARS ? truncate(line, MAX_LINE_CHARS) : line;
 }
 
 /** A listings digest under `header`: items up to the caps, then an "…and N more" footer. */

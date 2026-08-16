@@ -1,6 +1,11 @@
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 
-import { DIGEST_LIMIT, formatCurrentListings, newListingsDigest } from '../telegram.format';
+import {
+  DIGEST_LIMIT,
+  MAX_LINE_CHARS,
+  formatCurrentListings,
+  newListingsDigest,
+} from '../telegram.format';
 
 describe('newListingsDigest', () => {
   it('shows the count header and listing fields', () => {
@@ -22,11 +27,29 @@ describe('newListingsDigest', () => {
     expect(delivered[0].externalId).toBe('1');
   });
 
-  it('clamps a pathological title — one huge line must not produce an item-less digest', () => {
-    const { text, delivered } = newListingsDigest([listing(1, { title: 't'.repeat(5000) })]);
+  it('truncates a pathological title but keeps the price and link intact', () => {
+    const link = 'https://re.kufar.by/vi/1';
 
+    const { text, delivered } = newListingsDigest([
+      listing(1, { title: 't'.repeat(5000), priceUsd: 5000, link }),
+    ]);
+
+    // A delivered item is marked seen for good, so truncating the assembled line — which would
+    // cut the trailing link — loses the listing silently.
+    const item = text.split('\n\n')[1];
+    expect(item.split('\n')).toEqual([expect.stringMatching(/^t+…$/), '$5000', link]);
+    expect(item.length).toBeLessThanOrEqual(MAX_LINE_CHARS);
     expect(delivered).toHaveLength(1);
-    expect(text.length).toBeLessThan(4096);
+  });
+
+  it.each(['', 'x'])('does not split an emoji when truncating the title (prefix %p)', (prefix) => {
+    // The prefix shifts where the cut lands; one parity falls inside a surrogate pair, which
+    // an unguarded slice would leave half of.
+    const { text } = newListingsDigest([listing(1, { title: `${prefix}${'🏠'.repeat(400)}` })]);
+
+    // A high surrogate not followed by a low one is half an emoji — renders as "�".
+    expect(text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(text).toContain('https://re.kufar.by/vi/1');
   });
 
   it('clamps a pathological link too — a single huge link still delivers one item', () => {

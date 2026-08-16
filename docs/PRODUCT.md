@@ -13,7 +13,8 @@ start; more frequent once throttling/dedupe land).
 ## Status now (implemented)
 
 - Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
-- Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet.
+- Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet. An over-long
+  title is truncated so that price and link always survive.
 - Buttons: Subscribe / Cancel / Show current / list / remove; non-production `/check`
   (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
   Admin-only `/stats` (`ADMIN_TELEGRAM_ID`) reports users / active / paused / last run.
