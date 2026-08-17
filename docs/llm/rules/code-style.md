@@ -2,13 +2,9 @@
 
 ## Naming
 
-- Descriptive variables with auxiliary verbs: `isLoading`, `hasError`, `hasPermission`.
 - Boolean flags follow **verb + noun** order with the resource explicit (`isUserCreationAllowed`), never noun + verb or a bare verb without a resource (`isCreating`).
-- NestJS file conventions: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
-- **Named exports** for all modules, services, utilities (no default exports except framework requirements).
-- File names: kebab-case (`users.service.ts`).
-- Classes: PascalCase (`UsersService`).
-- Interfaces / type aliases: PascalCase (enforced via ESLint `naming-convention`).
+- **Named exports** everywhere (no default exports except where a framework demands one).
+- File names kebab-case, suffixed by role: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
 
 ## Constants
 
@@ -33,9 +29,6 @@ function send(params: { message: string; channel: string; retries: number }) {}
 ## NestJS Specifics
 
 - One class per file.
-- DTOs use `class-validator` decorators (`@IsString()`, `@IsEmail()`, etc.) and `@ApiProperty` for OpenAPI.
-- Services contain business logic only — no HTTP concerns.
-- Controllers handle HTTP only — delegate to services; throw NestJS exceptions (`NotFoundException`, …).
 - Config: inject the typed `AppConfig` via `@Inject(configuration.KEY)` (see [architecture.md](architecture.md#config-access)) — never `process.env` or string-path `ConfigService.get()` inside modules.
 - Use the `@/*` path alias for intra-`src` imports across folders.
 

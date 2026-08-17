@@ -31,7 +31,6 @@ docs/llm/
 │   ├── logic-review.md            # Behavior vs task: AC traceability, edge cases
 │   ├── debugging.md               # Systematic debugging — Iron Law + 5 phases
 │   ├── testing.md                 # AAA, fixtures, error paths, console rules
-│   ├── refine.md                  # Final pass before a PR — result + `.md` instructions
 │   └── llm-skills-guide.md        # How to create/modify skills
 └── commands/                # Instructions behind user-invocable skills
     ├── git/
@@ -43,8 +42,7 @@ docs/llm/
     │   ├── review-code.md                # /review-code
     │   └── logic-review.md               # /logic-review
     └── check/
-        ├── verify-task-result.md         # /verify-task-result
-        └── refine.md                     # /refine
+        └── verify-task-result.md         # /verify-task-result
 ```
 
 ## MCP Servers

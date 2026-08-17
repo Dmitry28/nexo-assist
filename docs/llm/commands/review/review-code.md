@@ -11,6 +11,9 @@ git diff origin/main..HEAD --name-only
 git diff origin/main..HEAD
 ```
 
+For § Whole-Change Pass, also **read the changed files in full** — that pass judges the final
+state as a whole, which a diff cannot show.
+
 ## Rules
 
 Apply all rules from [docs/llm/rules/code-review.md](../../rules/code-review.md).
