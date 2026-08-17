@@ -725,6 +725,9 @@ API кластера не выставляем в интернет; при ут�
 - [x] **GitHub → Packages:** пакет `ghcr.io/dmitry28/nexo-assist` сделан **public** (§4.5).
 - [x] **В кластере:** Secret `nexo-assist-secrets` (`npm run k8s:secrets`) — единственное,
       чего нет в git (§4.6).
+- [ ] **После мержа, если менялись `deploy/deploy.sh` или `deploy/setup-server.sh`** —
+      перезапустить `setup-server.sh` на хосте. Исполняется копия в `/usr/local/bin/`, поэтому
+      без этого шага деплой продолжит работать **старой** версией скрипта.
 - [x] **kubectl с ноутбука:** `npm run k8s:tunnel` (§4.4).
 - [x] **Проверено:** поды, миграции, `/health`, ответ бота (§4.7).
 - [ ] _(позже)_ dev-окружение: 2-й бот, отдельная БД, Kustomize overlays.

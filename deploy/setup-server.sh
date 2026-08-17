@@ -5,12 +5,13 @@
 #
 # Run as root ON THE HOST, after k3s is installed (see docs/DEPLOY.md §4):
 #   curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
-# or, from a checkout:  sudo bash deploy/setup-server.sh
+# or, from a checkout OUTSIDE $REPO_DIR:  sudo bash deploy/setup-server.sh
+# TODO: refuse when $0 resolves inside $REPO_DIR — step 3's force checkout rewrites the file
+# bash is reading, which can half-configure a host mid-migration [M].
 #
-# Idempotent — safe to re-run; it installs whatever is pushed to $REPO_REF (a local edit must
-# be committed and pushed first). Prints the *path* of the CD
-# private key (copy its contents into CD_SSH_KEY) and the host key value (→ CD_HOST_KEY); it never
-# prints the private key itself.
+# Idempotent — safe to re-run; it installs whatever is pushed to $REPO_REF, so a local edit must
+# be committed and pushed first. Prints the *path* of the CD private key (copy its contents into
+# CD_SSH_KEY) and the host key value (→ CD_HOST_KEY); never the private key itself.
 set -euo pipefail
 
 REPO_URL=${REPO_URL:-https://github.com/Dmitry28/nexo-assist.git}
@@ -62,7 +63,9 @@ install -m 755 -o root -g root "$REPO_DIR/deploy/deploy.sh" /usr/local/bin/deplo
 #    Rotating the CD key: rm /root/cd_key{,.pub} → re-run → copy the new key into CD_SSH_KEY.
 #    CD_PUB is assigned first: a failing substitution inside printf would leave a
 #    restrictions-only line and lock CD out entirely.
-[[ -f "$CD_KEY" ]] || ssh-keygen -t ed25519 -N '' -C 'github-actions-cd' -f "$CD_KEY" -q
+# A stale .pub with the private key gone makes ssh-keygen ask to overwrite — and under the
+# documented `curl | bash` its stdin IS the script, so the answer would be the script's own text.
+[[ -f "$CD_KEY" ]] || { rm -f "$CD_KEY.pub"; ssh-keygen -t ed25519 -N '' -C 'github-actions-cd' -f "$CD_KEY" -q </dev/null; }
 # TODO: AUTH is not overridable, so a test run with REPO_DIR/CD_KEY pointed elsewhere still
 # rewrites the real deploy user's authorized_keys — it locked CD out once during testing [L].
 AUTH=/home/deploy/.ssh/authorized_keys

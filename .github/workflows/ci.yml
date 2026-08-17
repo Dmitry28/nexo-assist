@@ -140,6 +140,9 @@ jobs:
           printf '%s\n' "$CD_SSH_KEY" > ~/.ssh/cd_key
           chmod 600 ~/.ssh/cd_key
           # Pin the host key rather than ssh-keyscan it — why, in docs/DEPLOY.md §5b.
+          # TODO: validate CD_SSH_KEY too (empty/mangled reads as "Permission denied", i.e. looks
+          # like a server problem), and require a base64 field in CD_HOST_KEY — "ssh-ed25519"
+          # alone passes today and yields an obscure ssh error instead of this clear one [L].
           if [ -z "$CD_HOST" ]; then
             echo "::error::CD_HOST is not set — see docs/DEPLOY.md §5b."
             exit 1
