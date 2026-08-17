@@ -22,8 +22,26 @@ describe('validateEnv', () => {
 
   it('requires TELEGRAM_BOT_TOKEN in production — the bot is the product', () => {
     expect(() => validateEnv({ APP_ENV: AppEnv.Production })).toThrow('TELEGRAM_BOT_TOKEN');
-    expect(
-      validateEnv({ APP_ENV: AppEnv.Production, TELEGRAM_BOT_TOKEN: 't' }).TELEGRAM_BOT_TOKEN,
-    ).toBe('t');
+    // Production also requires SCRAPE_PROXY_URL (see below) — supplied so this asserts the token.
+    const prod = { APP_ENV: AppEnv.Production, SCRAPE_PROXY_URL: 'http://p:8888' };
+    expect(validateEnv({ ...prod, TELEGRAM_BOT_TOKEN: 't' }).TELEGRAM_BOT_TOKEN).toBe('t');
+  });
+
+  describe('SCRAPE_PROXY_URL', () => {
+    it('is required in production', () => {
+      expect(() => validateEnv({ APP_ENV: AppEnv.Production, TELEGRAM_BOT_TOKEN: 't' })).toThrow(
+        'SCRAPE_PROXY_URL',
+      );
+    });
+
+    it('stays optional outside production', () => {
+      expect(validateEnv({ APP_ENV: AppEnv.Staging }).SCRAPE_PROXY_URL).toBeUndefined();
+    });
+
+    it('is still format-checked outside production when set', () => {
+      expect(() => validateEnv({ APP_ENV: AppEnv.Staging, SCRAPE_PROXY_URL: 'not-a-url' })).toThrow(
+        'SCRAPE_PROXY_URL',
+      );
+    });
   });
 });

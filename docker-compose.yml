@@ -21,8 +21,10 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://app:app@postgres:5432/app
     env_file:
-      # NOTE: with APP_ENV=production a TELEGRAM_BOT_TOKEN is required — provide it
-      # here (.env) or via the environment; without it the container exits at boot.
+      # NOTE: with APP_ENV=production both TELEGRAM_BOT_TOKEN and SCRAPE_PROXY_URL are
+      # required — provide them here (.env) or via the environment; without either the
+      # container exits at boot. Any non-empty URL satisfies validation here — nothing fetches
+      # kufar at startup. `npm run dev:docker` overrides APP_ENV and needs neither.
       - path: .env
         required: false
     # Healthcheck is inherited from the image (see Dockerfile HEALTHCHECK).
