@@ -126,7 +126,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('counts a delivery and logs distinctly when markSeen fails afterward', async () => {
+  it('counts a delivery, logs distinctly and reports when markSeen fails afterward', async () => {
     const { subscriptions, watch, metrics, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
@@ -141,6 +141,13 @@ describe('WatchScheduler.runDaily', () => {
     expect(errorSpy).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining('Delivery failed'),
+    );
+    // Logging alone isn't visibility — unreported, the same digest re-sends every run.
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        tags: expect.objectContaining({ kind: 'mark-seen', action: 'daily' }),
+      }),
     );
   });
 
