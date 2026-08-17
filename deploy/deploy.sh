@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Deploy one commit of nexo-assist to the k3s cluster running on this host.
 #
-# Canonical copy — installed to /usr/local/bin/deploy.sh by setup-server.sh. Edit it here,
-# then re-run setup-server.sh on the host (the running copy is deliberately NOT the one in the
-# checkout: this script replaces that checkout mid-run, and bash reads scripts incrementally).
+# Canonical copy — installed to /usr/local/bin/deploy.sh by setup-server.sh. Edit it here, push
+# to the deploy ref, then re-run setup-server.sh on the host: it installs what is pushed, not a
+# local edit. The running copy is deliberately NOT the one in the checkout — this script replaces
+# that checkout mid-run, and bash reads scripts incrementally.
 #
 # Invoked only through SSH with a forced command (see setup-server.sh), so the CD key can do
 # this and nothing else. The commit sha arrives in SSH_ORIGINAL_COMMAND and is validated
