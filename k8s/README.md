@@ -38,7 +38,8 @@ One cluster object is created by hand — everything else here is deployed from 
 
 **Secret `nexo-assist-secrets`** — `TELEGRAM_BOT_TOKEN`, `DATABASE_URL` (carries the
 database password), `SCRAPE_PROXY_URL`, `SENTRY_DSN`. Create it **before** applying: the
-app refuses to boot without the token and the `migrate` initContainer needs the URL.
+app refuses to boot without the token or `SCRAPE_PROXY_URL` (kufar would otherwise be fetched
+directly and 403), and the `migrate` initContainer needs `DATABASE_URL`.
 
 ```bash
 npm run k8s:secrets   # deploy/secrets.sh — hidden input, values stay out of shell history

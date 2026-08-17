@@ -140,10 +140,27 @@ export class EnvironmentVariables {
    * Unset = every source is fetched directly. Consumed in the scraping transport
    * (`sources/scraping/http.ts`), deliberately not exposed via AppConfig: it carries
    * credentials and the bootstrap logs the config object.
+   *
+   * Required in production: without it kufar is fetched directly, answers 403, and that reads
+   * as the source blocking us. The dead-link counter doesn't know better, so after
+   * MAX_CONSECUTIVE_FAILURES runs it auto-pauses real subscriptions and tells those users to
+   * check a link that is fine. Refusing to boot turns a missing setting into a loud, instant
+   * failure (crashloop → rollback) instead of a wrong accusation days later.
    */
+  // Validate when production (then it must be present) or when it is set at all (then it must be
+  // a URL) — `@IsOptional()` can't express that: it would skip the required check too.
+  // Production only, deliberately: there is no staging stage yet. Add it in the change that
+  // first deploys one — staging shares the datacenter IP, so it would need the proxy too.
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.APP_ENV === AppEnv.Production || env.SCRAPE_PROXY_URL !== undefined,
+  )
   @IsString()
+  @IsNotEmpty({
+    message:
+      'SCRAPE_PROXY_URL must not be empty — required when APP_ENV=production (kufar needs it)',
+  })
   @Matches(/^https?:\/\/\S+$/, { message: 'SCRAPE_PROXY_URL must be an http(s) URL' })
-  @IsOptional()
   SCRAPE_PROXY_URL?: string;
 
   /** Base pause between subscription polls, in ms — paces the scraper off a source. */
