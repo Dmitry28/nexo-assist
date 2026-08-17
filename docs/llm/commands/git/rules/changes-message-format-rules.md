@@ -4,6 +4,9 @@ Based on [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1
 
 ## Common Rules
 
+- **English only** — commit messages, PR titles and bodies, issue text, review comments.
+  The repo is public and its audience is other developers; the owner-facing Russian docs are
+  listed in [github.md § Language](../../../rules/github.md#language).
 - Use lowercase for all messages.
 - Be clear and concise.
 - Use imperative mood ("add feature" not "added feature").

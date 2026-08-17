@@ -2,9 +2,12 @@
 
 ## Language
 
-- **English** — everything on GitHub: PR titles/descriptions, commit messages,
-  issue titles/bodies, code comments, and the product spec `docs/PRODUCT.md`.
-- **Russian** — only the owner-facing roadmap `docs/PRODUCT_PLAN.md`.
+- **English** — everything on GitHub (PR titles/bodies, commit messages, issue text, review
+  comments), all code and comments, `README.md`, `docs/PRODUCT.md` and all of `docs/llm/`.
+  The repo is public; its readers are other developers.
+- **Russian** — exactly three owner-facing docs, because the owner reads them while learning:
+  [PRODUCT_PLAN.md](../../PRODUCT_PLAN.md), [PRODUCT_TECH.md](../../PRODUCT_TECH.md),
+  [DEPLOY.md](../../DEPLOY.md). Nothing else.
 
 ## Branch Flow
 

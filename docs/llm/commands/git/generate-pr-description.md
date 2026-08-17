@@ -2,6 +2,8 @@
 
 Generate GitHub PR title and description for all changes in current branch.
 
+**In English** — see [rules/github.md § Language](../../rules/github.md#language).
+
 ## What to Analyze
 
 1. **Branch info:** `git branch --show-current`
