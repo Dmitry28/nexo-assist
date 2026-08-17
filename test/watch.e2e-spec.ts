@@ -41,6 +41,9 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
           type: 'postgres',
           url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
           entities: [Subscription, SeenListing, User],
+          // TODO: hand-written — a new migration not listed here creates no table locally, so the
+          // RLS invariant below passes. CI is covered (migration:run globs them first); switch to
+          // the globbed path to close the local gap [L].
           migrations: [
             InitSchema1783163228738,
             AddUsers1783179934781,
@@ -337,5 +340,40 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     expect(await subscriptions.listByUser(1)).toEqual([]);
     // seen rows cascaded with the subscription
     expect((await subscriptions.getSeen(sub.id, ['1'])).size).toBe(0);
+  });
+
+  // The RLS migration enables it per a hand-written list, because RLS is not entity metadata:
+  // `migration:generate` neither creates it nor reports its absence as drift. So a new table
+  // arrives unprotected and nothing complains — until the provider's HTTP table API is switched
+  // back on and reads it. Asserting the invariant instead of trusting the list makes that
+  // impossible to forget: add a table without RLS and CI names it.
+  it('has row-level security on every public table, and no policy that would re-open it', async () => {
+    // 'r' and 'p': a partitioned table is 'p' and would otherwise be invisible here. Partition
+    // children are NOT exempt — verified on Postgres: a child does not inherit relrowsecurity,
+    // and reading it directly returns the rows the parent's RLS hides. The threat is an HTTP API
+    // that enumerates tables in `public` one by one, which is exactly that direct path.
+    const unprotected = await dataSource.query<{ table: string }[]>(`
+      SELECT c.relname AS table
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity
+      ORDER BY c.relname
+    `);
+    expect(unprotected.map((r) => r.table)).toEqual([]);
+
+    // The protection is "RLS enabled with NO policies". A permissive policy keeps the flag on
+    // while re-opening the very path RLS closes, so the flag alone is not the guarantee.
+    const policies = await dataSource.query<{ name: string }[]>(
+      `SELECT policyname AS name FROM pg_policies WHERE schemaname = 'public'`,
+    );
+    expect(policies.map((r) => r.name)).toEqual([]);
+
+    // Guard against a vacuous pass: an empty or half-migrated schema also yields no offenders.
+    const tables = await dataSource.query<{ table: string }[]>(`
+      SELECT tablename AS table FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
+    `);
+    expect(tables.map((r) => r.table)).toEqual(
+      expect.arrayContaining(['migrations', 'seen_listings', 'subscriptions', 'users']),
+    );
   });
 });

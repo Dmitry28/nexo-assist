@@ -5,7 +5,8 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 // table owner — the role our app and migrations connect as — bypasses RLS, so nothing changes
 // for us. Defense in depth: the HTTP API is switched off at the provider too.
 // NOTE: hand-written on purpose. RLS is not part of the entity metadata, so `migration:generate`
-// cannot produce it and will not report its absence as drift.
+// cannot produce it and will not report its absence as drift. This list is therefore guarded by
+// the RLS invariant in test/watch.e2e-spec.ts — add a table without RLS and CI names it.
 const TABLES = ['users', 'subscriptions', 'seen_listings', 'migrations'];
 
 export class EnableRowLevelSecurity1785920305000 implements MigrationInterface {
