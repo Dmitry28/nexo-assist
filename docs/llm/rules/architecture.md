@@ -46,16 +46,6 @@ Specs live in a `__tests__/` folder within their own layer (not beside the sourc
 - Shared layers (`common/`, `config/`) never import from `modules/` — enforced by ESLint `import-x/no-restricted-paths`.
 - `@Global()` only for truly app-wide shared infrastructure.
 
-## Layer Responsibilities
-
-| Layer      | Responsibility                                                                 |
-| ---------- | ------------------------------------------------------------------------------ |
-| Controller | HTTP only — parse request via DTOs, call service, shape response               |
-| Service    | Business logic — no HTTP, no Express/req objects                               |
-| Module     | Wire dependencies, declare exports                                             |
-| DTO        | Input validation via `class-validator` + `@ApiProperty`                        |
-| Entity     | TypeORM persistence model (`@Entity`); map to a DTO at the controller boundary |
-
 ## Environments
 
 Two separate vars — never branch app logic on `NODE_ENV`:
@@ -95,14 +85,12 @@ this.config.get('app.port');
 
 ## Adding a New Feature Module
 
-1. Create `src/modules/<feature>/` mirroring an existing module (e.g. `subscriptions/`).
-2. DTOs in `dto/` (`class-validator` + `@ApiProperty`); entities in `entities/` (TypeORM `@Entity`).
-3. Register entities via `TypeOrmModule.forFeature([...])`, inject repositories with
-   `@InjectRepository`, and map entities to DTOs at the controller boundary — don't return raw entities.
-4. Throw Nest HTTP exceptions; the global `AllExceptionsFilter` formats them.
-5. Register the module in `src/app.module.ts`; schema changes go through a generated migration
-   (see Database & migrations).
-6. Add a `*.service.spec.ts` (unit) and extend the e2e tests.
+Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What is ours:
+
+- DTOs in `dto/` (`class-validator` + `@ApiProperty`), entities in `entities/`; **map entities to
+  DTOs at the controller boundary** — never return a raw entity.
+- Throw Nest HTTP exceptions; the global `AllExceptionsFilter` shapes the response.
+- Schema changes only via a generated migration (see below).
 
 ## Database & migrations
 
