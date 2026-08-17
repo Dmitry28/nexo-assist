@@ -4,7 +4,6 @@ description: Generate GitHub PR title and description for all changes in the cur
 argument-hint: '[optional: additional context]'
 context: fork
 user-invocable: true
-disable-model-invocation: true
 allowed-tools: Bash(git *)
 ---
 
