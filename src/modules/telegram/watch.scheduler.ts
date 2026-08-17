@@ -186,11 +186,17 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       // run (no loss), so the metric must reflect the message that actually reached the user.
       this.metrics.recordDelivery(sub.source);
       // Isolate markSeen: the digest already reached the user, so a bookkeeping failure here
-      // is not a delivery failure (and not a 403) — log it distinctly; items resurface next run.
+      // is not a delivery failure (and not a 403) — report it distinctly; items resurface next run.
       try {
         await this.watch.markSeen(sub, delivered);
       } catch (err) {
         this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
+        Sentry.captureException(err, {
+          tags: { kind: 'mark-seen', action: 'daily' },
+          contexts: {
+            subscription: { id: sub.id, source: sub.source, resending: delivered.length },
+          },
+        });
       }
     } catch (err) {
       if (isBotBlocked(err)) return true;
