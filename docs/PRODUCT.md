@@ -13,9 +13,11 @@ start; more frequent once throttling/dedupe land).
 ## Status now (implemented)
 
 - Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
-- Events: **new only**; text digest (cap 10 + "…and N more"), no photos yet. An over-long
+- Events: **new only**; text digest (cap 10 + a "…и ещё N" footer), no photos yet. An over-long
   title is truncated so that price and link always survive.
-- Buttons: Subscribe / Cancel / Show current / list / remove; non-production `/check`
+- Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
+  language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
+- Buttons: Следить / Отмена / Показать текущие / list / remove; non-production `/check`
   (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
   Admin-only `/stats` (`ADMIN_TELEGRAM_ID`) reports users / active / paused / last run.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
@@ -29,7 +31,7 @@ start; more frequent once throttling/dedupe land).
 - Deployment: **single replica** (long-polling bot + in-memory pending prompts; see k8s NOTE);
   production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
   the process so the orchestrator restarts it.
-- Unsupported link → plain "not supported yet" message (Issue flow is Phase 6).
+- Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
 
 Everything below this section describes the target design.
 

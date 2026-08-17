@@ -28,8 +28,11 @@ import {
 } from './telegram.format';
 import { WatchStatus } from './watch.status';
 
-const PROMPT = 'Send me a kufar.by or realt.by search link and I will watch it.';
-const EXPIRED = 'This prompt has expired — send the link again.';
+// NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
+// Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
+const PROMPT =
+  'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
+const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
 // /list row cap — stays under Telegram's ~100-button inline-keyboard limit.
 const MAX_LIST_ROWS = 50;
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
@@ -58,7 +61,7 @@ export class TelegramHandlers {
   ) {}
 
   register(bot: Bot): void {
-    bot.command('start', (ctx) => ctx.reply(`Hi! ${PROMPT}`));
+    bot.command('start', (ctx) => ctx.reply(`Привет! ${PROMPT}`));
     bot.command('list', (ctx) => this.showList(ctx));
     bot.command('stats', (ctx) => this.onStats(ctx));
     // NOTE: /check is a manual test trigger — kept out of production.
@@ -86,15 +89,15 @@ export class TelegramHandlers {
     }
     const adapter = this.registry.match(url);
     if (!adapter) {
-      await ctx.reply(`That source is not supported yet. ${PROMPT}`);
+      await ctx.reply(`Этот сайт пока не поддерживается. ${PROMPT}`);
       return;
     }
 
     const nonce = this.addPending({ userId, source: adapter.id, url });
     const keyboard = new InlineKeyboard()
-      .text('Subscribe', `subscribe:${nonce}`)
-      .text('Cancel', `cancel:${nonce}`);
-    await ctx.reply(`Watch this ${adapter.id} search?\n${url}`, {
+      .text('Следить', `subscribe:${nonce}`)
+      .text('Отмена', `cancel:${nonce}`);
+    await ctx.reply(`Следить за этим поиском на ${adapter.id}?\n${url}`, {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });
@@ -127,14 +130,14 @@ export class TelegramHandlers {
       });
     } catch (err) {
       if (err instanceof DuplicateSubscriptionError) {
-        await ctx.editMessageText(`You're already watching this search.\n${candidate.url}`, {
+        await ctx.editMessageText(`Вы уже следите за этим поиском.\n${candidate.url}`, {
           link_preview_options: NO_LINK_PREVIEW,
         });
         return;
       }
       if (err instanceof SubscriptionLimitError) {
         await ctx.editMessageText(
-          `You've reached the limit of ${MAX_SUBSCRIPTIONS_PER_USER} subscriptions — remove one via /list first.`,
+          `Достигнут предел — ${MAX_SUBSCRIPTIONS_PER_USER} подписок. Удалите одну через /list.`,
         );
         return;
       }
@@ -151,7 +154,7 @@ export class TelegramHandlers {
 
     if (count === null) {
       await ctx.editMessageText(
-        `Subscribed ✅ — the source didn't respond, I'll load current listings on the next run.\n${sub.url}`,
+        `Готово ✅ Сайт сейчас не отвечает — загружу текущие объявления при следующей проверке.\n${sub.url}`,
         { link_preview_options: NO_LINK_PREVIEW },
       );
       return;
@@ -159,10 +162,10 @@ export class TelegramHandlers {
     // Offer the current listings on demand — baseline already counted them.
     const showCurrent =
       count > 0
-        ? new InlineKeyboard().text(`Show current (${count})`, `show:${sub.id}`)
+        ? new InlineKeyboard().text(`Показать текущие (${count})`, `show:${sub.id}`)
         : undefined;
     await ctx.editMessageText(
-      `Subscribed ✅ watching ${count} current ${sub.source} listings.\n${sub.url}`,
+      `Готово ✅ Объявлений сейчас: ${count} — сообщу, когда появятся новые.\n${sub.url}`,
       { link_preview_options: NO_LINK_PREVIEW, reply_markup: showCurrent },
     );
   }
@@ -173,7 +176,7 @@ export class TelegramHandlers {
       await ctx.answerCallbackQuery(EXPIRED);
       return;
     }
-    await ctx.editMessageText('Cancelled.');
+    await ctx.editMessageText('Отменено.');
     await ctx.answerCallbackQuery();
   }
 
@@ -184,7 +187,7 @@ export class TelegramHandlers {
 
     const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
-      await ctx.reply(`No subscriptions yet. ${PROMPT}`);
+      await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
       return;
     }
 
@@ -196,7 +199,7 @@ export class TelegramHandlers {
     for (const [i, sub] of subs.entries()) {
       const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
       if (length + line.length > MAX_MESSAGE_BUDGET_CHARS || i >= MAX_LIST_ROWS) {
-        lines.push(`…and ${subs.length - i} more — remove some to see the rest`);
+        lines.push(`…и ещё ${subs.length - i} — удалите часть, чтобы увидеть остальные`);
         break;
       }
       keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`).row();
@@ -229,7 +232,7 @@ export class TelegramHandlers {
 
     const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
-      await ctx.reply(`No subscriptions yet. ${PROMPT}`);
+      await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
       return;
     }
 
@@ -238,7 +241,7 @@ export class TelegramHandlers {
       replied = (await this.checkOne(ctx, sub)) || replied;
     }
     // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
-    if (!replied) await ctx.reply('Nothing new.');
+    if (!replied) await ctx.reply('Ничего нового.');
   }
 
   /** Poll one subscription and reply with its outcome. Returns true if it replied anything. */
@@ -248,7 +251,7 @@ export class TelegramHandlers {
       if (outcome.kind === 'nothing') return false;
       if (outcome.kind === 'baselined') {
         await ctx.reply(
-          `Watching ${outcome.count} current ${sub.source} listings — new ones from now on.\n${sub.url}`,
+          `${sub.source} — объявлений сейчас: ${outcome.count}, дальше только новые.\n${sub.url}`,
           { link_preview_options: NO_LINK_PREVIEW },
         );
         return true;
@@ -273,7 +276,9 @@ export class TelegramHandlers {
     } catch (err) {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);
       reportUserFacing(err, { userId: ctx.from?.id, action: 'check', url: sub.url });
-      await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
+      await ctx.reply(
+        `Не получилось проверить поиск на ${sub.source} — попробуйте позже.\n${sub.url}`,
+      );
       return true;
     }
   }
@@ -286,7 +291,7 @@ export class TelegramHandlers {
         ? (await this.subscriptions.listByUser(userId)).find((s) => s.id === id)
         : undefined;
     if (!sub) {
-      await ctx.answerCallbackQuery('Subscription not found.');
+      await ctx.answerCallbackQuery('Подписка не найдена.');
       return;
     }
 
@@ -299,7 +304,7 @@ export class TelegramHandlers {
     } catch (err) {
       this.logger.warn({ err }, `Show-current failed for ${sub.url}`);
       reportUserFacing(err, { userId: ctx.from?.id, action: 'show-current', url: sub.url });
-      await ctx.reply('Could not load current listings — try again later.');
+      await ctx.reply('Не получилось загрузить объявления — попробуйте позже.');
     }
   }
 
@@ -313,7 +318,7 @@ export class TelegramHandlers {
     }
 
     const removed = await this.subscriptions.remove(id, userId);
-    await ctx.answerCallbackQuery(removed ? 'Removed' : 'Already gone');
+    await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено');
   }
 
   /** The capture group of the matched callback_data pattern, if any. */

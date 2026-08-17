@@ -121,13 +121,13 @@ describe('TelegramHandlers', () => {
   it('prompts when the text has no url', async () => {
     const ctx = makeCtx({ text: 'hello', userId: 1 });
     await bot.onText(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Send me a kufar.by'));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Пришлите ссылку на поиск'));
   });
 
   it('rejects an unsupported source', async () => {
     const ctx = makeCtx({ text: 'https://example.com/x', userId: 1 });
     await bot.onText(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('not supported'));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('пока не поддерживается'));
   });
 
   it('subscribes via the button: adds + baselines, edits the confirmation in', async () => {
@@ -142,7 +142,7 @@ describe('TelegramHandlers', () => {
     );
     expect(watch.baseline).toHaveBeenCalledTimes(1);
     expect(ctx.editMessageText).toHaveBeenCalledWith(
-      expect.stringContaining('watching 1 current'),
+      expect.stringContaining('Объявлений сейчас: 1'),
       expect.anything(),
     );
   });
@@ -164,7 +164,7 @@ describe('TelegramHandlers', () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
     const ctx = await pressButton(`subscribe:${nonce}`);
     expect(ctx.editMessageText).toHaveBeenCalledWith(
-      expect.stringContaining('already watching'),
+      expect.stringContaining('уже следите'),
       expect.anything(),
     );
     expect(watch.baseline).not.toHaveBeenCalled();
@@ -174,7 +174,7 @@ describe('TelegramHandlers', () => {
     subscriptions.add.mockRejectedValue(new SubscriptionLimitError());
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
     const ctx = await pressButton(`subscribe:${nonce}`);
-    expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('limit of'));
+    expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('Достигнут предел'));
     expect(watch.baseline).not.toHaveBeenCalled();
   });
 
@@ -183,7 +183,7 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton(`subscribe:${nonce}`, 999);
 
     expect(subscriptions.add).not.toHaveBeenCalled();
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('устарела'));
   });
 
   it('keeps the subscription when the baseline fetch fails', async () => {
@@ -195,7 +195,7 @@ describe('TelegramHandlers', () => {
 
     expect(subscriptions.add).toHaveBeenCalledTimes(1);
     expect(ctx.editMessageText).toHaveBeenCalledWith(
-      expect.stringContaining("didn't respond"),
+      expect.stringContaining('Сайт сейчас не отвечает'),
       expect.anything(),
     );
   });
@@ -205,7 +205,7 @@ describe('TelegramHandlers', () => {
 
     const stranger = await pressButton(`cancel:${nonce}`, 999);
     expect(stranger.editMessageText).not.toHaveBeenCalled();
-    expect(stranger.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
+    expect(stranger.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('устарела'));
 
     await pressButton(`subscribe:${nonce}`, 1);
     expect(subscriptions.add).toHaveBeenCalledTimes(1);
@@ -217,7 +217,7 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton(`subscribe:${nonce}`);
 
     expect(subscriptions.add).not.toHaveBeenCalled();
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('expired'));
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('устарела'));
   });
 
   it('lists subscriptions with remove buttons and removes for the owner', async () => {
@@ -229,13 +229,13 @@ describe('TelegramHandlers', () => {
     subscriptions.remove.mockResolvedValue(true);
     const ctx = await pressButton('remove:s1', 1);
     expect(subscriptions.remove).toHaveBeenCalledWith('s1', 1);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Removed');
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Удалено');
   });
 
-  it('remove answers "Already gone" when nothing was deleted', async () => {
+  it('remove answers "Уже удалено" when nothing was deleted', async () => {
     subscriptions.remove.mockResolvedValue(false);
     const ctx = await pressButton('remove:s1', 999);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Already gone');
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Уже удалено');
   });
 
   it('/check baselines a pending subscription instead of flooding it as new', async () => {
@@ -246,7 +246,7 @@ describe('TelegramHandlers', () => {
     await bot.commands.get('check')!(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('Watching 2 current'),
+      expect.stringContaining('объявлений сейчас: 2'),
       expect.anything(),
     );
     expect(watch.markSeen).not.toHaveBeenCalled();
@@ -260,7 +260,10 @@ describe('TelegramHandlers', () => {
     const ctx = makeCtx({ userId: 1 });
     await bot.commands.get('check')!(ctx);
 
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('🆕 2 new'), expect.anything());
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('🆕 Новых объявлений: 2'),
+      expect.anything(),
+    );
     expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
   });
 
@@ -274,16 +277,19 @@ describe('TelegramHandlers', () => {
     const ctx = makeCtx({ userId: 1 });
     await bot.commands.get('check')!(ctx);
 
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('🆕 1 new'), expect.anything());
-    expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Could not check'));
-    expect(ctx.reply).not.toHaveBeenCalledWith('Nothing new.');
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('🆕 Новых объявлений: 1'),
+      expect.anything(),
+    );
+    expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
+    expect(ctx.reply).not.toHaveBeenCalledWith('Ничего нового.');
     // Silent to the user, but it must not be silent to us: the items stay unmarked and re-send.
     expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
     expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'check');
     expect(sentryCapture()).toHaveBeenCalled();
   });
 
-  it('/check reports a failing subscription without a contradictory "Nothing new."', async () => {
+  it('/check reports a failing subscription without a contradictory "Ничего нового."', async () => {
     subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
     watch.poll.mockRejectedValue(new Error('outage'));
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -291,14 +297,14 @@ describe('TelegramHandlers', () => {
     const ctx = makeCtx({ userId: 1 });
     await bot.commands.get('check')!(ctx);
 
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Could not check'));
-    expect(ctx.reply).not.toHaveBeenCalledWith('Nothing new.');
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
+    expect(ctx.reply).not.toHaveBeenCalledWith('Ничего нового.');
   });
 
   it('show-current denies a subscription that is not yours', async () => {
     subscriptions.listByUser.mockResolvedValue([]); // user 999 owns nothing
     const ctx = await pressButton('show:sub-1', 999);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Subscription not found.');
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Подписка не найдена.');
     expect(watch.current).not.toHaveBeenCalled();
   });
 
@@ -311,8 +317,8 @@ describe('TelegramHandlers', () => {
     const ctx = makeCtx({ userId: 99 });
     await adminBot.commands.get('stats')!(ctx);
 
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('users: 3'));
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('active subscriptions: 5'));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('пользователей: 3'));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('активных подписок: 5'));
   });
 
   it('/stats stays silent for a non-admin', async () => {

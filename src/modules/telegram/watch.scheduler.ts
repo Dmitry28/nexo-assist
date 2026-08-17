@@ -126,7 +126,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     for (const [source, { attempts, failures }] of stats) {
       if (attempts >= SOURCE_FAILURE_MIN_POLLS && failures === attempts) {
         await this.notifyAdmin(
-          `🚨 Source "${source}" failed all ${attempts} polls this run — the adapter may be broken.`,
+          `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${attempts}) — возможно, сломан адаптер.`,
         );
       }
     }
@@ -247,7 +247,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordPause('blocked', paused);
       this.logger.log(`Paused ${paused} subscriptions for user ${userId} — undeliverable (403)`);
       await this.notifyAdmin(
-        `⏸ Paused ${paused} subscription(s) for user ${userId} — they blocked the bot (403).`,
+        `⏸ Поставлено на паузу подписок: ${paused} (пользователь ${userId} заблокировал бота).`,
       );
     } catch (err) {
       this.logger.error({ err }, `Failed to pause user ${userId} after 403`);
