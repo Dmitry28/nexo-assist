@@ -27,7 +27,33 @@ git -C "$REPO_DIR" checkout --quiet --force "$SHA"
 
 # Pin the image built for this very commit (immutable tag). The tag committed in the manifest
 # is only a placeholder for manual applies — CD always deploys the image of the deployed commit.
-sed -i "s|newTag: .*|newTag: sha-${SHORT}|" "$REPO_DIR/k8s/kustomization.yaml"
+KUSTOMIZATION="$REPO_DIR/k8s/kustomization.yaml"
+sed -i "s|newTag: .*|newTag: sha-${SHORT}|" "$KUSTOMIZATION"
+
+# Confirm the pin against the RENDERED manifests, not the file text. sed exits 0 when it matched
+# nothing, and it rewrites every `newTag:` line (comments included) — so a file-level grep can
+# pass while the image that actually deploys is the stale committed placeholder. Rendering
+# answers the only question that matters: which image will `apply` use?
+# NOTE: capture first — `kustomize … | grep -q` is the pipefail/SIGPIPE trap in DEPLOY.md.
+# Kept as sed + check rather than `kustomize edit set image`: that needs the standalone kustomize
+# binary on the host (k3s embeds only the build path), and this manifest has one image.
+UNTOUCHED="deploy: nothing applied, production untouched; checkout left at ${SHORT} — do NOT 'apply -k' it manually"
+RENDERED=$(k3s kubectl kustomize "$REPO_DIR/k8s/") || {
+  echo "deploy: rendering ${REPO_DIR}/k8s/ failed — cannot verify which image would deploy" >&2
+  echo "$UNTOUCHED" >&2
+  exit 2
+}
+# Both conditions matter: our tag must be there, AND no unsubstituted `nexo-assist:` placeholder
+# may survive — one `images:` entry rewrites both containers today, but nothing enforces that, so
+# a second image name would otherwise leave a partial pin that still passes the positive check.
+# -F: fixed string. The dots in the registry name would otherwise match any character, and a
+# near-miss registry passing this check is the one outcome it exists to prevent.
+if ! grep -qF "image: ${IMAGE}:sha-${SHORT}" <<<"$RENDERED" ||
+  grep -qF 'image: nexo-assist:' <<<"$RENDERED"; then
+  echo "deploy: rendered manifests don't all use ${IMAGE}:sha-${SHORT} — check newTag/newName in ${KUSTOMIZATION} and the image names in k8s/deployment.yaml" >&2
+  echo "$UNTOUCHED" >&2
+  exit 2
+fi
 
 # Remember what is live BEFORE we change anything: a bare `rollout undo` means "one revision
 # back", which is NOT the same as "what was running". Re-deploying the sha already live creates
