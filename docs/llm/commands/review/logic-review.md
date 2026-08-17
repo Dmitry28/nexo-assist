@@ -7,10 +7,10 @@ Review **feature behavior** — does the diff do what the task asks? Pick mode b
 
 ## Local Mode
 
-Reviews **all** changes vs `origin/main` (committed + staged + unstaged):
+Reviews **all** changes vs `origin/dev` (committed + staged + unstaged):
 
 ```bash
-git diff origin/main..HEAD
+git diff origin/dev...HEAD
 git diff --cached
 git diff
 ```
