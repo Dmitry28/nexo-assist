@@ -1,6 +1,6 @@
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
-import { fetchHtml } from '../http';
+import { fetchHtml, SourceUnavailableError } from '../http';
 
 const fetchMock = undiciFetchMock();
 
@@ -53,10 +53,14 @@ describe('fetchHtml', () => {
     );
   });
 
-  it('throws on a non-OK status', async () => {
+  it('reports a non-OK status as the source being unavailable', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 503 }));
 
-    await expect(fetchHtml({ url: 'https://x.by', host: 'x.by' })).rejects.toThrow('HTTP 503');
+    // Typed, so callers can tell "the site is down" from "our code is broken" without
+    // parsing messages.
+    const err = await fetchHtml({ url: 'https://x.by', host: 'x.by' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SourceUnavailableError);
+    expect(err).toHaveProperty('message', expect.stringContaining('HTTP 503'));
   });
 
   it('throws when the declared Content-Length exceeds the cap', async () => {
@@ -64,15 +68,20 @@ describe('fetchHtml', () => {
       new Response('', { status: 200, headers: { 'content-length': String(10 * 1024 * 1024) } }),
     );
 
-    await expect(fetchHtml({ url: 'https://x.by', host: 'x.by' })).rejects.toThrow(
-      'Content-Length',
-    );
+    // An oversized response is the source misbehaving, not our bug — pin the classification,
+    // it is the least self-evident of the three.
+    const err = await fetchHtml({ url: 'https://x.by', host: 'x.by' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SourceUnavailableError);
+    expect(err).toHaveProperty('message', expect.stringContaining('Content-Length'));
   });
 
-  it('propagates network errors', async () => {
-    fetchMock.mockRejectedValue(new Error('network down'));
+  it('reports a network failure the same way, keeping the original error as cause', async () => {
+    const cause = new Error('network down');
+    fetchMock.mockRejectedValue(cause);
 
-    await expect(fetchHtml({ url: 'https://x.by', host: 'x.by' })).rejects.toThrow('network down');
+    const err = await fetchHtml({ url: 'https://x.by', host: 'x.by' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SourceUnavailableError);
+    expect(err).toHaveProperty('cause', cause); // original kept for debugging
   });
 
   describe('proxy', () => {

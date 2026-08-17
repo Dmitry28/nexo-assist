@@ -13,6 +13,8 @@ import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.serv
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import type { ReportOp } from './report';
+import { reportUserFacing } from './report';
 import { deadSubscriptionNotice, newListingsDigest } from './telegram.format';
 import { TelegramService } from './telegram.service';
 import { WatchStatus } from './watch.status';
@@ -65,6 +67,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Catch here so a run-wide failure (e.g. the initial listActive() DB call) is logged
     // and skips the run — an unhandled rejection would trip the fatal handler in main.ts
     // and kill the whole bot.
+    // NOTE: bare captureException on purpose — a whole run failing belongs to no single user.
     const job = new CronJob(this.appConfig.watchCron, () => {
       void this.runDaily().catch((err: unknown) => {
         this.logger.error({ err }, 'Daily watch run failed');
@@ -97,7 +100,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
-        Sentry.captureException(err);
+        this.report(err, sub, 'process');
         continue;
       }
       this.tallySource(sourceStats, sub.source, result === 'poll-failed');
@@ -159,13 +162,15 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       outcome = await this.watch.poll(sub);
     } catch (err) {
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
-      Sentry.captureException(err);
+      // The scheduled run — not /check — is where site outages actually land, so this is the
+      // path that has to carry `kind: source`; otherwise that split never shows up in practice.
+      this.report(err, sub, 'poll');
       this.metrics.recordPollError(sub.source);
       // Guard the bookkeeping so a DB hiccup can't hide a poll failure from the source
       // tally — otherwise a broken adapter + failing write would suppress the outage alert.
       await this.recordFailure(sub).catch((e: unknown) => {
         this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`);
-        Sentry.captureException(e);
+        this.report(e, sub, 'record-failure');
       });
       return 'poll-failed';
     }
@@ -191,19 +196,30 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         await this.watch.markSeen(sub, delivered);
       } catch (err) {
         this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
-        Sentry.captureException(err, {
-          tags: { kind: 'mark-seen', action: 'daily' },
-          contexts: {
-            subscription: { id: sub.id, source: sub.source, resending: delivered.length },
-          },
-        });
+        this.report(err, sub, 'mark-seen', { resending: delivered.length });
       }
     } catch (err) {
       if (isBotBlocked(err)) return true;
       this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);
-      Sentry.captureException(err);
+      this.report(err, sub, 'deliver');
     }
     return false;
+  }
+
+  /** Report a swallowed per-subscription failure — same who/where for every operation. */
+  private report(
+    err: unknown,
+    sub: Subscription,
+    op: ReportOp,
+    details?: Record<string, string | number>,
+  ): void {
+    reportUserFacing(err, {
+      userId: sub.user.telegramId,
+      action: 'daily',
+      url: sub.url,
+      op,
+      details: { id: sub.id, source: sub.source, ...details },
+    });
   }
 
   /** Count a failed poll; at MAX_CONSECUTIVE_FAILURES pause the dead sub and warn the user. */
@@ -235,6 +251,8 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       this.logger.error({ err }, `Failed to pause user ${userId} after 403`);
+      // NOTE: bare on purpose — `userId` here is our internal uuid, not a telegram id. Feeding
+      // it to setUser would mix two id spaces and corrupt the affected-user counts.
       Sentry.captureException(err);
     }
   }

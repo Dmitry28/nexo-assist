@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import * as Sentry from '@sentry/nestjs';
 import { InlineKeyboard } from 'grammy';
 import type { Bot, Context } from 'grammy';
 
@@ -19,6 +18,7 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { reportUserFacing } from './report';
 import {
   MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
@@ -145,6 +145,7 @@ export class TelegramHandlers {
     // On failure the subscription is kept; the daily run baselines it silently.
     const count = await this.watch.baseline(sub).catch((err: unknown) => {
       this.logger.warn({ err }, `Baseline failed for ${sub.url}`);
+      reportUserFacing(err, { userId: candidate.userId, action: 'subscribe', url: sub.url });
       return null;
     });
 
@@ -260,16 +261,18 @@ export class TelegramHandlers {
         await this.watch.markSeen(sub, delivered);
       } catch (err) {
         this.logger.error({ err }, `markSeen failed after /check delivery for ${sub.url}`);
-        Sentry.captureException(err, {
-          tags: { kind: 'mark-seen', action: 'check' },
-          contexts: {
-            subscription: { id: sub.id, source: sub.source, resending: delivered.length },
-          },
+        reportUserFacing(err, {
+          userId: ctx.from?.id,
+          action: 'check',
+          url: sub.url,
+          op: 'mark-seen',
+          details: { id: sub.id, source: sub.source, resending: delivered.length },
         });
       }
       return true;
     } catch (err) {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);
+      reportUserFacing(err, { userId: ctx.from?.id, action: 'check', url: sub.url });
       await ctx.reply(`Could not check this ${sub.source} search — try again later.\n${sub.url}`);
       return true;
     }
@@ -295,6 +298,7 @@ export class TelegramHandlers {
       await ctx.reply(message, { link_preview_options: NO_LINK_PREVIEW });
     } catch (err) {
       this.logger.warn({ err }, `Show-current failed for ${sub.url}`);
+      reportUserFacing(err, { userId: ctx.from?.id, action: 'show-current', url: sub.url });
       await ctx.reply('Could not load current listings — try again later.');
     }
   }

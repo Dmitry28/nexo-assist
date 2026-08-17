@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
+import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 
 import { KufarAdapter } from '../kufar.adapter';
 
@@ -60,10 +61,12 @@ describe('KufarAdapter', () => {
       await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toThrow('HTTP 404');
     });
 
-    it('rejects when the request throws', async () => {
+    it('rejects when the request throws — an outage must not look like an empty search', async () => {
       fetchMock.mockRejectedValue(new Error('network down'));
 
-      await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toThrow('network down');
+      await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toBeInstanceOf(
+        SourceUnavailableError,
+      );
     });
   });
 });

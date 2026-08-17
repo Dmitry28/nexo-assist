@@ -64,17 +64,17 @@ describe('paginate', () => {
   });
 
   it('throws when the first page fails — an outage must not look like an empty search', async () => {
-    fetchMock.mockRejectedValue(new Error('boom'));
+    fetchMock.mockRejectedValue(new Error('request failed'));
 
     await expect(
       paginate({ firstUrl: 'p1', host: 'x.by', parsePage: jest.fn(), logger }),
-    ).rejects.toThrow('boom');
+    ).rejects.toThrow('request failed');
   });
 
   it('returns the collected listings when a later page fails', async () => {
     fetchMock
       .mockImplementationOnce(() => Promise.resolve(new Response('<html></html>')))
-      .mockRejectedValueOnce(new Error('boom'));
+      .mockRejectedValueOnce(new Error('request failed'));
     const parsePage = jest.fn().mockReturnValue({ listings: [makeListing(1)], nextUrl: 'p2' });
 
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
