@@ -7,8 +7,11 @@ Generate GitHub PR title and description for all changes in current branch.
 ## What to Analyze
 
 1. **Branch info:** `git branch --show-current`
-2. **All commits:** `git log origin/main..HEAD --no-merges --format="%s%n%b%n---"`
-3. **All code changes:** `git diff origin/main..HEAD --stat` and `git diff origin/main..HEAD`
+   NOTE: two dots for `log`, three for `diff` — they are different operators. `log A...B` is the
+   symmetric difference and would list commits merged into `dev` after this branch started.
+
+2. **All commits:** `git log origin/dev..HEAD --no-merges --format="%s%n%b%n---"`
+3. **All code changes:** `git diff origin/dev...HEAD --stat` and `git diff origin/dev...HEAD`
 4. **Conversation history** for context.
 
 ## Output Format

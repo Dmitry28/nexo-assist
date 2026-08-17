@@ -4,8 +4,10 @@
 
 Collect all locally changed files:
 
+`dev` is the branch PRs target ([github.md](../../rules/github.md#branch-flow)).
+
 ```bash
-git diff origin/main..HEAD --name-only
+git diff origin/dev...HEAD --name-only
 git diff --name-only
 git diff --cached --name-only
 ```

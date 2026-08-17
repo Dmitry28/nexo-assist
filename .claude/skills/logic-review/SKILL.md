@@ -1,6 +1,6 @@
 ---
 name: logic-review
-description: Review feature behavior against the task — acceptance criteria, edge cases, security, performance. No args — local branch vs origin/main; with a GitHub PR URL/number — that PR. Launch together with /review-code after completing a task.
+description: Review feature behavior against the task — acceptance criteria, edge cases, security, performance. No args — local branch vs origin/dev; with a GitHub PR URL/number — that PR. Launch together with /review-code after completing a task.
 argument-hint: '[optional: GitHub PR URL or number]'
 context: fork
 user-invocable: true
