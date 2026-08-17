@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Prepare a host to receive CD deploys: unprivileged deploy user, cluster access, repo
 # checkout, the deploy script and a CD key restricted to running it. Also hardens SSH
-# (no password login) and installs fail2ban.
+# (no password login), installs fail2ban, and prints the host key for the CD_HOST_KEY secret.
 #
 # Run as root ON THE HOST, after k3s is installed (see docs/DEPLOY.md §4):
 #   curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
 # or, from a checkout:  sudo bash deploy/setup-server.sh
 #
-# Idempotent — safe to re-run (e.g. after editing deploy/deploy.sh). Prints the CD public key
-# and the path of the private key to copy into the GitHub secret; never prints the private key.
+# Idempotent — safe to re-run (e.g. after editing deploy/deploy.sh). Prints the *path* of the CD
+# private key (copy its contents into CD_SSH_KEY) and the host key value (→ CD_HOST_KEY); it never
+# prints the private key itself.
 set -euo pipefail
 
 REPO_URL=${REPO_URL:-https://github.com/Dmitry28/nexo-assist.git}
@@ -94,3 +95,9 @@ fail2ban-client status sshd >/dev/null 2>&1 || { echo "fail2ban sshd jail is not
 echo "✅ host ready for CD"
 echo "   private key (put into the GitHub secret CD_SSH_KEY): $CD_KEY"
 echo "   deploy user: deploy | repo: $REPO_DIR | script: /usr/local/bin/deploy.sh"
+# Printed here because this is the trusted moment — you are already on the box (why that matters:
+# docs/DEPLOY.md §5b). Assigned first: a failing substitution inside `echo` does not trip `set -e`,
+# and an empty value under this label is worse than no label at all.
+HOST_KEY=$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)
+echo "   put this into the GitHub secret CD_HOST_KEY (CI verifies the host against it):"
+echo "     $HOST_KEY"

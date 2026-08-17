@@ -134,10 +134,24 @@ jobs:
         env:
           CD_SSH_KEY: ${{ secrets.CD_SSH_KEY }}
           CD_HOST: ${{ secrets.CD_HOST }}
+          CD_HOST_KEY: ${{ secrets.CD_HOST_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$CD_SSH_KEY" > ~/.ssh/cd_key
           chmod 600 ~/.ssh/cd_key
-          ssh-keyscan -H "$CD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Pin the host key rather than ssh-keyscan it — why, in docs/DEPLOY.md §5b.
+          if [ -z "$CD_HOST" ]; then
+            echo "::error::CD_HOST is not set — see docs/DEPLOY.md §5b."
+            exit 1
+          fi
+          case "$CD_HOST_KEY" in
+            ssh-* | ecdsa-*) ;;
+            *)
+              echo "::error::CD_HOST_KEY is missing or malformed — refusing to deploy without verifying the host. Its value is printed by deploy/setup-server.sh on the box; see docs/DEPLOY.md §5b."
+              exit 1
+              ;;
+          esac
+          printf '%s %s\n' "$CD_HOST" "$CD_HOST_KEY" > ~/.ssh/known_hosts
           # The sha is the only argument the server accepts; it validates it before use.
-          ssh -i ~/.ssh/cd_key -o BatchMode=yes deploy@"$CD_HOST" "${{ github.sha }}"
+          ssh -i ~/.ssh/cd_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            deploy@"$CD_HOST" "${{ github.sha }}"
