@@ -90,7 +90,7 @@
   Service); _startup_ — даёт время на медленный старт.
 - **Kustomize** — накладывает манифесты без шаблонов (в отличие от Helm). `kubectl -k`
   умеет это из коробки. Наш [`k8s/kustomization.yaml`](../k8s/kustomization.yaml)
-  собирает configmap + deployment + service.
+  собирает configmap + db-ca + deployment + service.
 - **Registry (GHCR)** — хранилище образов. CD пушит туда `nexo-assist:<sha>` и
   прописывает этот тег в деплой.
 
@@ -106,7 +106,7 @@
 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | тесты → образ в GHCR → деплой в кластер                                |
 | [`deploy/`](../deploy)                                    | скрипты: подготовка хоста, деплой, секреты, туннель                    |
 | Secret `nexo-assist-secrets`                              | токен бота, `DATABASE_URL`, прокси, Sentry (в кластере, не в репо)     |
-| ConfigMap `db-ca`                                         | корневой CA Supabase (публичный, но тоже заводится руками)             |
+| [`k8s/db-ca-configmap.yaml`](../k8s/db-ca-configmap.yaml) | корневой CA Supabase — публичный, поэтому лежит в git                  |
 
 ## Разбор каждого DevOps-файла (как работает / что делать тебе)
 
@@ -243,7 +243,9 @@ Secret в кластере не коммитится; для GitOps исполь
 **Концепт — шифрование ≠ аутентификация.** Просто шифрование не проверяет, _с кем_
 говорим — можно подставить свой сертификат (MITM) и читать/подменять трафик (пароли,
 данные). `verify-full` проверяет, что серт выдан доверенным CA **и** валиден для этого
-хоста. Свой CA не нужен: серт провайдера (Supabase/Neon) подписан публичным корнем из набора Node. (Берём
+хоста. Значит нужен **корень доверия**: Supabase подписывает своим собственным корневым
+сертификатом, которого в наборе Node нет, — поэтому мы возим его в репозитории
+([`k8s/db-ca-configmap.yaml`](../k8s/db-ca-configmap.yaml), см. учебный инцидент ниже). (Берём
 `verify-full`, а не `require`: `require` в новых версиях `pg` перестанет проверять серт.)
 
 ### Шаг 5a — CI: сборка и публикация образа в GHCR
@@ -453,15 +455,14 @@ Change visibility). Тогда кластеру не нужен pull-секре�
 
 ### 4.6 Секреты и деплой
 
-Единственное, чего нет в git и что заводится руками, — Secret и CA-сертификат базы:
+Единственное, чего нет в git и что заводится руками, — Secret с доступами:
 
 ```bash
 npm run k8s:secrets   # deploy/secrets.sh — скрытый ввод; TELEGRAM_BOT_TOKEN,
                       # DATABASE_URL, SCRAPE_PROXY_URL, SENTRY_DSN
 
-# Публичный корневой CA провайдера (скачать в панели Supabase). Без него verify-full
-# падает с SELF_SIGNED_CERT_IN_CHAIN — см. «Первый деплой», п.2:
-kubectl create configmap db-ca --from-file=ca.crt=<скачанный>.crt
+# Корневой CA провайдера руками заводить не нужно — он лежит в репозитории
+# (k8s/db-ca-configmap.yaml) и приезжает вместе с `apply -k`.
 ```
 
 Дальше деплой делает CD: мерж в `dev` → тесты → образ → выкатка (§5b). Тег в
@@ -517,7 +518,9 @@ kubectl port-forward deploy/nexo-assist 3000:3000   # затем curl /api/v1/he
    отказался проверять подлинность.
    **Решение (правильное):** скачали CA **из панели Supabase** (доверенный канал, а не из
    того, что прислал сервер — иначе проверка бессмысленна), положили в ConfigMap
-   (сертификат публичный, не секрет), смонтировали в оба контейнера и включили
+   (сертификат публичный, не секрет; с тех пор он лежит в git как
+   [`k8s/db-ca-configmap.yaml`](../k8s/db-ca-configmap.yaml) — руками заводить не нужно),
+   смонтировали в оба контейнера и включили
    `NODE_EXTRA_CA_CERTS`. Проверку **не отключали** — наоборот, теперь доверяем только
    сертификатам, выпущенным именно Supabase (строже, чем публичный CA).
 3. **Secret обновили — а под работает по-старому.**
@@ -693,8 +696,8 @@ API кластера не выставляем в интернет; при ут�
       `sshd -T | grep -i passwordauth` → `no`, `fail2ban-client status sshd`.
 - [x] **GitHub Secrets:** `CD_SSH_KEY` (приватный CD-ключ) и `CD_HOST` (адрес сервера).
 - [x] **GitHub → Packages:** пакет `ghcr.io/dmitry28/nexo-assist` сделан **public** (§4.5).
-- [x] **В кластере:** Secret `nexo-assist-secrets` (`npm run k8s:secrets`) и ConfigMap
-      `db-ca` — единственное, чего нет в git (§4.6).
+- [x] **В кластере:** Secret `nexo-assist-secrets` (`npm run k8s:secrets`) — единственное,
+      чего нет в git (§4.6).
 - [x] **kubectl с ноутбука:** `npm run k8s:tunnel` (§4.4).
 - [x] **Проверено:** поды, миграции, `/health`, ответ бота (§4.7).
 - [ ] _(позже)_ dev-окружение: 2-й бот, отдельная БД, Kustomize overlays.
