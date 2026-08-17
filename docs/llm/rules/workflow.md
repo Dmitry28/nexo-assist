@@ -52,7 +52,7 @@ _(Repeat steps 2–4 for each milestone)_
 3. Run `/verify-task-result` with full checks.
 4. Run `/logic-review` (behavior vs the task) **and** `/review-code` (rules, patterns, whether it's the best version) — **launch both at once**: they are independent and read-only, so sequencing them only costs wall-clock. Steps 1–2 come first so the tests and docs are inside what gets reviewed.
 5. Read both before acting: a finding can be wrong, and the two can contradict each other. Verify each against the code and say out loud which you reject and why.
-6. Fix what survives, then **re-run `/review-code`** (plus `/logic-review` if a fix touched behavior) — applying a fix is where the next defect appears, and the Whole-Change Pass is what sees it. Repeat until clean.
+6. Fix what survives — **`[H]` only** (ENTRY_POINT § Core Rules); everything else gets a `TODO` or a backlog entry. Touched behavior or fixed an `[H]`? Re-run the review — applying a fix is where the next defect appears.
 7. Sweep the issues you noticed along the way — pre-existing inconsistencies, dead code, edge cases — and apply **fix it or log it** (ENTRY_POINT § Core Rules).
 8. **Reflection** — improve **repo-tracked** instructions (`docs/llm/`, `.claude/skills/`) so the next contributor avoids the same friction. **Not personal memory — only files committed to the repo.** Edit when an instruction misled you, was easy to skip, or missed a pattern you used. Each edit: specific (cite file/section), minimal (one focused change). Skip if nothing came up — don't invent improvements to fill the slot.
 9. Changed anything in steps 6–8? Re-run `/review-code` over the final diff — otherwise the last edits ship as the only unreviewed part of the change.
