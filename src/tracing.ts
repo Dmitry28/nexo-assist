@@ -10,6 +10,8 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 
+// Read at import time, before ConfigModule loads `.env` — so a value set only in that file is
+// visible solely on the `start*` scripts, which preload it (see src/sentry.ts).
 if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
   const sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter(),

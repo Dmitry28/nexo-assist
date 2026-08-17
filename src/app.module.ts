@@ -19,13 +19,17 @@ import { TelegramModule } from './modules/telegram/telegram.module';
   imports: [
     ConfigModule.forRoot({
       // NOTE: isGlobal — inject config anywhere without re-importing this module;
-      // cache — read process.env once; expandVariables — allow ${VAR} refs in .env.
+      // cache — read process.env once; expandVariables — allow ${VAR} refs in .env, but only
+      // for keys ConfigModule loads itself: the dev scripts preload .env, and preloaded keys are
+      // never overwritten, so a ${VAR} set there arrives verbatim.
       isGlobal: true,
       cache: true,
       expandVariables: true,
       // `configuration` validates env via validateEnv and exposes it as `app.*`.
       load: [configuration],
-      envFilePath: ['.env.local', '.env'],
+      // One local file, so the dev scripts' `-r dotenv/config` preload (which reads exactly
+      // `.env`) can't diverge from what ConfigModule reads. `.env` is gitignored already.
+      envFilePath: ['.env'],
     }),
     LoggerModule.forRootAsync({
       inject: [configuration.KEY],

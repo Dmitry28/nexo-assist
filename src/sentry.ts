@@ -4,10 +4,16 @@
  *
  * Reporting exists for environments nobody is watching — production and staging. Locally you see
  * the error in the console, and dev noise would eat the free quota, so the DSN can safely stay in
- * `.env` without firing: the stage decides, not the presence of a key. Set SENTRY_ENABLED=true to
- * exercise the reporting path locally. Without a DSN nothing is initialised and every `Sentry.*`
- * call is a no-op. Errors only — tracing stays off (`tracesSampleRate: 0`), so the free tier is
- * spent on what the owner must act on.
+ * `.env` without firing: the stage decides, not the presence of a key. Set SENTRY_ENABLED=true and
+ * run via `npm run start:dev` to exercise the reporting path locally — those scripts preload `.env`
+ * (all three `start*` scripts do), because this module runs long before Nest's ConfigModule reads
+ * the file, so anything set only there would be invisible here. Production is unaffected: its
+ * variables come from the environment, and dotenv is a devDependency the runtime image prunes.
+ * Not `nest start --env-file`: node throws when the file is missing, and `.env` is gitignored —
+ * a fresh clone would fail to start. dotenv simply no-ops there.
+ *
+ * Without a DSN nothing is initialised and every `Sentry.*` call is a no-op. Errors only —
+ * tracing stays off (`tracesSampleRate: 0`), so the free tier is spent on what needs acting on.
  *
  * NOTE: the Sentry SDK sets up OpenTelemetry itself, so do NOT enable SENTRY_DSN and
  * OTEL_EXPORTER_OTLP_ENDPOINT (src/tracing.ts) at the same time — two SDKs would fight over the
