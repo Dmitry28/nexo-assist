@@ -1,15 +1,12 @@
-// The scheduler swallows per-subscription errors on purpose (one bad sub must not stop the run),
-// so it must report them instead — this mock lets the tests assert that guarantee.
-jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
-
 import { Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import * as Sentry from '@sentry/nestjs';
 import { GrammyError } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
+import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
@@ -143,12 +140,11 @@ describe('WatchScheduler.runDaily', () => {
       expect.stringContaining('Delivery failed'),
     );
     // Logging alone isn't visibility — unreported, the same digest re-sends every run.
-    expect(Sentry.captureException).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({
-        tags: expect.objectContaining({ kind: 'mark-seen', action: 'daily' }),
-      }),
-    );
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
+    expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'daily');
+    // The affected user is what makes "how many people hit this" answerable.
+    expect(sentryScope().setUser).toHaveBeenCalledWith({ id: '1' });
+    expect(sentryCapture()).toHaveBeenCalled();
   });
 
   it('auto-pauses a user on 403 and skips their remaining subscriptions', async () => {
@@ -198,7 +194,21 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(Sentry.captureException).toHaveBeenCalledWith(boom);
+    expect(sentryCapture()).toHaveBeenCalledWith(boom);
+    // With who and where — a bare report can't answer "how many users are affected".
+    expect(sentryScope().setUser).toHaveBeenCalledWith({ id: '1' });
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'poll');
+  });
+
+  it('tags a dead source as `source`, not as our bug — the daily run is where outages land', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
+    watch.poll.mockRejectedValue(new SourceUnavailableError('HTTP 503'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(sentryScope().setTag).toHaveBeenCalledWith('kind', 'source');
   });
 
   it('bumps the failure streak on a poll error without warning below the threshold', async () => {

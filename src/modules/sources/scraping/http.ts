@@ -37,6 +37,17 @@ function proxyAgent(): ProxyAgent | undefined {
 }
 
 /**
+ * The source did not give us usable HTML — an error status, a timeout, a network failure, or a
+ * response too large to accept. Distinct from a bug in our code: triage and alerting treat them
+ * differently (a site misbehaving is not something we can fix, but its volume still matters).
+ */
+export class SourceUnavailableError extends Error {
+  // Without this the issue title in Sentry reads "Error: HTTP 503" — the class name is what
+  // makes the list scannable; the `kind` tag only helps once you are already filtering.
+  override readonly name = 'SourceUnavailableError';
+}
+
+/**
  * Fetch following redirects manually, validating every hop against `host` *before* it is
  * requested. The default `redirect: 'follow'` issues each intermediate request first and only
  * exposes the final URL — a redirect to an internal address (SSRF) would already be sent. With
@@ -58,7 +69,15 @@ async function fetchFollowingHost(
   if (useProxy) init.dispatcher = proxyAgent();
   let currentUrl = url;
   for (let hop = 0; ; hop++) {
-    const res = await fetch(currentUrl, init);
+    // Only the network call is wrapped: a timeout or a refused connection means the source is
+    // unreachable, while the guards below (off-host redirect, redirect loop) point at us or at
+    // something suspicious and must stay distinguishable.
+    let res: Response;
+    try {
+      res = await fetch(currentUrl, init);
+    } catch (err) {
+      throw new SourceUnavailableError(`request failed for ${currentUrl}`, { cause: err });
+    }
     if (!REDIRECT_STATUSES.has(res.status)) return res;
     if (hop >= MAX_REDIRECTS) throw new Error(`Too many redirects for ${url}`);
     const location = res.headers.get('location');
@@ -93,16 +112,16 @@ export async function fetchHtml({
   try {
     const res = await fetchFollowingHost(url, host, controller.signal, useProxy);
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} for ${url}`);
+      throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
     }
     // Bail before buffering the body when the server declares an oversized response.
     const contentLength = Number(res.headers.get('content-length'));
     if (contentLength > MAX_HTML_LENGTH) {
-      throw new Error(`Content-Length ${contentLength} exceeds limit for ${url}`);
+      throw new SourceUnavailableError(`Content-Length ${contentLength} exceeds limit for ${url}`);
     }
     const html = await res.text();
     if (html.length > MAX_HTML_LENGTH) {
-      throw new Error(`Response too large (${html.length} chars) for ${url}`);
+      throw new SourceUnavailableError(`Response too large (${html.length} chars) for ${url}`);
     }
     return html;
   } finally {

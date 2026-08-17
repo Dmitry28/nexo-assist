@@ -1,13 +1,9 @@
-// /check swallows a markSeen failure on purpose (the user already saw the digest), so it must
-// report it instead — this mock lets the test assert that guarantee.
-jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
-
 import { Logger } from '@nestjs/common';
-import * as Sentry from '@sentry/nestjs';
 import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -282,12 +278,9 @@ describe('TelegramHandlers', () => {
     expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Could not check'));
     expect(ctx.reply).not.toHaveBeenCalledWith('Nothing new.');
     // Silent to the user, but it must not be silent to us: the items stay unmarked and re-send.
-    expect(Sentry.captureException).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({
-        tags: expect.objectContaining({ kind: 'mark-seen', action: 'check' }),
-      }),
-    );
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
+    expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'check');
+    expect(sentryCapture()).toHaveBeenCalled();
   });
 
   it('/check reports a failing subscription without a contradictory "Nothing new."', async () => {

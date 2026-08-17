@@ -5,6 +5,7 @@ import { Bot } from 'grammy';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 
+import { reportUserFacing } from './report';
 import { NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
 
@@ -38,7 +39,14 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     // Respect Telegram rate limits automatically (waits out 429 retry_after).
     bot.api.config.use(autoRetry());
     this.handlers.register(bot);
-    bot.catch((err) => this.logger.error({ err }, 'Bot handler error'));
+    // Last line of defence for the conversation: anything a handler didn't catch lands here.
+    // Without reporting, a user just sees a dead button while we learn nothing.
+    bot.catch((err) => {
+      this.logger.error({ err }, 'Bot handler error');
+      // Report the underlying error, not grammY's wrapper — Sentry groups by what actually
+      // threw, otherwise every failure collapses into one meaningless "middleware error".
+      reportUserFacing(err.error, { userId: err.ctx.from?.id, action: 'bot-update' });
+    });
 
     // NOTE: assign before start() so a shutdown mid-init can still stop the polling loop.
     this.bot = bot;
