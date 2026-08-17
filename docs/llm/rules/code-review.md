@@ -115,9 +115,9 @@ Reviewed: N/N files | findings: <H>H + <M>M + <L>L + <D>D | DOCs: code-style.md,
   SA: How to fix (cite `file:line` of canonical usage for Pattern Check findings)
 
 ## Improvement plan
-1. **Fix first** — `[H]` findings (bugs, security)
-2. **Refactor** — `[M]` findings (pattern violations, architecture)
-3. **Polish** — `[L]` findings (style, minor)
+1. **Fix first** — `[H]` findings (bugs, security). The only tier fixed mid-task.
+2. **Refactor** — `[M]` findings (pattern violations, architecture) → to log
+3. **Polish** — `[L]` findings (style, minor) → to log
 4. **Discuss** — `[D]` proposals (§ Whole-Change Pass, stale instructions): accept or reject each explicitly
 
 ## Skipped (pattern already followed)

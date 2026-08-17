@@ -17,12 +17,13 @@ kubectl kustomize k8s/           # render without applying — exactly what will
 > On the server, do **not** `apply -k` the `/opt/nexo-assist` checkout after a failed
 > deploy: `deploy.sh` leaves it pinned to the sha that just broke.
 
-| File                 | Purpose                                                                                                                                                                                                           |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `configmap.yaml`     | Non-secret env. Credentials live in the `nexo-assist-secrets` Secret referenced by the deployment.                                                                                                                |
-| `deployment.yaml`    | 1 replica (long-polling bot + in-memory pending prompts — see NOTE in the manifest), migrate initContainer, probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
-| `service.yaml`       | ClusterIP on port 80 → container port 3000.                                                                                                                                                                       |
-| `kustomization.yaml` | Ties the three together and pins the image; the committed tag is a placeholder — CD rewrites it with the sha it deploys.                                                                                          |
+| File                   | Purpose                                                                                                                                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configmap.yaml`       | Non-secret env. Credentials live in the `nexo-assist-secrets` Secret referenced by the deployment.                                                                                                                |
+| `deployment.yaml`      | 1 replica (long-polling bot + in-memory pending prompts — see NOTE in the manifest), migrate initContainer, probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
+| `db-ca-configmap.yaml` | The provider's public root CA, mounted into both containers and trusted via `NODE_EXTRA_CA_CERTS`.                                                                                                                |
+| `service.yaml`         | ClusterIP on port 80 → container port 3000.                                                                                                                                                                       |
+| `kustomization.yaml`   | Ties the four together and pins the image; the committed tag is a placeholder — CD rewrites it with the sha it deploys.                                                                                           |
 
 ## Probes
 
@@ -33,7 +34,7 @@ kubectl kustomize k8s/           # render without applying — exactly what will
 
 ## What is not in git
 
-Two cluster objects are created by hand — everything else here is deployed from the repo.
+One cluster object is created by hand — everything else here is deployed from the repo.
 
 **Secret `nexo-assist-secrets`** — `TELEGRAM_BOT_TOKEN`, `DATABASE_URL` (carries the
 database password), `SCRAPE_PROXY_URL`, `SENTRY_DSN`. Create it **before** applying: the
@@ -43,13 +44,10 @@ app refuses to boot without the token and the `migrate` initContainer needs the 
 npm run k8s:secrets   # deploy/secrets.sh — hidden input, values stay out of shell history
 ```
 
-**ConfigMap `db-ca`** — the managed-Postgres provider's public root CA, mounted into both
-containers and trusted via `NODE_EXTRA_CA_CERTS`. Without it `sslmode=verify-full` fails
-with `SELF_SIGNED_CERT_IN_CHAIN`.
-
-```bash
-kubectl create configmap db-ca --from-file=ca.crt=<downloaded from the Supabase panel>.crt
-```
+The provider's root CA is **not** one of them — it ships as
+[`db-ca-configmap.yaml`](db-ca-configmap.yaml), so `apply -k` is enough. A root certificate is
+public (the server presents it to every client), and having it in git is what makes recreating
+the cluster a single command. Replace it from the provider's console when they rotate it.
 
 Never commit real secrets. Keeping them encrypted in git (SOPS + age) is planned — see
 [PRODUCT_PLAN.md](../docs/PRODUCT_PLAN.md); full context in

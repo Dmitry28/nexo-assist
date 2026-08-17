@@ -39,7 +39,7 @@ spec:
         # trust store — without it `sslmode=verify-full` fails with SELF_SIGNED_CERT_IN_CHAIN.
         # Mounted (not a secret — a public cert) and trusted via NODE_EXTRA_CA_CERTS, which
         # covers both the app and the migrate initContainer with zero code.
-        # Create it once:  kubectl create configmap db-ca --from-file=ca.crt=<downloaded>.crt
+        # Ships in git as db-ca-configmap.yaml — a root cert is public, so `apply -k` is enough.
         - name: db-ca
           configMap:
             name: db-ca

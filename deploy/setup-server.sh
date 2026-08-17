@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Prepare a host to receive CD deploys: unprivileged deploy user, cluster access, repo
 # checkout, the deploy script and a CD key restricted to running it. Also hardens SSH
-# (no password login) and installs fail2ban.
+# (no password login), installs fail2ban, and prints the host key for the CD_HOST_KEY secret.
 #
 # Run as root ON THE HOST, after k3s is installed (see docs/DEPLOY.md §4):
 #   curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
-# or, from a checkout:  sudo bash deploy/setup-server.sh
+# or, from a checkout OUTSIDE $REPO_DIR:  sudo bash deploy/setup-server.sh
+# TODO: refuse when $0 resolves inside $REPO_DIR — step 3's force checkout rewrites the file
+# bash is reading, which can half-configure a host mid-migration [M].
 #
-# Idempotent — safe to re-run (e.g. after editing deploy/deploy.sh). Prints the CD public key
-# and the path of the private key to copy into the GitHub secret; never prints the private key.
+# Idempotent — safe to re-run; it installs whatever is pushed to $REPO_REF, so a local edit must
+# be committed and pushed first. Prints the *path* of the CD private key (copy its contents into
+# CD_SSH_KEY) and the host key value (→ CD_HOST_KEY); never the private key itself.
 set -euo pipefail
 
 REPO_URL=${REPO_URL:-https://github.com/Dmitry28/nexo-assist.git}
 REPO_DIR=${REPO_DIR:-/opt/nexo-assist}
 CD_KEY=${CD_KEY:-/root/cd_key}
+REPO_REF=${REPO_REF:-dev}  # ref this script installs deploy.sh from (CD then deploys a sha)
 
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 command -v k3s >/dev/null || { echo "k3s is not installed — see docs/DEPLOY.md §4.4" >&2; exit 1; }
@@ -25,21 +29,52 @@ install -d -m 700 -o deploy -g deploy /home/deploy/.ssh /home/deploy/.kube
 # 2. Cluster access: a private copy of the kubeconfig (k3s keeps the original root-only).
 install -m 600 -o deploy -g deploy /etc/rancher/k3s/k3s.yaml /home/deploy/.kube/config
 
-# 3. Repo checkout — the manifests deployed come from git, so a deploy is reproducible.
+# 3. Repo checkout — deploys apply the manifests from git, so a deploy is reproducible.
+#    One path for both cases: clone if absent, then always land on $REPO_REF. A bare `git clone`
+#    checks out the remote's DEFAULT branch (main here, far behind dev), so branching on
+#    clone-vs-refresh would silently give a fresh host a different deploy.sh than a re-run.
+#    NOTE: this leaves the checkout at the tip of $REPO_REF — not at whatever sha is running.
+#    The next deploy re-syncs it; until then don't `apply -k` from here (see deploy.sh).
+#    NOTE: don't run this script from inside $REPO_DIR — the checkout below rewrites the file
+#    bash is reading. Use the `curl | bash` form or a copy outside the repo.
 command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
-[[ -d "$REPO_DIR/.git" ]] || git clone -q "$REPO_URL" "$REPO_DIR"
+install -d -m 755 "$REPO_DIR"
 chown -R deploy:deploy "$REPO_DIR"
+# Run git as the owner — it refuses to touch another user's repo ("dubious ownership").
+# runuser, not sudo: we are already root, and runuser ships with util-linux on every image.
+[[ -d "$REPO_DIR/.git" ]] || runuser -u deploy -- git clone -q "$REPO_URL" "$REPO_DIR"
+runuser -u deploy -- git -C "$REPO_DIR" fetch --quiet origin
+runuser -u deploy -- git -C "$REPO_DIR" rev-parse --verify --quiet "origin/$REPO_REF" >/dev/null ||
+  { echo "REPO_REF=$REPO_REF does not exist on origin" >&2; exit 1; }
+runuser -u deploy -- git -C "$REPO_DIR" checkout --quiet --force "origin/$REPO_REF"
 
-# 4. The deploy script itself, from this repo (root-owned: the deploy user must not rewrite it).
-install -m 755 -o root -g root "$(dirname "$0")/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null \
-  || install -m 755 -o root -g root "$REPO_DIR/deploy/deploy.sh" /usr/local/bin/deploy.sh
+# 4. The deploy script itself, from that checkout (root-owned: the deploy user must not rewrite
+#    it). Not from `dirname $0` — under the documented `curl | bash` there is no such path, and
+#    the old fallback then installed a different version than the one just fetched, silently.
+#    Consequence: a local edit reaches the host only after it is pushed to $REPO_REF.
+install -m 755 -o root -g root "$REPO_DIR/deploy/deploy.sh" /usr/local/bin/deploy.sh
 
 # 5. CD key, allowed to run exactly one command — no shell, no forwarding. Even if the key
 #    leaks, it can only trigger a deploy.
-[[ -f "$CD_KEY" ]] || ssh-keygen -t ed25519 -N '' -C 'github-actions-cd' -f "$CD_KEY" -q
+#    The file is REWRITTEN, not appended to: the old check matched the key's *comment*, which
+#    survives regeneration — so a rotated key was added while the replaced one stayed authorised,
+#    i.e. rotation that changed nothing. `deploy` exists only for CD, so one line is all of it —
+#    but that also means a key added here by hand is removed on the next run (announced below).
+#    Rotating the CD key: rm /root/cd_key{,.pub} → re-run → copy the new key into CD_SSH_KEY.
+#    CD_PUB is assigned first: a failing substitution inside printf would leave a
+#    restrictions-only line and lock CD out entirely.
+# A stale .pub with the private key gone makes ssh-keygen ask to overwrite — and under the
+# documented `curl | bash` its stdin IS the script, so the answer would be the script's own text.
+[[ -f "$CD_KEY" ]] || { rm -f "$CD_KEY.pub"; ssh-keygen -t ed25519 -N '' -C 'github-actions-cd' -f "$CD_KEY" -q </dev/null; }
+# TODO: AUTH is not overridable, so a test run with REPO_DIR/CD_KEY pointed elsewhere still
+# rewrites the real deploy user's authorized_keys — it locked CD out once during testing [L].
 AUTH=/home/deploy/.ssh/authorized_keys
 RESTRICTIONS='command="/usr/local/bin/deploy.sh",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding'
-grep -qF 'github-actions-cd' "$AUTH" 2>/dev/null || echo "$RESTRICTIONS $(cat "$CD_KEY.pub")" >> "$AUTH"
+CD_PUB=$(cat "$CD_KEY.pub")
+NEW_AUTH="$RESTRICTIONS $CD_PUB"
+[[ -f "$AUTH" && "$(cat "$AUTH")" == "$NEW_AUTH" ]] ||
+  echo "   note: deploy's authorized_keys reset to the CD key only"
+printf '%s\n' "$NEW_AUTH" > "$AUTH"
 chown deploy:deploy "$AUTH"; chmod 600 "$AUTH"
 
 # 6. SSH hardening. This box sees ~40k failed password attempts a week from untargeted
@@ -94,3 +129,9 @@ fail2ban-client status sshd >/dev/null 2>&1 || { echo "fail2ban sshd jail is not
 echo "✅ host ready for CD"
 echo "   private key (put into the GitHub secret CD_SSH_KEY): $CD_KEY"
 echo "   deploy user: deploy | repo: $REPO_DIR | script: /usr/local/bin/deploy.sh"
+# Printed here because this is the trusted moment — you are already on the box (why that matters:
+# docs/DEPLOY.md §5b). Assigned first: a failing substitution inside `echo` does not trip `set -e`,
+# and an empty value under this label is worse than no label at all.
+HOST_KEY=$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)
+echo "   put this into the GitHub secret CD_HOST_KEY (CI verifies the host against it):"
+echo "     $HOST_KEY"

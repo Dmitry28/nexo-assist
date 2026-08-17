@@ -5,6 +5,7 @@ kind: Kustomization
 
 resources:
   - configmap.yaml
+  - db-ca-configmap.yaml
   - deployment.yaml
   - service.yaml
 
