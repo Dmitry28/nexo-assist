@@ -236,7 +236,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       .notify(sub.user.telegramId, deadSubscriptionNotice({ source: sub.source, url: sub.url }))
       .catch((err: unknown) => this.logger.warn({ err }, `Dead-link notice failed for ${sub.id}`));
     await this.notifyAdmin(
-      `⏸ Paused a dead ${sub.source} subscription after ${MAX_CONSECUTIVE_FAILURES} failures.\n${sub.url}`,
+      `⏸ Подписка «${sub.source}» на паузе — неудачных опросов подряд: ${MAX_CONSECUTIVE_FAILURES}.\n${sub.url}`,
     );
   }
 

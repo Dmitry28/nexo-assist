@@ -58,7 +58,9 @@ function digest(listings: Listing[], header: string): { text: string; shown: Lis
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
-  digest(listings, `📋 Объявлений сейчас: ${listings.length}`).text;
+  listings.length === 0
+    ? 'Сейчас объявлений нет.'
+    : digest(listings, `📋 Объявлений сейчас: ${listings.length}`).text;
 
 /**
  * The "new listings" digest plus the exact slice it shows. Callers must markSeen

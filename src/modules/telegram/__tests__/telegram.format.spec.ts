@@ -84,4 +84,8 @@ describe('formatCurrentListings', () => {
   it('uses a "current" header', () => {
     expect(formatCurrentListings([listing(1)])).toContain('📋 Объявлений сейчас: 1');
   });
+
+  it('states the empty case instead of an empty digest', () => {
+    expect(formatCurrentListings([])).toBe('Сейчас объявлений нет.');
+  });
 });

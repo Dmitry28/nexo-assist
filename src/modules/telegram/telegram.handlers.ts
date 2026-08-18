@@ -298,9 +298,7 @@ export class TelegramHandlers {
     await ctx.answerCallbackQuery();
     try {
       const listings = await this.watch.current(sub);
-      const message =
-        listings.length > 0 ? formatCurrentListings(listings) : 'No current listings.';
-      await ctx.reply(message, { link_preview_options: NO_LINK_PREVIEW });
+      await ctx.reply(formatCurrentListings(listings), { link_preview_options: NO_LINK_PREVIEW });
     } catch (err) {
       this.logger.warn({ err }, `Show-current failed for ${sub.url}`);
       reportUserFacing(err, { userId: ctx.from?.id, action: 'show-current', url: sub.url });

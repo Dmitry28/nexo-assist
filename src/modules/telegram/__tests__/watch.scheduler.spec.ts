@@ -313,7 +313,10 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('dead'));
+    expect(telegram.notify).toHaveBeenCalledWith(
+      99,
+      expect.stringContaining('неудачных опросов подряд'),
+    );
   });
 
   it('alerts the admin when a whole source fails all its polls in a run', async () => {
