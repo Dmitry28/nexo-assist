@@ -130,6 +130,20 @@ export class SubscriptionsService {
     return this.subs.findOneByOrFail({ id: sub.id });
   }
 
+  /**
+   * Un-pause the user's subscription — the /list button, same effect as re-sending its URL.
+   * False when it isn't theirs or is gone; throws SubscriptionLimitError at the active cap.
+   */
+  async resume(id: string, telegramUserId: number): Promise<boolean> {
+    const sub = await this.subs.findOneBy({ id, user: { telegramId: telegramUserId } });
+    if (!sub) return false;
+    if (!sub.pausedAt) return true; // already active — nothing to do
+    const activeCount = await this.subs.countBy({ userId: sub.userId, pausedAt: IsNull() });
+    if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) throw new SubscriptionLimitError();
+    await this.revive(sub);
+    return true;
+  }
+
   /** Increment a subscription's consecutive-failure streak by one (atomic). */
   async bumpFailures(id: string): Promise<void> {
     await this.subs.increment({ id }, 'consecutiveFailures', 1);

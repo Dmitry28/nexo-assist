@@ -35,8 +35,10 @@ import { WatchStatus } from './watch.status';
 const PROMPT =
   'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
-// /list row cap — stays under Telegram's ~100-button inline-keyboard limit.
-const MAX_LIST_ROWS = 50;
+// /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected
+// reply costs the user /list entirely. Counted in buttons, not rows: a paused row carries two
+// (❌ and ▶️), and paused subscriptions are not capped per user (the limit counts active ones).
+const MAX_LIST_BUTTONS = 90;
 // How many subscriptions one /check polls. grammY handles updates sequentially, so the paced
 // loop blocks every other user meanwhile; at MAX_SUBSCRIPTIONS_PER_USER that would be minutes.
 // Five bounds it to four pacing gaps plus five fetches — enough to prove the chain works,
@@ -87,6 +89,7 @@ export class TelegramHandlers {
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery(/^cancel:(.+)$/, (ctx) => this.onCancel(ctx));
     bot.callbackQuery(/^remove:(.+)$/, (ctx) => this.onRemove(ctx));
+    bot.callbackQuery(/^resume:(.+)$/, (ctx) => this.onResume(ctx));
     bot.callbackQuery(/^show:(.+)$/, (ctx) => this.onShowCurrent(ctx));
   }
 
@@ -210,16 +213,32 @@ export class TelegramHandlers {
     const keyboard = new InlineKeyboard();
     const lines: string[] = [];
     let length = 0;
+    let buttons = 0;
+    let anyPaused = false;
     for (const [i, sub] of subs.entries()) {
-      const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
-      if (length + line.length > MAX_MESSAGE_BUDGET_CHARS || i >= MAX_LIST_ROWS) {
+      // A paused subscription delivers nothing; without the mark it looks live and the user
+      // waits for notifications that will never come.
+      const paused = Boolean(sub.pausedAt);
+      const line = `#${i + 1} — ${sub.source}${paused ? ' ⏸ на паузе' : ''}\n${sub.url}`;
+      const rowButtons = paused ? 2 : 1;
+      if (
+        length + line.length > MAX_MESSAGE_BUDGET_CHARS ||
+        buttons + rowButtons > MAX_LIST_BUTTONS
+      ) {
         lines.push(`…и ещё ${subs.length - i} — удалите часть, чтобы увидеть остальные`);
         break;
       }
-      keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`).row();
+      keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`);
+      if (paused) {
+        keyboard.text(`▶️ #${i + 1}`, `resume:${sub.id}`);
+        anyPaused = true;
+      }
+      keyboard.row();
+      buttons += rowButtons;
       lines.push(line);
       length += line.length + '\n\n'.length;
     }
+    if (anyPaused) lines.push('▶️ — возобновить, ❌ — удалить');
     await ctx.reply(lines.join('\n\n'), {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
@@ -275,12 +294,8 @@ export class TelegramHandlers {
       const checked = subs.slice(0, MAX_CHECK_SUBSCRIPTIONS);
       // The paced loop is silent for seconds per subscription, so say what is being checked —
       // otherwise the silence reads as a dead bot, and a capped check looks like a full one.
-      if (checked.length < subs.length) {
-        await ctx.reply(
-          `Проверяю ${checked.length} из ${subs.length} — остальные проверит суточный прогон.`,
-        );
-      } else if (checked.length > 1) {
-        await ctx.reply(`Проверяю подписок: ${checked.length}…`);
+      if (subs.length > 1) {
+        await ctx.reply(`Проверяю подписок: ${checked.length} из ${subs.length}…`);
       }
       let replied = false;
       for (const [i, sub] of checked.entries()) {
@@ -369,6 +384,25 @@ export class TelegramHandlers {
 
     const removed = await this.subscriptions.remove(id, userId);
     await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено');
+  }
+
+  private async onResume(ctx: Context): Promise<void> {
+    const userId = ctx.from?.id;
+    const id = this.matchParam(ctx);
+    if (userId === undefined || id === undefined) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    try {
+      const resumed = await this.subscriptions.resume(id, userId);
+      await ctx.answerCallbackQuery(resumed ? 'Возобновлено' : 'Подписка не найдена');
+    } catch (err) {
+      if (err instanceof SubscriptionLimitError) {
+        await ctx.answerCallbackQuery(`Предел — ${MAX_SUBSCRIPTIONS_PER_USER} активных подписок`);
+        return;
+      }
+      throw err;
+    }
   }
 
   /** The capture group of the matched callback_data pattern, if any. */

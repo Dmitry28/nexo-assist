@@ -17,8 +17,9 @@ start; more frequent once throttling/dedupe land).
   title is truncated so that price and link always survive.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
-- Buttons: Следить / Отмена / Показать текущие / list / remove. `/list` is capped to fit one
-  Telegram message.
+- Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
+  one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
+  it — same effect as re-sending its URL, and it respects the active-subscription limit.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
   `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
@@ -75,7 +76,7 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   bot (403) → pause their subscriptions.
 - **Dead link:** if a search keeps failing to poll (errors, not empty results) for
   several runs in a row → tell the user to refresh it and pause that subscription.
-  Re-sending the same search link revives a paused subscription (clears the pause).
+  A paused subscription is revived by re-sending its link or by ▶️ in `/list`.
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
   alert below would go nowhere silently) is notified on every auto-pause
   (403 / dead link) and when a whole source fails all its polls in a run.

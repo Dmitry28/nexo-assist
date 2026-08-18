@@ -61,6 +61,7 @@ describe('TelegramHandlers', () => {
     add: jest.Mock;
     listByUser: jest.Mock;
     remove: jest.Mock;
+    resume: jest.Mock;
     countUsers: jest.Mock;
     countActive: jest.Mock;
     countPaused: jest.Mock;
@@ -90,6 +91,7 @@ describe('TelegramHandlers', () => {
         .mockImplementation((input: { url: string }) => Promise.resolve(sub({ url: input.url }))),
       listByUser: jest.fn().mockResolvedValue([]),
       remove: jest.fn().mockResolvedValue(true),
+      resume: jest.fn().mockResolvedValue(true),
       countUsers: jest.fn().mockResolvedValue(0),
       countActive: jest.fn().mockResolvedValue(0),
       countPaused: jest.fn().mockResolvedValue(0),
@@ -242,6 +244,59 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton('remove:s1', 1);
     expect(subscriptions.remove).toHaveBeenCalledWith('s1', 1);
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Удалено');
+  });
+
+  it('marks a paused subscription in /list and offers to resume it', async () => {
+    subscriptions.listByUser.mockResolvedValue([
+      sub({ id: 'active' }),
+      sub({ id: 'paused', pausedAt: new Date() }),
+    ]);
+
+    const ctx = makeCtx({ userId: 1 });
+    await bot.commands.get('list')!(ctx);
+
+    const [text, options] = ctx.reply.mock.calls[0] as [
+      string,
+      { reply_markup: { inline_keyboard: Array<Array<{ callback_data: string }>> } },
+    ];
+    expect(text).toContain('#2 — kufar ⏸ на паузе');
+    expect(text).not.toContain('#1 — kufar ⏸');
+    const buttons = options.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
+    expect(buttons).toContain('resume:paused');
+    expect(buttons).not.toContain('resume:active');
+  });
+
+  it('caps /list by buttons, not rows — a paused row carries two', async () => {
+    // 50 paused rows would be 100 buttons; Telegram rejects the reply and /list is lost.
+    subscriptions.listByUser.mockResolvedValue(
+      Array.from({ length: 50 }, (_, i) => sub({ id: `s${i}`, pausedAt: new Date() })),
+    );
+
+    const ctx = makeCtx({ userId: 1 });
+    await bot.commands.get('list')!(ctx);
+
+    const [, options] = ctx.reply.mock.calls[0] as [
+      string,
+      { reply_markup: { inline_keyboard: Array<Array<{ callback_data: string }>> } },
+    ];
+    expect(options.reply_markup.inline_keyboard.flat().length).toBeLessThanOrEqual(90);
+  });
+
+  it('resume un-pauses the subscription', async () => {
+    subscriptions.resume.mockResolvedValue(true);
+
+    const ctx = await pressButton('resume:sub-1', 1);
+
+    expect(subscriptions.resume).toHaveBeenCalledWith('sub-1', 1);
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Возобновлено');
+  });
+
+  it('resume refuses when the user is at the active-subscription limit', async () => {
+    subscriptions.resume.mockRejectedValue(new SubscriptionLimitError());
+
+    const ctx = await pressButton('resume:sub-1', 1);
+
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('Предел'));
   });
 
   it('remove answers "Уже удалено" when nothing was deleted', async () => {
