@@ -14,6 +14,7 @@ import {
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { helpMessage } from '../telegram.format';
 import { TelegramHandlers } from '../telegram.handlers';
 import type { WatchStatus } from '../watch.status';
 
@@ -218,6 +219,14 @@ describe('TelegramHandlers', () => {
 
     expect(subscriptions.add).not.toHaveBeenCalled();
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('устарела'));
+  });
+
+  it('/help replies with the help text', async () => {
+    const ctx = makeCtx({ userId: 1 });
+
+    await buildHandlers().commands.get('help')?.(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(helpMessage(), expect.anything());
   });
 
   it('lists subscriptions with remove buttons and removes for the owner', async () => {

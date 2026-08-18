@@ -24,6 +24,7 @@ import {
   NO_LINK_PREVIEW,
   formatCurrentListings,
   formatStats,
+  helpMessage,
   newListingsDigest,
 } from './telegram.format';
 import { WatchStatus } from './watch.status';
@@ -61,7 +62,10 @@ export class TelegramHandlers {
   ) {}
 
   register(bot: Bot): void {
-    bot.command('start', (ctx) => ctx.reply(`Привет! ${PROMPT}`));
+    bot.command('start', (ctx) => ctx.reply(`Привет! ${PROMPT}\nЧто я умею — /help`));
+    bot.command('help', (ctx) =>
+      ctx.reply(helpMessage(), { link_preview_options: NO_LINK_PREVIEW }),
+    );
     bot.command('list', (ctx) => this.showList(ctx));
     bot.command('stats', (ctx) => this.onStats(ctx));
     // NOTE: /check is a manual test trigger — kept out of production.

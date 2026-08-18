@@ -20,6 +20,10 @@ start; more frequent once throttling/dedupe land).
 - Buttons: Следить / Отмена / Показать текущие / list / remove; non-production `/check`
   (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
   Admin-only `/stats` (`ADMIN_TELEGRAM_ID`) reports users / active / paused / last run.
+- Commands are published to Telegram's menu (`setMyCommands`) and explained by `/help`:
+  what the bot does, how to subscribe, how to unsubscribe, and what data is stored
+  (deletion on request — PRODUCT_PLAN.md § Технический бэклог). Both come from one list,
+  so the menu and the help text cannot drift apart. Admin commands stay out of the menu.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)

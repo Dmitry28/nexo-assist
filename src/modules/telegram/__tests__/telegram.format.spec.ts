@@ -1,9 +1,11 @@
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 
 import {
+  BOT_COMMANDS,
   DIGEST_LIMIT,
   MAX_LINE_CHARS,
   formatCurrentListings,
+  helpMessage,
   newListingsDigest,
 } from '../telegram.format';
 
@@ -87,5 +89,17 @@ describe('formatCurrentListings', () => {
 
   it('states the empty case instead of an empty digest', () => {
     expect(formatCurrentListings([])).toBe('Сейчас объявлений нет.');
+  });
+});
+
+describe('helpMessage', () => {
+  it('lists every menu command, so the menu and the help text cannot drift apart', () => {
+    const help = helpMessage();
+    for (const { command } of BOT_COMMANDS) expect(help).toContain(`/${command} —`);
+  });
+
+  it('says what is stored and how to have it deleted', () => {
+    expect(helpMessage()).toContain('telegram-id');
+    expect(helpMessage()).toContain('удалить');
   });
 });

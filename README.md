@@ -6,6 +6,22 @@ base: validated config, structured logging, global error handling, OpenAPI docs,
 health checks, and a full lint/format/test pipeline. Product spec:
 [docs/PRODUCT.md](docs/PRODUCT.md).
 
+## Using the bot
+
+Send the bot a search link from **kufar.by** or **realt.by** with your filters already applied;
+it offers a "Следить" button and, from then on, sends only the listings that appeared since the
+last check (once a day). The bot speaks Russian — its beta audience does.
+
+| Command  | What it does                                 |
+| -------- | -------------------------------------------- |
+| `/start` | greeting and the prompt to send a link       |
+| `/list`  | your subscriptions, each with a ❌ to remove |
+| `/help`  | the same summary inside the bot              |
+
+It stores your Telegram id, name, @username, interface language and the links it watches —
+only to deliver notifications.
+Ask the owner to have them deleted.
+
 ## Stack
 
 | Concern       | Choice                                              |
