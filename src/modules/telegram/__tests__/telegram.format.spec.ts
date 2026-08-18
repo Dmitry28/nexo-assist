@@ -11,7 +11,7 @@ describe('newListingsDigest', () => {
   it('shows the count header and listing fields', () => {
     const { text } = newListingsDigest([listing(1, { priceUsd: 5000 })]);
 
-    expect(text).toContain('🆕 1 new');
+    expect(text).toContain('🆕 Новых объявлений: 1');
     expect(text).toContain('$5000');
     expect(text).toContain('https://re.kufar.by/vi/1');
   });
@@ -21,8 +21,8 @@ describe('newListingsDigest', () => {
 
     const { text, delivered } = newListingsDigest(many);
 
-    expect(text).toContain(`🆕 ${DIGEST_LIMIT + 2} new`);
-    expect(text).toContain('…and 2 more');
+    expect(text).toContain(`🆕 Новых объявлений: ${DIGEST_LIMIT + 2}`);
+    expect(text).toContain('…и ещё 2');
     expect(delivered).toHaveLength(DIGEST_LIMIT);
     expect(delivered[0].externalId).toBe('1');
   });
@@ -71,17 +71,17 @@ describe('newListingsDigest', () => {
     expect(text.length).toBeLessThan(4096);
     expect(delivered.length).toBeGreaterThan(0);
     expect(delivered.length).toBeLessThan(10);
-    expect(text).toContain(`…and ${10 - delivered.length} more`);
+    expect(text).toContain(`…и ещё ${10 - delivered.length}`);
   });
 
   it('falls back through the price options', () => {
     expect(newListingsDigest([listing(1, { priceByn: 100 })]).text).toContain('100 BYN');
-    expect(newListingsDigest([listing(1)]).text).toContain('price n/a');
+    expect(newListingsDigest([listing(1)]).text).toContain('цена не указана');
   });
 });
 
 describe('formatCurrentListings', () => {
   it('uses a "current" header', () => {
-    expect(formatCurrentListings([listing(1)])).toContain('📋 1 current');
+    expect(formatCurrentListings([listing(1)])).toContain('📋 Объявлений сейчас: 1');
   });
 });

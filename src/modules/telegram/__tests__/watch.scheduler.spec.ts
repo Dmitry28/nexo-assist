@@ -235,7 +235,10 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(subscriptions.bumpFailures).toHaveBeenCalledWith('1');
-    expect(telegram.notify).toHaveBeenCalledWith(1, expect.stringContaining('paused'));
+    expect(telegram.notify).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('поставил его на паузу'),
+    );
     expect(subscriptions.pause).toHaveBeenCalledWith('1');
     expect(metrics.recordPause).toHaveBeenCalledWith('dead');
   });
@@ -298,7 +301,7 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('blocked the bot'));
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('заблокировал бота'));
   });
 
   it('alerts the admin when a subscription is auto-paused as dead', async () => {
@@ -322,7 +325,7 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('failed all 3 polls'));
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
   });
 
   it('sends no admin alert when ADMIN_TELEGRAM_ID is unset', async () => {
@@ -336,7 +339,10 @@ describe('WatchScheduler.runDaily', () => {
 
     // Only the user's dead-link notice is sent — no admin alert.
     expect(telegram.notify).toHaveBeenCalledTimes(1);
-    expect(telegram.notify).toHaveBeenCalledWith(1, expect.stringContaining('paused'));
+    expect(telegram.notify).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('поставил его на паузу'),
+    );
   });
 
   it('does not raise a source alert below the min-polls threshold', async () => {
@@ -348,7 +354,7 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('failed all'));
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('провалились'));
   });
 
   it('paces between polls only — N-1 delays for N subscriptions, none before the first', async () => {

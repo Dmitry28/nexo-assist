@@ -24,7 +24,7 @@ const truncate = (text: string, max: number): string =>
 function price(listing: Listing): string {
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
   if (listing.priceByn !== undefined) return `${listing.priceByn} BYN`;
-  return 'price n/a';
+  return 'цена не указана';
 }
 
 function formatOne(listing: Listing): string {
@@ -40,7 +40,7 @@ function formatOne(listing: Listing): string {
   return line.length > MAX_LINE_CHARS ? truncate(line, MAX_LINE_CHARS) : line;
 }
 
-/** A listings digest under `header`: items up to the caps, then an "…and N more" footer. */
+/** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
 function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
   const lines: string[] = [];
   const shown: Listing[] = [];
@@ -53,12 +53,12 @@ function digest(listings: Listing[], header: string): { text: string; shown: Lis
     length += line.length + '\n\n'.length;
   }
   const more = listings.length - shown.length;
-  const footer = more > 0 ? `\n\n…and ${more} more` : '';
+  const footer = more > 0 ? `\n\n…и ещё ${more}` : '';
   return { text: `${header}\n\n${lines.join('\n\n')}${footer}`, shown };
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
-  digest(listings, `📋 ${listings.length} current`).text;
+  digest(listings, `📋 Объявлений сейчас: ${listings.length}`).text;
 
 /**
  * The "new listings" digest plus the exact slice it shows. Callers must markSeen
@@ -67,14 +67,14 @@ export const formatCurrentListings = (listings: Listing[]): string =>
  * by batched delivery (Phase 7).
  */
 export function newListingsDigest(fresh: Listing[]): { text: string; delivered: Listing[] } {
-  const { text, shown } = digest(fresh, `🆕 ${fresh.length} new`);
+  const { text, shown } = digest(fresh, `🆕 Новых объявлений: ${fresh.length}`);
   return { text, delivered: shown };
 }
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
-  `⚠️ This ${source} search stopped responding, so I've paused it. ` +
-  `Check the link and send it again if it still works.\n${url}`;
+  `⚠️ Поиск на ${source} перестал отвечать — я поставил его на паузу.\n` +
+  `Проверьте ссылку и пришлите её снова, если она рабочая.\n${url}`;
 
 /** Admin `/stats` snapshot. */
 export const formatStats = (s: {
@@ -84,9 +84,9 @@ export const formatStats = (s: {
   lastRunAt?: Date;
 }): string =>
   [
-    '📊 Stats',
-    `👥 users: ${s.users}`,
-    `📋 active subscriptions: ${s.active}`,
-    `⏸ paused: ${s.paused}`,
-    `🕒 last run: ${s.lastRunAt ? s.lastRunAt.toISOString() : 'never'}`,
+    '📊 Статистика',
+    `👥 пользователей: ${s.users}`,
+    `📋 активных подписок: ${s.active}`,
+    `⏸ на паузе: ${s.paused}`,
+    `🕒 последний прогон: ${s.lastRunAt ? s.lastRunAt.toISOString() : 'не было'}`,
   ].join('\n');
