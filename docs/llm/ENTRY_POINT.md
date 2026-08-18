@@ -46,7 +46,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 
 ## Core Rules
 
-- **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
+- **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below ([rules/development-philosophy.md § Self-Check](rules/development-philosophy.md#self-check) applies it).
 - **Decide, don't ask.** When a question comes up, investigate it yourself first (code, docs, live checks) and decide by common sense, standards and best practices. Ask the owner only what is genuinely important: product direction, destructive/irreversible actions, trade-offs only he can weigh.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - **Fix it or log it — never walk past it.** Noticed a real problem outside the current scope? Verify it's real (read the code), then: **`[H]` only — critical correctness or security — gets fixed now.** Anything else gets a marker and you move on: a `TODO [H|M|L]` at the code it affects ([rules/code-style.md](rules/code-style.md#comments)), or an entry in the «Технический бэклог» of [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) when it's bigger than a comment. This applies to review findings too — a pile of `[L]`s must not stall the task it was reviewing.
