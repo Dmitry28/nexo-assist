@@ -61,8 +61,18 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 
 ## Reference Repos (local)
 
-- `/Users/dmitrypoluy/dp/my/land-scraper` — the prototype; logic to port here (see [PRODUCT_PLAN.md §5](../PRODUCT_PLAN.md)).
-- `/Users/dmitrypoluy/dp/enneo/enneo/ops-fe` and `/Users/dmitrypoluy/dp/enneo/enneo/io-proxy` — mature repos to borrow from: technical solutions, approaches, LLM instructions, eslint/tooling configs.
+Read before inventing something we already solved elsewhere. All three are local checkouts.
+Paths are written home-relative (`~/…`) on purpose: **the repo is public**, and a full
+`/Users/<name>/…` path publishes the owner's username. Same rule anywhere in the repo.
+
+| Repo                        | Go there for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~/dp/my/land-scraper`      | **The prototype — the reference for source plugins.** `src/modules/` holds 12 working source modules (kufar ×3, realt, av-by, bamper, bid-cars, ghb, land-auctions, mosty-jobs, pogorany, townhouses): selectors, pagination, price normalization, fixtures. Adding an adapter here starts by reading its counterpart there. Also the source of the kufar search-API approach and the Puppeteer/scrapfly path for Cloudflare sites. What to port — [PRODUCT_PLAN.md §5](../PRODUCT_PLAN.md). |
+| `~/dp/enneo/enneo/io-proxy` | Mature **NestJS backend** — the closest match to this repo. Approaches and conventions: `docs/llm/` (its own ENTRY_POINT + `rules/` + `commands/`, the structure ours mirrors), `docs/architecture/`, `docs/patterns/` (e.g. security boundaries), `docs/services/`, plus `eslint.config.mjs`, `knip.json`, `Taskfile.yml`.                                                                                                                                                                  |
+| `~/dp/enneo/enneo/ops-fe`   | Mature **Next.js frontend** — take the process, not the stack: `docs/llm/` rules and commands, `docs/patterns/`, `docs/implementation-plans/` (how a change gets planned before it is written), `_plugins/` (custom eslint/stylelint rules), tooling configs. Relevant when the admin dashboard (Phase 10) starts.                                                                                                                                                                           |
+
+Borrow the approach, not the code: those repos carry their own constraints. Anything adopted from
+them still follows this repo's rules and lands with its docs updated.
 
 ## Workflow
 
