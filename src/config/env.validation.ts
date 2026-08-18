@@ -2,6 +2,7 @@ import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -102,9 +103,21 @@ export class EnvironmentVariables {
   @IsNotEmpty({ message: 'TELEGRAM_BOT_TOKEN is required when APP_ENV=production' })
   TELEGRAM_BOT_TOKEN?: string;
 
-  /** Telegram id of the owner — enables the admin-only /stats command. Unset = no admin. */
-  @IsNumber()
-  @IsOptional()
+  /**
+   * Telegram id of the owner — `/stats`, `/check` in production, and the address of every
+   * product alert. Required in production for the same reason as SCRAPE_PROXY_URL below:
+   * unset, the app runs fine and just stops telling the owner anything, and missing alerts
+   * look exactly like nothing going wrong. Lives in the Secret, not the ConfigMap — the repo
+   * is public and this is a personal id.
+   */
+  // Same ValidateIf shape as SCRAPE_PROXY_URL: also validate when merely set, or a typo would
+  // convert to NaN (and an empty value to 0) and silently deny the owner everything.
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.APP_ENV === AppEnv.Production || env.ADMIN_TELEGRAM_ID !== undefined,
+  )
+  @IsInt()
+  @Min(1, { message: 'ADMIN_TELEGRAM_ID must be a positive id; required when APP_ENV=production' })
   ADMIN_TELEGRAM_ID?: number;
 
   /**

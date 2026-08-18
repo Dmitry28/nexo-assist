@@ -34,6 +34,8 @@ For other candidate findings — grep the codebase for how peers handle the same
 - ≥2 patterns each with ≥3 occurrences → **drop "unify" suggestions**.
 - Near-zero-precedent variant while a dominant alternative exists → **flag**, cite one `file:line` of canonical usage in the SA.
 
+Grep twice before emitting a `[M]`/`[L]` that rests on Pattern Check — a first-pass grep misses peers. Exempt: `[H]` correctness/security and § Whole-Change Pass, which argues against the dominant pattern by design.
+
 Escape hatches: 0 peers anywhere → suspend Pattern Check (rely on DOCs); changed code follows a documented migration direction → don't flag against the legacy pattern.
 
 ## Whole-Change Pass
@@ -66,16 +68,6 @@ For `*.md` outside `docs/llm/` — product docs and the root `README`. § Self-C
 **Do not apply "non-obvious only" here** — that rule is for LLM instructions. These docs explain
 concepts to a person on purpose ([DEPLOY.md](../../DEPLOY.md) is a learning guide), so removing an
 explanation because a model already knows it destroys their point.
-
-## Pre-Output Verification
-
-Before emitting any `[M]` / `[L]` **that came from a DOC rule or Pattern Check**, re-run Pattern
-Check once more (first-pass grep misses peers). If the changed code matches the dominant pattern,
-route it to § Skipped ("pattern already followed") instead of the findings.
-
-Two carve-outs, emitted immediately: `[H]` correctness/security, and anything from
-§ Whole-Change Pass — it argues _against_ the dominant pattern by design, so this gate would
-silence exactly what it exists to surface.
 
 ## Triggers
 

@@ -61,8 +61,8 @@ Format:
 ```typescript
 // Brief context.
 // NOTE: non-obvious logic or technical behavior.
-// TODO: what needs to be done [H|M|L]
-// FIXME: what is broken and why [H|M|L]
+// TODO [H|M|L]: what needs to be done
+// FIXME [H|M|L]: what is broken and why
 ```
 
 ## General

@@ -17,13 +17,15 @@ start; more frequent once throttling/dedupe land).
   title is truncated so that price and link always survive.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
-- Buttons: Следить / Отмена / Показать текущие / list / remove; non-production `/check`
-  (manual test trigger — dev and staging). `/list` is capped to fit one Telegram message.
-  Admin-only `/stats` (`ADMIN_TELEGRAM_ID`) reports users / active / paused / last run.
-- Commands are published to Telegram's menu (`setMyCommands`) and explained by `/help`:
-  what the bot does, how to subscribe, how to unsubscribe, and what data is stored
-  (deletion on request — PRODUCT_PLAN.md § Технический бэклог). Both come from one list,
-  so the menu and the help text cannot drift apart. Admin commands stay out of the menu.
+- Buttons: Следить / Отмена / Показать текущие / list / remove. `/list` is capped to fit one
+  Telegram message.
+- Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
+  `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
+  for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
+  the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
+  so a longer loop would freeze the bot for everyone), and shares one polling slot with the
+  daily run: whichever starts second is refused, so they never poll the same subscriptions at
+  once or race each other's "seen" bookkeeping.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
@@ -74,7 +76,8 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 - **Dead link:** if a search keeps failing to poll (errors, not empty results) for
   several runs in a row → tell the user to refresh it and pause that subscription.
   Re-sending the same search link revives a paused subscription (clears the pause).
-- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`) is notified on every auto-pause
+- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
+  alert below would go nowhere silently) is notified on every auto-pause
   (403 / dead link) and when a whole source fails all its polls in a run.
 - **Source with no subscribers:** stop scraping it and purge its data.
 

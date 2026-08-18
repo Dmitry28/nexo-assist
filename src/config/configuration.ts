@@ -28,7 +28,7 @@ export interface AppConfig {
   throttleLimit: number;
   /** Telegram bot token; `undefined` keeps the bot disabled. */
   telegramBotToken: string | undefined;
-  /** Telegram id of the owner for the admin-only `/stats` command; `undefined` = no admin. */
+  /** Telegram id of the owner: `/stats`, and `/check` in production; `undefined` = no admin. */
   adminTelegramId: number | undefined;
   /** Cron expression for the daily subscription check. */
   watchCron: string;

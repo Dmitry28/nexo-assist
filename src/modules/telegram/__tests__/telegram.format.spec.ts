@@ -3,9 +3,9 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import {
   BOT_COMMANDS,
   DIGEST_LIMIT,
+  HELP_MESSAGE,
   MAX_LINE_CHARS,
   formatCurrentListings,
-  helpMessage,
   newListingsDigest,
 } from '../telegram.format';
 
@@ -92,14 +92,13 @@ describe('formatCurrentListings', () => {
   });
 });
 
-describe('helpMessage', () => {
+describe('HELP_MESSAGE', () => {
   it('lists every menu command, so the menu and the help text cannot drift apart', () => {
-    const help = helpMessage();
-    for (const { command } of BOT_COMMANDS) expect(help).toContain(`/${command} —`);
+    for (const { command } of BOT_COMMANDS) expect(HELP_MESSAGE).toContain(`/${command} —`);
   });
 
   it('says what is stored and how to have it deleted', () => {
-    expect(helpMessage()).toContain('telegram-id');
-    expect(helpMessage()).toContain('удалить');
+    expect(HELP_MESSAGE).toContain('telegram-id');
+    expect(HELP_MESSAGE).toContain('удалить');
   });
 });

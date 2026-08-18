@@ -13,6 +13,7 @@ import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.serv
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { pace } from './pacing';
 import type { ReportOp } from './report';
 import { reportUserFacing } from './report';
 import { deadSubscriptionNotice, newListingsDigest } from './telegram.format';
@@ -33,11 +34,6 @@ type ProcessResult = 'ok' | 'blocked' | 'poll-failed';
 
 // Per-source poll counters for the source-outage alert.
 type SourceStats = { attempts: number; failures: number };
-
-/** Base delay plus a random 0..jitter, in ms — paces polls so we don't hammer a source. */
-export function jitteredDelay(minMs: number, jitterMs: number, random = Math.random): number {
-  return minMs + Math.floor(random() * (jitterMs + 1));
-}
 
 /** A Telegram 403 means delivery is impossible (blocked / deactivated) — pause the user. */
 function isBotBlocked(err: unknown): boolean {
@@ -84,6 +80,23 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   async runDaily(): Promise<void> {
+    // Skip rather than queue: whatever is polling covers the same subscriptions, and a
+    // WATCH_CRON firing faster than a run lasts would otherwise stack parallel runs.
+    // The owner is told, because a warn stays inside the process (PRODUCT_PLAN.md § бэклог).
+    if (!this.status.tryStartPolling()) {
+      this.logger.warn('Watch run skipped — a poll is already in progress');
+      await this.notifyAdmin('⚠️ Суточный прогон пропущен — опрос уже шёл. Проверки не было.');
+      return;
+    }
+    try {
+      await this.pollAll();
+    } finally {
+      this.status.finishPolling();
+    }
+    this.status.markRun(new Date());
+  }
+
+  private async pollAll(): Promise<void> {
     const subs = await this.subscriptions.listActive();
     // Users who blocked us this run — skip their remaining subs to avoid re-hitting 403.
     const blockedUsers = new Set<string>();
@@ -92,7 +105,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
-      if (i > 0) await this.pace();
+      if (i > 0) await pace(this.appConfig);
       let result: ProcessResult;
       try {
         result = await this.processSubscription(sub);
@@ -111,7 +124,6 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     }
     await this.recordTotals();
     await this.alertFailedSources(sourceStats);
-    this.status.markRun(new Date());
   }
 
   private tallySource(stats: Map<string, SourceStats>, source: string, failed: boolean): void {
@@ -255,10 +267,5 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       // it to setUser would mix two id spaces and corrupt the affected-user counts.
       Sentry.captureException(err);
     }
-  }
-
-  private pace(): Promise<void> {
-    const ms = jitteredDelay(this.appConfig.watchMinDelayMs, this.appConfig.watchJitterMs);
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

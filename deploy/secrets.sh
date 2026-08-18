@@ -20,7 +20,9 @@ set -euo pipefail
 export KUBECONFIG=${NEXO_KUBECONFIG:-$HOME/.kube/nexo.yaml}
 
 SECRET=${SECRET:-nexo-assist-secrets}
-ALL_KEYS=(TELEGRAM_BOT_TOKEN DATABASE_URL SCRAPE_PROXY_URL SENTRY_DSN)
+# ADMIN_TELEGRAM_ID is not a credential, but it is the owner's personal Telegram id and the
+# repo is public — so it lives here rather than in the ConfigMap.
+ALL_KEYS=(TELEGRAM_BOT_TOKEN DATABASE_URL SCRAPE_PROXY_URL SENTRY_DSN ADMIN_TELEGRAM_ID)
 KEYS=("${@:-${ALL_KEYS[@]}}")
 
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }

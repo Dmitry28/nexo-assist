@@ -9,8 +9,10 @@ health checks, and a full lint/format/test pipeline. Product spec:
 ## Using the bot
 
 Send the bot a search link from **kufar.by** or **realt.by** with your filters already applied;
-it offers a "Следить" button and, from then on, sends only the listings that appeared since the
-last check (once a day). The bot speaks Russian — its beta audience does.
+it offers a "Следить" button and, from then on, sends the listings that appeared since the
+last check, once a day, in a capped digest (batching is the next step). Delivery rules and what
+the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its beta audience
+does.
 
 | Command  | What it does                                 |
 | -------- | -------------------------------------------- |
@@ -18,9 +20,8 @@ last check (once a day). The bot speaks Russian — its beta audience does.
 | `/list`  | your subscriptions, each with a ❌ to remove |
 | `/help`  | the same summary inside the bot              |
 
-It stores your Telegram id, name, @username, interface language and the links it watches —
-only to deliver notifications.
-Ask the owner to have them deleted.
+It stores your Telegram id, name, @username, interface language and the links it watches — only
+to deliver notifications; ask the owner to have them deleted.
 
 ## Stack
 

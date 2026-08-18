@@ -18,13 +18,14 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { pace } from './pacing';
 import { reportUserFacing } from './report';
 import {
+  HELP_MESSAGE,
   MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
   formatCurrentListings,
   formatStats,
-  helpMessage,
   newListingsDigest,
 } from './telegram.format';
 import { WatchStatus } from './watch.status';
@@ -36,6 +37,12 @@ const PROMPT =
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
 // /list row cap — stays under Telegram's ~100-button inline-keyboard limit.
 const MAX_LIST_ROWS = 50;
+// How many subscriptions one /check polls. grammY handles updates sequentially, so the paced
+// loop blocks every other user meanwhile; at MAX_SUBSCRIPTIONS_PER_USER that would be minutes.
+// Five bounds it to four pacing gaps plus five fetches — enough to prove the chain works,
+// which is what /check is for.
+const MAX_CHECK_SUBSCRIPTIONS = 5;
+
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
 const MAX_PENDING = 500;
 
@@ -64,14 +71,17 @@ export class TelegramHandlers {
   register(bot: Bot): void {
     bot.command('start', (ctx) => ctx.reply(`Привет! ${PROMPT}\nЧто я умею — /help`));
     bot.command('help', (ctx) =>
-      ctx.reply(helpMessage(), { link_preview_options: NO_LINK_PREVIEW }),
+      ctx.reply(HELP_MESSAGE, { link_preview_options: NO_LINK_PREVIEW }),
     );
     bot.command('list', (ctx) => this.showList(ctx));
     bot.command('stats', (ctx) => this.onStats(ctx));
-    // NOTE: /check is a manual test trigger — kept out of production.
-    if (!this.appConfig.isProduction) {
-      bot.command('check', (ctx) => this.onCheck(ctx));
-    }
+    // NOTE: /check polls sources on demand, so it never reaches the public: outside production
+    // anyone may use it (dev convenience), in production only the owner — the one place where
+    // "does the whole chain still work?" has to be answerable without waiting for the cron.
+    // Production only, deliberately: there is no staging stage yet (same caveat as
+    // SCRAPE_PROXY_URL in env.validation.ts). A staging overlay would publish an on-demand
+    // scraping command to every user, so revisit in the change that first deploys one.
+    bot.command('check', (ctx) => this.onCheck(ctx));
     // NOTE: register commands before message:text — grammY runs the first matching handler only.
     bot.on('message:text', (ctx) => this.onText(ctx));
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
@@ -216,10 +226,15 @@ export class TelegramHandlers {
     });
   }
 
+  /** The owner, per ADMIN_TELEGRAM_ID. No admin configured — nobody qualifies. */
+  private isAdmin(ctx: Context): boolean {
+    const adminId = this.appConfig.adminTelegramId;
+    return adminId !== undefined && ctx.from?.id === adminId;
+  }
+
   /** Admin-only service snapshot. Silent for everyone else — don't reveal the command. */
   private async onStats(ctx: Context): Promise<void> {
-    const adminId = this.appConfig.adminTelegramId;
-    if (adminId === undefined || ctx.from?.id !== adminId) return;
+    if (!this.isAdmin(ctx)) return;
 
     const [users, active, paused] = await Promise.all([
       this.subscriptions.countUsers(),
@@ -230,22 +245,55 @@ export class TelegramHandlers {
   }
 
   private async onCheck(ctx: Context): Promise<void> {
+    // Silent for non-owners in production, like /stats — an explicit refusal would advertise
+    // a command that hits sources.
+    if (this.appConfig.isProduction && !this.isAdmin(ctx)) return;
+
     const userId = ctx.from?.id;
     // Anonymous senders have no subscriptions to check.
     if (userId === undefined) return;
 
-    const subs = await this.subscriptions.listByUser(userId);
-    if (subs.length === 0) {
+    const all = await this.subscriptions.listByUser(userId);
+    if (all.length === 0) {
       await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
       return;
     }
-
-    let replied = false;
-    for (const sub of subs) {
-      replied = (await this.checkOne(ctx, sub)) || replied;
+    // Skip paused ones, like the daily run does: reporting listings for a search that
+    // delivers nothing would just mislead.
+    const subs = all.filter((sub) => !sub.pausedAt);
+    if (subs.length === 0) {
+      await ctx.reply('Все подписки на паузе — пришлите ссылку ещё раз, чтобы возобновить.');
+      return;
     }
-    // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
-    if (!replied) await ctx.reply('Ничего нового.');
+
+    // Share the polling slot with the daily run — see WatchStatus.
+    if (!this.status.tryStartPolling()) {
+      await ctx.reply('Проверка уже идёт — подождите её окончания.');
+      return;
+    }
+    try {
+      const checked = subs.slice(0, MAX_CHECK_SUBSCRIPTIONS);
+      // The paced loop is silent for seconds per subscription, so say what is being checked —
+      // otherwise the silence reads as a dead bot, and a capped check looks like a full one.
+      if (checked.length < subs.length) {
+        await ctx.reply(
+          `Проверяю ${checked.length} из ${subs.length} — остальные проверит суточный прогон.`,
+        );
+      } else if (checked.length > 1) {
+        await ctx.reply(`Проверяю подписок: ${checked.length}…`);
+      }
+      let replied = false;
+      for (const [i, sub] of checked.entries()) {
+        // Pace like the daily run does: /check now runs against production sources, and a user
+        // at the subscription limit would otherwise fire 50 requests back-to-back from our IP.
+        if (i > 0) await pace(this.appConfig);
+        replied = (await this.checkOne(ctx, sub)) || replied;
+      }
+      // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
+      if (!replied) await ctx.reply('Ничего нового.');
+    } finally {
+      this.status.finishPolling();
+    }
   }
 
   /** Poll one subscription and reply with its outcome. Returns true if it replied anything. */

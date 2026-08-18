@@ -84,30 +84,30 @@ export const deadSubscriptionNotice = ({ source, url }: { source: string; url: s
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:
  * the menu is public and those commands ignore non-admins anyway.
  */
-export const BOT_COMMANDS: BotCommand[] = [
+export const BOT_COMMANDS = [
   { command: 'start', description: 'Начать' },
   { command: 'list', description: 'Мои подписки' },
   { command: 'help', description: 'Что умеет бот' },
-];
+] as const satisfies readonly BotCommand[];
 
 /** `/help` — built from BOT_COMMANDS so the menu and the text cannot drift apart. */
-export const helpMessage = (): string =>
-  [
-    // TODO [L]: the source list is hardcoded here and in PROMPT — a third adapter would
-    // leave both wrong. Derive it from SourceRegistry when that adapter lands.
-    '🔎 Слежу за поиском на kufar.by и realt.by и присылаю новые объявления.',
-    '',
-    'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
-      '«Следить». Дальше проверяю раз в сутки и присылаю только то, что появилось с прошлой проверки.',
-    '',
-    'Команды:',
-    ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),
-    '',
-    'Отписаться: /list, затем ❌ у нужного поиска.',
-    '',
-    'Данные: храню ваш telegram-id, имя, @username, язык интерфейса и ссылки, за которыми ' +
-      'слежу, — только чтобы присылать уведомления. Хотите удалить — напишите владельцу бота.',
-  ].join('\n');
+export const HELP_MESSAGE = [
+  // TODO [L]: the source list is hardcoded here and in PROMPT — a third adapter would
+  // leave both wrong. Derive it from SourceRegistry when that adapter lands.
+  '🔎 Слежу за поиском на kufar.by и realt.by и присылаю новые объявления.',
+  '',
+  'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
+    '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +
+    `проверки (пока до ${DIGEST_LIMIT} объявлений за раз).`,
+  '',
+  'Команды:',
+  ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),
+  '',
+  'Отписаться: /list, затем ❌ у нужного поиска.',
+  '',
+  'Данные: храню ваш telegram-id, имя, @username, язык интерфейса и ссылки, за которыми ' +
+    'слежу, — только чтобы присылать уведомления. Хотите удалить — напишите владельцу бота.',
+].join('\n');
 
 /** Admin `/stats` snapshot. */
 export const formatStats = (s: {

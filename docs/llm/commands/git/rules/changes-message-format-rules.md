@@ -28,19 +28,21 @@ Based on [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1
 ## 1. Commit Message Format
 
 ```
-<type>: <description>
+<type>(<scope>): <description>
 ```
 
+- Scope is optional but usual here — it names the touched area (`telegram`, `plan`, `llm`,
+  `deploy`). Drop it only when a change genuinely spans the repo — as in the last example below.
 - Max 100 characters.
 - Header only for simple commits (no body needed).
 
 ### Examples
 
 ```
-feat: add billing module with stripe integration
-fix: handle 409 on duplicate user email
-chore: bump nestjs to 11.1
-test: add health endpoint e2e test
+feat(telegram): publish the command menu and add /help
+fix(subscriptions): handle 409 on duplicate user email
+chore(deps): bump nestjs to 11.1
+refactor: drop the unused legacy env vars
 ```
 
 ## 2. PR Description Format
