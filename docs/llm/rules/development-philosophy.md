@@ -2,9 +2,9 @@
 
 ## Core Principles
 
-- DRY, KISS, SOLID, YAGNI
+DRY, KISS, SOLID, YAGNI — applied in § Self-Check below.
+
 - Type safety and static analysis
-- Always follow existing patterns and code style in the codebase
 - If the user's proposed approach has significant trade-offs or risks — raise them **before** implementing, not after
 - **No guessing.** Back every technical claim with Read/Grep, a command, or fetched docs. Before asserting, self-check: "verified now, or recalled?" — if recalled, verify or say "not verified". If a fact can't be verified and blocks the task — ask the user instead of guessing.
 

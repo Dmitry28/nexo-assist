@@ -46,7 +46,7 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 
 ## Core Rules
 
-- **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below.
+- **Top rule — every change:** correct, simple, clear, concise, DRY; follow established best practices, patterns and standards. This outranks everything below ([rules/development-philosophy.md § Self-Check](rules/development-philosophy.md#self-check) applies it).
 - **Decide, don't ask.** When a question comes up, investigate it yourself first (code, docs, live checks) and decide by common sense, standards and best practices. Ask the owner only what is genuinely important: product direction, destructive/irreversible actions, trade-offs only he can weigh.
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - **Fix it or log it — never walk past it.** Noticed a real problem outside the current scope? Verify it's real (read the code), then: **`[H]` only — critical correctness or security — gets fixed now.** Anything else gets a marker and you move on: a `TODO [H|M|L]` at the code it affects ([rules/code-style.md](rules/code-style.md#comments)), or an entry in the «Технический бэклог» of [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) when it's bigger than a comment. This applies to review findings too — a pile of `[L]`s must not stall the task it was reviewing.
@@ -54,7 +54,9 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 - Follow existing NestJS module structure — mirror an existing module (`subscriptions`, `telegram`).
 - **Talk plainly.** Concise, facts only, no filler; mark assumptions and anything unverified. Narrate **every step, not just the whole task**: before it, what you're doing and _why_; after it, _what_ changed, _why_, and how you verified — in language a non-implementer follows, never a diff dump.
 - **Teach as you go.** The owner is new to DevOps/infra, so every infra, deploy, k8s, network or security step comes with the **concept in simple words** (what it is, why we need it, what breaks without it), and every diagnosis shows the reasoning (symptom → what it means → fix). Plain analogies over jargon; if an explanation didn't land, re-explain simpler. Durable versions live in [DEPLOY.md](../DEPLOY.md).
-- **Never commit, push or merge without the owner's review.** Implement → show the diff + a plain summary → wait for explicit approval. Everything counts: code, manifests, configs, docs. **Never auto-merge** (no background merges) — report the CI result, then ask.
+- **Never commit or merge without the owner's review** — show the diff + a plain summary, then
+  wait. Code, manifests, configs, docs all count. Push and open the PR freely; never
+  auto-merge. Why, and where the line falls: [rules/github.md § Approval](rules/github.md#approval).
 - Reviewing a PR or changes → `/logic-review` **and** `/review-code` (the skills, launched together), not a manual pass. **Both only report** — they never edit; applying a finding is a normal change you show for review.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep docs current:** update **every** doc a change affects, in the same change — see the Project Docs table above for which is which: [PRODUCT.md](../PRODUCT.md) (behavior), [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap/decisions), [PRODUCT_TECH.md](../PRODUCT_TECH.md) (infra/runtime reality), [DEPLOY.md](../DEPLOY.md) (deploy steps + lessons), [README.md](../../README.md) (scripts, setup, commands, stack), and the relevant `docs/llm/` rule when a convention changes.

@@ -16,7 +16,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - One milestone at a time: describe the plan → wait for approval → implement → show the diff → wait for approval → next. Keep changes focused and atomic.
 - When the user asks to work **step by step**, follow [step-by-step-flow.md](step-by-step-flow.md) — it adds a per-step review before each commit.
 - Implement → verify → report, **leaving all changes uncommitted**.
-- **Never commit, push, or open a PR without approval of the reviewed diff** — the user has seen these specific changes and said to commit ([github.md § Approval](github.md#approval)).
+- **Never commit without approval of the reviewed diff** — the user has seen these specific changes and said to commit. Pushing and opening the PR need no approval; merging needs its own ([github.md § Approval](github.md#approval)).
 - After opening a PR, surface the URL so the user can review.
 - Reflect on what was learned — if new findings affect the solution, address them before moving on.
 - If you hit ambiguity or a blocking decision mid-task — **surface it immediately instead of guessing.**
