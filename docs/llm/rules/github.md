@@ -28,6 +28,11 @@
 
 ## Approval
 
-Commit, push, and merge only with explicit user approval — the owner reviews
-local diffs first (see [../commands/git/commit-local-changes.md](../commands/git/commit-local-changes.md)).
-A broad "do what you think is right" is not commit approval.
+Wait for explicit approval to **commit** and, separately, to **merge**. A broad "do what you
+think is right" is not either one. Between them, **push and open the PR freely** — that is
+where the owner reads the diff ([../commands/git/commit-local-changes.md](../commands/git/commit-local-changes.md)).
+
+The two gates exist for different reasons: a commit is what the owner reviews, and merging
+`dev` **auto-deploys to production** — so merge approval is never implied by commit approval.
+Report the CI result, then ask. Force-pushing your own unmerged branch is fine (that is how a
+mistake stays out of `dev`'s history); force-pushing `dev` or `main` is not.
