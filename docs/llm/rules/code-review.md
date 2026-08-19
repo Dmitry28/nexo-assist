@@ -34,7 +34,7 @@ For other candidate findings — grep the codebase for how peers handle the same
 - ≥2 patterns each with ≥3 occurrences → **drop "unify" suggestions**.
 - Near-zero-precedent variant while a dominant alternative exists → **flag**, cite one `file:line` of canonical usage in the SA.
 
-Grep twice before emitting a `[M]`/`[L]` that rests on Pattern Check — a first-pass grep misses peers. Exempt: `[H]` correctness/security and § Whole-Change Pass, which argues against the dominant pattern by design.
+Grep twice before emitting a `[M]`/`[L]` that rests on Pattern Check — a first-pass grep misses peers; if the changed code matches the dominant pattern, route it to § Skipped instead of the findings. Exempt: `[H]` correctness/security and § Whole-Change Pass, which argues against the dominant pattern by design.
 
 Escape hatches: 0 peers anywhere → suspend Pattern Check (rely on DOCs); changed code follows a documented migration direction → don't flag against the legacy pattern.
 
