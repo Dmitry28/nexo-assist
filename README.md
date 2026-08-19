@@ -14,11 +14,11 @@ last check, once a day, in a capped digest (batching is the next step). Delivery
 the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its beta audience
 does.
 
-| Command  | What it does                                 |
-| -------- | -------------------------------------------- |
-| `/start` | greeting and the prompt to send a link       |
-| `/list`  | your subscriptions, each with a ❌ to remove |
-| `/help`  | the same summary inside the bot              |
+| Command  | What it does                                                                |
+| -------- | --------------------------------------------------------------------------- |
+| `/start` | greeting and the prompt to send a link                                      |
+| `/list`  | your subscriptions: ❌ removes one, ⏸ marks a paused one, ▶️ brings it back |
+| `/help`  | the same summary inside the bot                                             |
 
 It stores your Telegram id, name, @username, interface language and the links it watches — only
 to deliver notifications; ask the owner to have them deleted.

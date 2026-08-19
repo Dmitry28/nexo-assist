@@ -281,7 +281,7 @@ export class TelegramHandlers {
     // delivers nothing would just mislead.
     const subs = all.filter((sub) => !sub.pausedAt);
     if (subs.length === 0) {
-      await ctx.reply('Все подписки на паузе — пришлите ссылку ещё раз, чтобы возобновить.');
+      await ctx.reply('Все подписки на паузе — верните их кнопкой ▶️ в /list.');
       return;
     }
 
