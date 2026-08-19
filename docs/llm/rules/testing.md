@@ -6,6 +6,7 @@
 - **E2E tests** — under `test/` at the repo root (config in `test/jest-e2e.json`).
 - **Integration** — cover the app boot (full `AppModule`) and non-HTTP flows (e.g. the watch loop) with `Test.createTestingModule` + `overrideProvider`; keep them green as modules grow.
 - **Fixtures / helpers** — per-layer fixtures in that layer's `__tests__/fixtures/` (beside its specs); cross-cutting helpers in `src/__tests__/helpers/` (import via `@/__tests__/helpers/*`).
+- **App-wide specs** — a spec that belongs to no single layer (e.g. `src/__tests__/di-wiring.spec.ts`, which loads `AppModule` to catch import cycles that strip DI metadata) lives directly in `src/__tests__/`, beside `helpers/`.
 
 ## What to Cover
 

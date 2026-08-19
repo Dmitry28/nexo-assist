@@ -11,15 +11,11 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { jitteredDelay } from '../pacing';
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
-import {
-  JOB_NAME,
-  jitteredDelay,
-  MAX_CONSECUTIVE_FAILURES,
-  WatchScheduler,
-} from '../watch.scheduler';
-import type { WatchStatus } from '../watch.status';
+import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
+import { WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
   ({
@@ -51,7 +47,8 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     recordPause: jest.fn(),
     setTotals: jest.fn(),
   };
-  const status = { markRun: jest.fn() };
+  const status = new WatchStatus();
+  jest.spyOn(status, 'markRun');
   const registry = new SchedulerRegistry();
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
@@ -61,7 +58,7 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     watch as unknown as WatchService,
     telegram as unknown as TelegramService,
     metrics as unknown as WatchMetrics,
-    status as unknown as WatchStatus,
+    status,
   );
   return { subscriptions, watch, telegram, metrics, status, scheduler, registry };
 };
@@ -313,7 +310,10 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('dead'));
+    expect(telegram.notify).toHaveBeenCalledWith(
+      99,
+      expect.stringContaining('неудачных опросов подряд'),
+    );
   });
 
   it('alerts the admin when a whole source fails all its polls in a run', async () => {
@@ -390,6 +390,30 @@ describe('WatchScheduler daily job', () => {
       expect.objectContaining({ err: expect.any(Error) }),
       'Daily watch run failed',
     );
+  });
+});
+
+describe('WatchScheduler.runDaily overlap', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('skips the run and alerts the admin when a poll is already in progress', async () => {
+    const { subscriptions, telegram, status, scheduler } = build({ adminTelegramId: 99 });
+    status.tryStartPolling(); // a manual /check holds the slot
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.listActive).not.toHaveBeenCalled();
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('пропущен'));
+  });
+
+  it('releases the slot when the run throws', async () => {
+    const { subscriptions, status, scheduler } = build();
+    subscriptions.listActive.mockRejectedValue(new Error('db down'));
+
+    await expect(scheduler.runDaily()).rejects.toThrow('db down');
+
+    expect(status.tryStartPolling()).toBe(true);
   });
 });
 

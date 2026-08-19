@@ -259,6 +259,43 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     ).rejects.toBeInstanceOf(SubscriptionLimitError);
   });
 
+  it('resume clears the pause and the failure streak, only for the owner', async () => {
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/dead',
+    });
+    await subscriptions.bumpFailures(sub.id);
+    await subscriptions.pause(sub.id);
+
+    expect(await subscriptions.resume(sub.id, 2)).toBe(false); // not their subscription
+    expect(await subscriptions.resume(sub.id, 1)).toBe(true);
+
+    const [revived] = await subscriptions.listActive();
+    expect(revived.id).toBe(sub.id);
+    expect(revived.consecutiveFailures).toBe(0);
+  });
+
+  it('resume respects the active-subscription limit', async () => {
+    for (let i = 0; i < MAX_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscriptions.add({
+        user: { telegramId: 1 },
+        source: 'kufar',
+        url: `https://kufar.by/l/${i}`,
+      });
+    }
+    // Pause one, refill the freed slot → resuming it would exceed the cap.
+    const [paused] = await subscriptions.listByUser(1);
+    await subscriptions.pause(paused.id);
+    await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/live',
+    });
+
+    await expect(subscriptions.resume(paused.id, 1)).rejects.toBeInstanceOf(SubscriptionLimitError);
+  });
+
   it('pauseAllForUser pauses every sub of a user; listActive then excludes them', async () => {
     const a = await subscriptions.add({
       user: { telegramId: 1 },

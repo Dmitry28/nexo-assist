@@ -18,8 +18,10 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { pace } from './pacing';
 import { reportUserFacing } from './report';
 import {
+  HELP_MESSAGE,
   MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
   formatCurrentListings,
@@ -33,8 +35,16 @@ import { WatchStatus } from './watch.status';
 const PROMPT =
   'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
-// /list row cap — stays under Telegram's ~100-button inline-keyboard limit.
-const MAX_LIST_ROWS = 50;
+// /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected
+// reply costs the user /list entirely. Counted in buttons, not rows: a paused row carries two
+// (❌ and ▶️), and paused subscriptions are not capped per user (the limit counts active ones).
+const MAX_LIST_BUTTONS = 90;
+// How many subscriptions one /check polls. grammY handles updates sequentially, so the paced
+// loop blocks every other user meanwhile; at MAX_SUBSCRIPTIONS_PER_USER that would be minutes.
+// Five bounds it to four pacing gaps plus five fetches — enough to prove the chain works,
+// which is what /check is for.
+const MAX_CHECK_SUBSCRIPTIONS = 5;
+
 // Bound for the pending-confirmation map — evict the oldest entry beyond this.
 const MAX_PENDING = 500;
 
@@ -61,18 +71,25 @@ export class TelegramHandlers {
   ) {}
 
   register(bot: Bot): void {
-    bot.command('start', (ctx) => ctx.reply(`Привет! ${PROMPT}`));
+    bot.command('start', (ctx) => ctx.reply(`Привет! ${PROMPT}\nЧто я умею — /help`));
+    bot.command('help', (ctx) =>
+      ctx.reply(HELP_MESSAGE, { link_preview_options: NO_LINK_PREVIEW }),
+    );
     bot.command('list', (ctx) => this.showList(ctx));
     bot.command('stats', (ctx) => this.onStats(ctx));
-    // NOTE: /check is a manual test trigger — kept out of production.
-    if (!this.appConfig.isProduction) {
-      bot.command('check', (ctx) => this.onCheck(ctx));
-    }
+    // NOTE: /check polls sources on demand, so it never reaches the public: outside production
+    // anyone may use it (dev convenience), in production only the owner — the one place where
+    // "does the whole chain still work?" has to be answerable without waiting for the cron.
+    // Production only, deliberately: there is no staging stage yet (same caveat as
+    // SCRAPE_PROXY_URL in env.validation.ts). A staging overlay would publish an on-demand
+    // scraping command to every user, so revisit in the change that first deploys one.
+    bot.command('check', (ctx) => this.onCheck(ctx));
     // NOTE: register commands before message:text — grammY runs the first matching handler only.
     bot.on('message:text', (ctx) => this.onText(ctx));
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery(/^cancel:(.+)$/, (ctx) => this.onCancel(ctx));
     bot.callbackQuery(/^remove:(.+)$/, (ctx) => this.onRemove(ctx));
+    bot.callbackQuery(/^resume:(.+)$/, (ctx) => this.onResume(ctx));
     bot.callbackQuery(/^show:(.+)$/, (ctx) => this.onShowCurrent(ctx));
   }
 
@@ -196,26 +213,47 @@ export class TelegramHandlers {
     const keyboard = new InlineKeyboard();
     const lines: string[] = [];
     let length = 0;
+    let buttons = 0;
+    let anyPaused = false;
     for (const [i, sub] of subs.entries()) {
-      const line = `#${i + 1} — ${sub.source}\n${sub.url}`;
-      if (length + line.length > MAX_MESSAGE_BUDGET_CHARS || i >= MAX_LIST_ROWS) {
+      // A paused subscription delivers nothing; without the mark it looks live and the user
+      // waits for notifications that will never come.
+      const paused = Boolean(sub.pausedAt);
+      const line = `#${i + 1} — ${sub.source}${paused ? ' ⏸ на паузе' : ''}\n${sub.url}`;
+      const rowButtons = paused ? 2 : 1;
+      if (
+        length + line.length > MAX_MESSAGE_BUDGET_CHARS ||
+        buttons + rowButtons > MAX_LIST_BUTTONS
+      ) {
         lines.push(`…и ещё ${subs.length - i} — удалите часть, чтобы увидеть остальные`);
         break;
       }
-      keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`).row();
+      keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`);
+      if (paused) {
+        keyboard.text(`▶️ #${i + 1}`, `resume:${sub.id}`);
+        anyPaused = true;
+      }
+      keyboard.row();
+      buttons += rowButtons;
       lines.push(line);
       length += line.length + '\n\n'.length;
     }
+    if (anyPaused) lines.push('▶️ — возобновить, ❌ — удалить');
     await ctx.reply(lines.join('\n\n'), {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });
   }
 
+  /** The owner, per ADMIN_TELEGRAM_ID. No admin configured — nobody qualifies. */
+  private isAdmin(ctx: Context): boolean {
+    const adminId = this.appConfig.adminTelegramId;
+    return adminId !== undefined && ctx.from?.id === adminId;
+  }
+
   /** Admin-only service snapshot. Silent for everyone else — don't reveal the command. */
   private async onStats(ctx: Context): Promise<void> {
-    const adminId = this.appConfig.adminTelegramId;
-    if (adminId === undefined || ctx.from?.id !== adminId) return;
+    if (!this.isAdmin(ctx)) return;
 
     const [users, active, paused] = await Promise.all([
       this.subscriptions.countUsers(),
@@ -226,22 +264,51 @@ export class TelegramHandlers {
   }
 
   private async onCheck(ctx: Context): Promise<void> {
+    // Silent for non-owners in production, like /stats — an explicit refusal would advertise
+    // a command that hits sources.
+    if (this.appConfig.isProduction && !this.isAdmin(ctx)) return;
+
     const userId = ctx.from?.id;
     // Anonymous senders have no subscriptions to check.
     if (userId === undefined) return;
 
-    const subs = await this.subscriptions.listByUser(userId);
-    if (subs.length === 0) {
+    const all = await this.subscriptions.listByUser(userId);
+    if (all.length === 0) {
       await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
       return;
     }
-
-    let replied = false;
-    for (const sub of subs) {
-      replied = (await this.checkOne(ctx, sub)) || replied;
+    // Skip paused ones, like the daily run does: reporting listings for a search that
+    // delivers nothing would just mislead.
+    const subs = all.filter((sub) => !sub.pausedAt);
+    if (subs.length === 0) {
+      await ctx.reply('Все подписки на паузе — верните их кнопкой ▶️ в /list.');
+      return;
     }
-    // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
-    if (!replied) await ctx.reply('Ничего нового.');
+
+    // Share the polling slot with the daily run — see WatchStatus.
+    if (!this.status.tryStartPolling()) {
+      await ctx.reply('Проверка уже идёт — подождите её окончания.');
+      return;
+    }
+    try {
+      const checked = subs.slice(0, MAX_CHECK_SUBSCRIPTIONS);
+      // The paced loop is silent for seconds per subscription, so say what is being checked —
+      // otherwise the silence reads as a dead bot, and a capped check looks like a full one.
+      if (subs.length > 1) {
+        await ctx.reply(`Проверяю подписок: ${checked.length} из ${subs.length}…`);
+      }
+      let replied = false;
+      for (const [i, sub] of checked.entries()) {
+        // Pace like the daily run does: /check now runs against production sources, and a user
+        // at the subscription limit would otherwise fire 50 requests back-to-back from our IP.
+        if (i > 0) await pace(this.appConfig);
+        replied = (await this.checkOne(ctx, sub)) || replied;
+      }
+      // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
+      if (!replied) await ctx.reply('Ничего нового.');
+    } finally {
+      this.status.finishPolling();
+    }
   }
 
   /** Poll one subscription and reply with its outcome. Returns true if it replied anything. */
@@ -298,9 +365,7 @@ export class TelegramHandlers {
     await ctx.answerCallbackQuery();
     try {
       const listings = await this.watch.current(sub);
-      const message =
-        listings.length > 0 ? formatCurrentListings(listings) : 'No current listings.';
-      await ctx.reply(message, { link_preview_options: NO_LINK_PREVIEW });
+      await ctx.reply(formatCurrentListings(listings), { link_preview_options: NO_LINK_PREVIEW });
     } catch (err) {
       this.logger.warn({ err }, `Show-current failed for ${sub.url}`);
       reportUserFacing(err, { userId: ctx.from?.id, action: 'show-current', url: sub.url });
@@ -319,6 +384,25 @@ export class TelegramHandlers {
 
     const removed = await this.subscriptions.remove(id, userId);
     await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено');
+  }
+
+  private async onResume(ctx: Context): Promise<void> {
+    const userId = ctx.from?.id;
+    const id = this.matchParam(ctx);
+    if (userId === undefined || id === undefined) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    try {
+      const resumed = await this.subscriptions.resume(id, userId);
+      await ctx.answerCallbackQuery(resumed ? 'Возобновлено' : 'Подписка не найдена');
+    } catch (err) {
+      if (err instanceof SubscriptionLimitError) {
+        await ctx.answerCallbackQuery(`Предел — ${MAX_SUBSCRIPTIONS_PER_USER} активных подписок`);
+        return;
+      }
+      throw err;
+    }
   }
 
   /** The capture group of the matched callback_data pattern, if any. */

@@ -45,7 +45,11 @@ export default tseslint.config(
       ],
       'import-x/no-duplicates': 'error',
       'import-x/no-self-import': 'error',
-      'import-x/no-cycle': ['error', { maxDepth: 3 }],
+      // NOTE: this rule currently reports nothing — verified against a two-file cycle, both here
+      // and in an isolated config, so it is the eslint/plugin combination, not our settings.
+      // Kept (depth cap lifted: depth is not what makes a cycle harmful) so it starts working on
+      // a plugin bump. The actual guard is src/__tests__/di-wiring.spec.ts, which explains why.
+      'import-x/no-cycle': ['error', { maxDepth: '∞' }],
       'import-x/no-useless-path-segments': ['error', { noUselessIndex: true }],
       // Layering: shared infrastructure must never depend on feature modules.
       'import-x/no-restricted-paths': [

@@ -14,8 +14,6 @@ data:
   # Pacing between subscription polls: base delay + random 0..jitter (ms).
   WATCH_MIN_DELAY_MS: '2000'
   WATCH_JITTER_MS: '3000'
-  # Owner's Telegram id for the admin-only /stats command (optional, no default).
-  ADMIN_TELEGRAM_ID: '377250974'
   # Trust the managed-Postgres provider's own root CA (mounted from the db-ca ConfigMap)
   # in addition to Node's public roots — required for sslmode=verify-full with Supabase.
   NODE_EXTRA_CA_CERTS: '/etc/ssl/db/ca.crt'

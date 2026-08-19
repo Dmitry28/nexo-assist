@@ -6,7 +6,7 @@ import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 
 import { reportUserFacing } from './report';
-import { NO_LINK_PREVIEW } from './telegram.format';
+import { BOT_COMMANDS, NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
 
 /**
@@ -39,6 +39,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     // Respect Telegram rate limits automatically (waits out 429 retry_after).
     bot.api.config.use(autoRetry());
     this.handlers.register(bot);
+    // Fill the "≡" menu so the commands are discoverable — without it /list exists but is
+    // unreachable once the buttons scroll away. Fire-and-forget: an unreachable Telegram API
+    // must not stop the bot from starting, and the menu is retried on the next boot.
+    void bot.api
+      .setMyCommands(BOT_COMMANDS)
+      .catch((err: unknown) => this.logger.warn({ err }, 'Failed to publish the command menu'));
     // Last line of defence for the conversation: anything a handler didn't catch lands here.
     // Without reporting, a user just sees a dead button while we learn nothing.
     bot.catch((err) => {

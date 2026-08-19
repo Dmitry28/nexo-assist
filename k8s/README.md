@@ -37,9 +37,10 @@ kubectl kustomize k8s/           # render without applying — exactly what will
 One cluster object is created by hand — everything else here is deployed from the repo.
 
 **Secret `nexo-assist-secrets`** — `TELEGRAM_BOT_TOKEN`, `DATABASE_URL` (carries the
-database password), `SCRAPE_PROXY_URL`, `SENTRY_DSN`. Create it **before** applying: the
-app refuses to boot without the token or `SCRAPE_PROXY_URL` (kufar would otherwise be fetched
-directly and 403), and the `migrate` initContainer needs `DATABASE_URL`.
+database password), `SCRAPE_PROXY_URL`, `SENTRY_DSN`, `ADMIN_TELEGRAM_ID`. Create it **before**
+applying: in production the app refuses to boot without the token, `SCRAPE_PROXY_URL` (kufar
+would otherwise be fetched directly and 403) or `ADMIN_TELEGRAM_ID` (every owner alert would go
+nowhere silently), and the `migrate` initContainer needs `DATABASE_URL`.
 
 ```bash
 npm run k8s:secrets   # deploy/secrets.sh — hidden input, values stay out of shell history
