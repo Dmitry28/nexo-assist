@@ -77,6 +77,9 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 - **Dead link:** if a search keeps failing to poll (errors, not empty results) for
   several runs in a row → tell the user to refresh it and pause that subscription.
   A paused subscription is revived by re-sending its link or by ▶️ in `/list`.
+- **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
+  when the pings stop, the watchdog alerts the owner. It covers what no in-app report can — the
+  app dying outright.
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
   alert below would go nowhere silently) is notified on every auto-pause
   (403 / dead link) and when a whole source fails all its polls in a run.

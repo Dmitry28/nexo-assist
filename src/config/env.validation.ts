@@ -149,6 +149,21 @@ export class EnvironmentVariables {
   SENTRY_ENABLED?: string;
 
   /**
+   * Watchdog ping URL for the dead-man's switch — required in production: unset, nothing would
+   * report the app dying, which is the silence the switch exists to remove. Read where it's used
+   * (`src/health/heartbeat.service.ts`, which explains the mechanism) — whoever holds the URL can
+   * fake our pings, and the bootstrap logs the whole config object.
+   */
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      env.APP_ENV === AppEnv.Production || env.HEARTBEAT_URL !== undefined,
+  )
+  @IsString()
+  @IsNotEmpty({ message: 'HEARTBEAT_URL is required when APP_ENV=production' })
+  @Matches(/^https?:\/\/\S+$/, { message: 'HEARTBEAT_URL must be an http(s) URL' })
+  HEARTBEAT_URL?: string;
+
+  /**
    * HTTP proxy for sources that block datacenter IPs (kufar — see PRODUCT_TECH.md).
    * Unset = every source is fetched directly. Consumed in the scraping transport
    * (`sources/scraping/http.ts`), deliberately not exposed via AppConfig: it carries
