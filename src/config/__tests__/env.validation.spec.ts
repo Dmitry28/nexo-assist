@@ -28,6 +28,7 @@ describe('validateEnv', () => {
       APP_ENV: AppEnv.Production,
       SCRAPE_PROXY_URL: 'http://p:8888',
       ADMIN_TELEGRAM_ID: 1,
+      HEARTBEAT_URL: 'https://hc.example/ping/abc',
     };
     expect(validateEnv({ ...prod, TELEGRAM_BOT_TOKEN: 't' }).TELEGRAM_BOT_TOKEN).toBe('t');
   });
@@ -51,6 +52,23 @@ describe('validateEnv', () => {
       expect(() =>
         validateEnv({ APP_ENV: AppEnv.Development, ADMIN_TELEGRAM_ID: '@name' }),
       ).toThrow('ADMIN_TELEGRAM_ID');
+    });
+  });
+
+  describe('HEARTBEAT_URL', () => {
+    it('is required in production — without it nothing reports the app dying', () => {
+      expect(() =>
+        validateEnv({
+          APP_ENV: AppEnv.Production,
+          TELEGRAM_BOT_TOKEN: 't',
+          SCRAPE_PROXY_URL: 'http://p:8888',
+          ADMIN_TELEGRAM_ID: 1,
+        }),
+      ).toThrow('HEARTBEAT_URL');
+    });
+
+    it('rejects a value that is not an http(s) URL', () => {
+      expect(() => validateEnv({ HEARTBEAT_URL: 'hc.example/ping' })).toThrow('HEARTBEAT_URL');
     });
   });
 

@@ -83,6 +83,12 @@ process.env.PORT;
 this.config.get('app.port');
 ```
 
+**One exception: credential-like values** (a proxy URL with a password, a watchdog ping URL). They
+stay out of `AppConfig` because the bootstrap logs the whole config object — declare them in the
+schema (so an invalid value still fails at boot) and read them from `process.env` where they are
+used, saying why in the schema docblock. Precedents: `sources/scraping/http.ts`,
+`health/heartbeat.service.ts`.
+
 ## Adding a New Feature Module
 
 Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What is ours:
@@ -108,6 +114,6 @@ For one-off DI scripts (seeds, admin tasks) use `NestFactory.createApplicationCo
 Update **all of these** in lockstep:
 
 1. `src/config/env.validation.ts` — declare on `EnvironmentVariables` with a validator + default (the single source of truth).
-2. `src/config/configuration.ts` — extend `AppConfig` and map it.
+2. `src/config/configuration.ts` — extend `AppConfig` and map it. Skip for credential-like values (see § Config Access) — they are read where used.
 3. `.env.example` — document it.
 4. `k8s/configmap.yaml` — add it when the production value must differ from the default.
