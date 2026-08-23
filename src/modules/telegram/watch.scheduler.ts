@@ -13,10 +13,11 @@ import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.serv
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { deliverDigest } from './deliver';
 import { pace } from './pacing';
 import type { ReportOp } from './report';
 import { reportUserFacing } from './report';
-import { deadSubscriptionNotice, newListingsDigest } from './telegram.format';
+import { deadSubscriptionNotice } from './telegram.format';
 import { TelegramService } from './telegram.service';
 import { WatchStatus } from './watch.status';
 
@@ -196,25 +197,27 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   /** Send the fresh digest. Returns true if the user blocked us; other send failures are
    *  logged and retried next run (markSeen only after a successful send). */
   private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
-    try {
-      const { text, delivered } = newListingsDigest(listings);
-      await this.telegram.notify(sub.user.telegramId, text);
-      // Count the delivery right after the send — a later markSeen failure re-delivers next
-      // run (no loss), so the metric must reflect the message that actually reached the user.
+    const { delivered, error } = await deliverDigest(listings, (text) =>
+      this.telegram.notify(sub.user.telegramId, text),
+    );
+
+    // Persist whatever reached the user, even if a later message failed — otherwise the whole
+    // digest would be re-sent next run. markSeen is isolated: the messages already arrived, so
+    // a bookkeeping failure is neither a delivery failure nor a 403; those items just resurface.
+    if (delivered.length > 0) {
       this.metrics.recordDelivery(sub.source);
-      // Isolate markSeen: the digest already reached the user, so a bookkeeping failure here
-      // is not a delivery failure (and not a 403) — report it distinctly; items resurface next run.
       try {
         await this.watch.markSeen(sub, delivered);
       } catch (err) {
         this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
         this.report(err, sub, 'mark-seen', { resending: delivered.length });
       }
-    } catch (err) {
-      if (isBotBlocked(err)) return true;
-      this.logger.error({ err }, `Delivery failed for subscription ${sub.id}`);
-      this.report(err, sub, 'deliver');
     }
+
+    if (!error) return false;
+    if (isBotBlocked(error)) return true;
+    this.logger.error({ err: error }, `Delivery failed for subscription ${sub.id}`);
+    this.report(error, sub, 'deliver', { deliveredBefore: delivered.length });
     return false;
   }
 

@@ -18,6 +18,7 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { deliverDigest } from './deliver';
 import { pace } from './pacing';
 import { reportUserFacing } from './report';
 import {
@@ -26,7 +27,6 @@ import {
   NO_LINK_PREVIEW,
   formatCurrentListings,
   formatStats,
-  newListingsDigest,
 } from './telegram.format';
 import { WatchStatus } from './watch.status';
 
@@ -323,21 +323,42 @@ export class TelegramHandlers {
         );
         return true;
       }
-      const { text, delivered } = newListingsDigest(outcome.listings);
-      await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
-      // The digest is delivered — a failed markSeen must not surface as "Could not check"
-      // (that would contradict what the user just saw). Report it; the items resurface next run.
-      try {
-        await this.watch.markSeen(sub, delivered);
-      } catch (err) {
-        this.logger.error({ err }, `markSeen failed after /check delivery for ${sub.url}`);
-        reportUserFacing(err, {
+      const { delivered, error } = await deliverDigest(outcome.listings, (text) =>
+        ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW }),
+      );
+      // Whatever arrived is marked seen, even if a later message failed — re-sending it would
+      // duplicate what the user just read. A markSeen failure must not surface as "could not
+      // check" (that would contradict the digest); report it, the items resurface next run.
+      if (delivered.length > 0) {
+        try {
+          await this.watch.markSeen(sub, delivered);
+        } catch (err) {
+          this.logger.error({ err }, `markSeen failed after /check delivery for ${sub.url}`);
+          reportUserFacing(err, {
+            userId: ctx.from?.id,
+            action: 'check',
+            url: sub.url,
+            op: 'mark-seen',
+            details: { id: sub.id, source: sub.source, resending: delivered.length },
+          });
+        }
+      }
+      // A send that failed part-way must not pass silently: the user sees a digest numbered
+      // "(1/5)" and would wait for four messages that never come.
+      if (error) {
+        this.logger.warn({ err: error }, `Delivery failed during /check for ${sub.url}`);
+        reportUserFacing(error, {
           userId: ctx.from?.id,
           action: 'check',
           url: sub.url,
-          op: 'mark-seen',
-          details: { id: sub.id, source: sub.source, resending: delivered.length },
+          op: 'deliver',
+          details: { id: sub.id, source: sub.source, deliveredBefore: delivered.length },
         });
+        await ctx.reply(
+          delivered.length > 0
+            ? 'Часть объявлений не отправилась — пришлю в следующую проверку.'
+            : `Не получилось отправить объявления по поиску на ${sub.source} — попробуйте позже.`,
+        );
       }
       return true;
     } catch (err) {
