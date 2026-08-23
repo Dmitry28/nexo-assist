@@ -11,6 +11,7 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
+import { SEND_DELAY_MS } from '../deliver';
 import { jitteredDelay } from '../pacing';
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
@@ -64,7 +65,10 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
 };
 
 describe('WatchScheduler.runDaily', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
 
   it('delivers fresh outcomes and isolates a failing subscription', async () => {
     const { subscriptions, watch, telegram, status, scheduler } = build();
@@ -95,17 +99,45 @@ describe('WatchScheduler.runDaily', () => {
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('marks only the delivered slice when fresh exceeds the digest cap', async () => {
+  it('sends more than one message rather than dropping the overflow', async () => {
+    jest.useFakeTimers();
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     const overflow = Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1));
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: overflow });
 
-    await scheduler.runDaily();
+    const run = scheduler.runDaily();
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await run;
 
-    expect(telegram.notify).toHaveBeenCalledTimes(1);
-    // Only the delivered slice is marked seen; the overflow resurfaces next run.
+    expect(telegram.notify).toHaveBeenCalledTimes(2);
+    // Everything sent is marked seen — nothing waits for tomorrow and nothing repeats.
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT + 5);
+  });
+
+  it('keeps what already arrived when a later message fails', async () => {
+    jest.useFakeTimers();
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1)]);
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      listings: Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1)),
+    });
+    telegram.notify.mockResolvedValueOnce(undefined).mockRejectedValue(new Error('send failed'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    const run = scheduler.runDaily();
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await run;
+
+    // The first message arrived — re-sending it tomorrow would duplicate it.
     expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT);
+    // …and the part that did not is reported, with how much had already gone out.
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'deliver');
+    expect(sentryScope().setContext).toHaveBeenCalledWith(
+      'subscription',
+      expect.objectContaining({ deliveredBefore: DIGEST_LIMIT }),
+    );
   });
 
   it('does not mark seen when delivery fails — retried next run', async () => {

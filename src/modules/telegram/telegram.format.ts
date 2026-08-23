@@ -9,7 +9,7 @@ export const NO_LINK_PREVIEW = { is_disabled: true } as const;
 // oversized send throws — and would then be rebuilt oversized and fail on every retry).
 export const MAX_MESSAGE_BUDGET_CHARS = 3500;
 // Digest item-count cap for readability.
-// DIGEST_LIMIT is exported for specs; production callers get the delivered slice.
+// Items per message, for readability; MAX_LISTINGS_PER_DELIVERY caps the whole delivery.
 export const DIGEST_LIMIT = 10;
 // Clamp a pathological listing — one huge line (long title OR link) must not eat the char
 // budget, which would produce an item-less digest that delivers nothing and repeats forever.
@@ -42,21 +42,30 @@ function formatOne(listing: Listing): string {
   return line.length > MAX_LINE_CHARS ? truncate(line, MAX_LINE_CHARS) : line;
 }
 
-/** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
-function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
-  const lines: string[] = [];
+/**
+ * As many listings as fit `budget` chars (and DIGEST_LIMIT items). Always takes at least one:
+ * formatOne clamps a line to MAX_LINE_CHARS, which is far below any budget we pass — so callers
+ * that loop over the remainder always make progress.
+ */
+function takeChunk(listings: Listing[], budget: number): Listing[] {
   const shown: Listing[] = [];
-  let length = header.length;
+  let length = 0;
   for (const listing of listings) {
+    if (shown.length >= DIGEST_LIMIT) break;
     const line = formatOne(listing);
-    if (shown.length >= DIGEST_LIMIT || length + line.length > MAX_MESSAGE_BUDGET_CHARS) break;
-    lines.push(line);
+    if (shown.length > 0 && length + line.length > budget) break;
     shown.push(listing);
     length += line.length + '\n\n'.length;
   }
+  return shown;
+}
+
+/** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
+function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
+  const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length);
   const more = listings.length - shown.length;
   const footer = more > 0 ? `\n\n…и ещё ${more}` : '';
-  return { text: `${header}\n\n${lines.join('\n\n')}${footer}`, shown };
+  return { text: `${header}\n\n${shown.map(formatOne).join('\n\n')}${footer}`, shown };
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
@@ -64,15 +73,48 @@ export const formatCurrentListings = (listings: Listing[]): string =>
     ? 'Сейчас объявлений нет.'
     : digest(listings, `📋 Объявлений сейчас: ${listings.length}`).text;
 
+// Ceiling on one delivery. Beyond it the rest waits for the next run: a hundred listings is
+// already more than anyone reads at once, and it bounds the burst we send into one chat.
+export const MAX_LISTINGS_PER_DELIVERY = 100;
+
+// Room the header ("🆕 Новых объявлений: 103 (10/10)") and the deferred-tail line need, since
+// both are added after the listings are chunked.
+const HEADER_TAIL_RESERVE_CHARS = 120;
+
+/** One message of a batched digest and the listings it carries. */
+export interface DigestBatch {
+  text: string;
+  listings: Listing[];
+}
+
 /**
- * The "new listings" digest plus the exact slice it shows. Callers must markSeen
- * only `delivered` — the overflow beyond the caps surfaces on a later run.
- * NOTE: newest-first means sustained volume > cap starves the oldest items; fixed
- * by batched delivery (Phase 7).
+ * Split fresh listings into messages instead of cutting at the first cap: everything up to
+ * MAX_LISTINGS_PER_DELIVERY is sent, the remainder is announced rather than dropped silently.
+ * Callers must markSeen only the batches that were actually sent.
  */
-export function newListingsDigest(fresh: Listing[]): { text: string; delivered: Listing[] } {
-  const { text, shown } = digest(fresh, `🆕 Новых объявлений: ${fresh.length}`);
-  return { text, delivered: shown };
+export function newListingsBatches(fresh: Listing[]): DigestBatch[] {
+  const sending = fresh.slice(0, MAX_LISTINGS_PER_DELIVERY);
+  const later = fresh.length - sending.length;
+
+  const chunks: Listing[][] = [];
+  let rest = sending;
+  while (rest.length > 0) {
+    // Reserve room for the header and the tail, which are added after chunking — otherwise the
+    // measured string is not the string sent, and an oversized message fails on every retry.
+    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_TAIL_RESERVE_CHARS);
+    chunks.push(chunk);
+    rest = rest.slice(chunk.length);
+  }
+
+  return chunks.map((listings, i) => {
+    const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
+    const header = `🆕 Новых объявлений: ${fresh.length}${part}`;
+    const tail =
+      later > 0 && i === chunks.length - 1
+        ? `\n\n…и ещё ${later} — пришлю в следующую проверку`
+        : '';
+    return { text: `${header}\n\n${listings.map(formatOne).join('\n\n')}${tail}`, listings };
+  });
 }
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */
@@ -98,7 +140,7 @@ export const HELP_MESSAGE = [
   '',
   'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
     '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +
-    `проверки (пока до ${DIGEST_LIMIT} объявлений за раз).`,
+    `проверки — до ${MAX_LISTINGS_PER_DELIVERY} за раз, несколькими сообщениями.`,
   '',
   'Команды:',
   ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),

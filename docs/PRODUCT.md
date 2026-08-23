@@ -13,8 +13,10 @@ start; more frequent once throttling/dedupe land).
 ## Status now (implemented)
 
 - Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
-- Events: **new only**; text digest (cap 10 + a "…и ещё N" footer), no photos yet. An over-long
-  title is truncated so that price and link always survive.
+- Events: **new only**; a text digest split across as many messages as it takes (up to 100
+  listings per delivery, one message a second), no photos yet. Anything beyond that ceiling is
+  announced, not dropped, and arrives on the next run. An over-long title is truncated so that
+  price and link always survive.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
 - Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
@@ -70,9 +72,13 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 ## Volume and limits
 
 - **First subscription:** take a baseline of recent listings, send nothing.
-- **Many new at once:** send the digest in batches of messages (overall cap
-  ~100), not one message per item and not a silent "N more" drop.
-- **Telegram limits:** throttle the fan-out through a queue; if a user blocked the
+- **Many new at once:** the digest goes out as several messages (overall cap 100 listings per
+  delivery), not one message per item and not a silent "N more" drop. Messages are paced one per
+  second, and only what actually reached the user is marked seen — a failure mid-way re-sends the
+  rest, never the part that arrived.
+- **Telegram limits:** messages to one chat are paced one per second, and subscriptions are
+  polled with a gap — enough at beta volume. A global fan-out queue (Telegram's ~30 msg/s ceiling)
+  is not built and is not needed until the user count makes it reachable. If a user blocked the
   bot (403) → pause their subscriptions.
 - **Dead link:** if a search keeps failing to poll (errors, not empty results) for
   several runs in a row → tell the user to refresh it and pause that subscription.
