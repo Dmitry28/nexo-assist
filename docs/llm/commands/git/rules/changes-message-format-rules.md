@@ -34,7 +34,12 @@ Based on [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1
 - Scope is optional but usual here — it names the touched area (`telegram`, `plan`, `llm`,
   `deploy`). Drop it only when a change genuinely spans the repo — as in the last example below.
 - Max 100 characters.
-- Header only for simple commits (no body needed).
+- The header carries the change. Add a body only for a **why** the header can't hold — a
+  non-obvious cause, a constraint that forced the approach. Impact lines belong to the PR
+  description (§ 2), never to a commit.
+- **One commit per decision** — not per edit, per file or per milestone. A merged message can't be
+  rewritten, so it is worth getting right once.
+- Don't restate what an earlier commit on the branch already said (`git log origin/dev..HEAD`).
 
 ### Examples
 

@@ -15,6 +15,9 @@ git diff --cached
 git diff
 ```
 
+**Read-only** — the review never restores, stashes or checks anything out
+([review-code.md](review-code.md#local-mode)).
+
 Task source: the linked GitHub issue (`gh issue view <n>`), the PR description, or the plan agreed in conversation. If none is identifiable — ask the user what was agreed.
 
 ## Remote Mode
