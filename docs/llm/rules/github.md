@@ -12,8 +12,15 @@
 ## Branch Flow
 
 - Branch off `dev`; never commit straight to `dev` or `main`.
-- PRs target `dev`. Promote `dev → main` only after testing on `dev`.
+- PRs target `dev`. `main` is frozen and takes no part in the flow: it comes into use once
+  there are two environments (`dev` → staging, `main` → prod). Until then nothing is promoted
+  to `main` ([PRODUCT_PLAN.md](../../PRODUCT_PLAN.md), decisions → «Git-флоу»).
 - One PR may bundle several steps — keep them as separate, focused commits.
+- `dev` is the repository's **default branch** on GitHub, and must stay that way. Bots read
+  their config from the default branch only: while `main` was default, the
+  `.github/dependabot.yml` on `dev` — the one carrying `target-branch: dev` — was never read,
+  and every dependency PR opened against the stale `main` instead
+  ([PRODUCT_PLAN.md](../../PRODUCT_PLAN.md), tech backlog 2026-09-05).
 
 ## Commits & PR Text
 
