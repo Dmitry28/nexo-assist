@@ -34,15 +34,12 @@ Before claiming a change is done, run: `npm run lint && npm run typecheck && npm
 
 ## Key Files
 
-- `package.json` — dependencies and scripts (NestJS 11, class-validator, helmet, throttler, swagger, terminus, pino, prometheus, opentelemetry).
-- `src/main.ts` — bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen).
-- `src/app.setup.ts` — `configureApp()`: helmet, CORS, prefix, URI versioning; shared by `main.ts` and e2e.
-- `src/tracing.ts` — OpenTelemetry init (must stay the first import in `main.ts`).
-- `src/app.module.ts` — root module (Config, Logger, Throttler, Prometheus, Health, global filter + guard).
-- `src/config/configuration.ts` — typed `AppConfig` exposed under `app.*`.
-- `src/config/env.validation.ts` — class-validator schema; single source of defaults; fail-fast on boot.
-- `src/modules/sources/` — source-plugin layer (`SourceAdapter` + `SourceRegistry`).
-- `src/modules/subscriptions/`, `src/modules/telegram/` — domain + bot feature modules.
+Full `src/` layout and layer rules → [rules/architecture.md](rules/architecture.md#project-structure).
+What isn't visible from the tree:
+
+- `src/tracing.ts` must stay the **first** import in `main.ts` (OpenTelemetry patches modules on load).
+- `src/config/env.validation.ts` is the single source of env defaults — the app fails fast on boot.
+- `src/app.setup.ts` (`configureApp()`) is shared by `main.ts` and e2e, so tests hit production routes.
 
 ## Core Rules
 
@@ -91,7 +88,9 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Code review            | [rules/code-review.md](rules/code-review.md)                       |
 | Logic review           | [rules/logic-review.md](rules/logic-review.md)                     |
 | Debugging              | [rules/debugging.md](rules/debugging.md)                           |
+| Context budget         | [rules/context-budget.md](rules/context-budget.md)                 |
 | Testing                | [rules/testing.md](rules/testing.md)                               |
+| Dependencies           | [rules/dependencies.md](rules/dependencies.md)                     |
 | Workflow               | [rules/workflow.md](rules/workflow.md)                             |
 | Step-by-step flow      | [rules/step-by-step-flow.md](rules/step-by-step-flow.md)           |
 | GitHub workflow        | [rules/github.md](rules/github.md)                                 |

@@ -16,12 +16,21 @@
 
 ## How to Review
 
-1. Get the list of changed files (`git diff --name-only` or PR diff).
+1. Get the list of changed files (`git diff --name-only` or PR diff) and split them per **File Priority** below.
 2. For each row in the **Triggers** table — if a changed file matches, load the listed DOC(s) in full and check every rule against every matching file. **Do not load DOCs whose triggers did not match.**
 3. Apply every row of the **Process Checks** table to its artifact.
 4. Apply **Pattern Check** (below) to every candidate finding.
 5. Record only findings grounded in a loaded DOC rule, a Process Check, a Pattern Check deviation with a cited `file:line`, **or § Whole-Change Pass**.
 6. Run **§ Whole-Change Pass**.
+
+## File Priority
+
+**Secondary** — `*.spec.ts`, `*.e2e-spec.ts`, `__tests__/**`, fixtures. **Primary** — everything else.
+
+Review primary first and at full depth: a test-heavy change must not spend its first pass on
+fixtures while a service file sits unread. Both tiers are still reviewed in full — a run that
+cannot finish stops inside the secondary tier and reports the rest as the under-coverage `[H]`
+(§ Output Format), never with a primary file unread.
 
 ## Pattern Check
 
@@ -76,6 +85,7 @@ explanation because a model already knows it destroys their point.
 | Any change under `src/**`                             | `docs/llm/rules/architecture.md`, `docs/llm/rules/development-philosophy.md` |
 | `*.ts`                                                | `docs/llm/rules/code-style.md`, `docs/llm/rules/typescript.md`               |
 | `*.spec.ts`, `*.e2e-spec.ts`, `test/**`               | `docs/llm/rules/testing.md`                                                  |
+| `package.json`, `package-lock.json`                   | `docs/llm/rules/dependencies.md`                                             |
 | `docs/llm/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md` | `docs/llm/rules/llm-skills-guide.md`                                         |
 | Other `*.md` (product docs, root `README`)            | § Human-Facing Docs (above)                                                  |
 
@@ -92,12 +102,12 @@ explanation because a model already knows it destroys their point.
 
 ## Output Format
 
-Start with a one-line coverage receipt, then findings grouped by file. Skip files with no issues. Within a file, order findings **H → M → L → D → Q**.
+Start with a one-line coverage receipt, then findings grouped by file, **primary tier first** (§ File Priority). Skip files with no issues. Within a file, order findings **H → M → L → D → Q**.
 
 ```
 ## Review
 
-Reviewed: N/N files | findings: <H>H + <M>M + <L>L + <D>D | DOCs: code-style.md, … | mode: <local|remote>
+Reviewed: N/N files (P primary + S secondary) | findings: <H>H + <M>M + <L>L + <D>D | DOCs: code-style.md, … | mode: <local|remote>
 
 ### `path/to/file.ts`
 - [H] Description of the issue
