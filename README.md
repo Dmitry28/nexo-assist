@@ -91,6 +91,7 @@ npm run start:dev
 | `npm run migration:revert`                                     | Revert the last migration                                       |
 | `npm run migration:show`                                       | List migrations + status                                        |
 | `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster (needs `CD_HOST`)     |
+| `npm run k8s:backup:fetch`                                     | Pull the newest DB dump off the cluster (needs the tunnel)      |
 | `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)              |
 | `npm run k8s:status`                                           | Pods in the cluster                                             |
 | `npm run k8s:logs`                                             | Follow the bot's logs                                           |

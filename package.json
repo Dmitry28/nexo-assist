@@ -28,7 +28,7 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d postgres",
-    "db:backup:fetch": "./deploy/fetch-backup.sh",
+    "k8s:backup:fetch": "./deploy/fetch-backup.sh",
     "dev:docker": "docker compose up --build",
     "k8s:tunnel": "./deploy/tunnel.sh",
     "k8s:secrets": "./deploy/secrets.sh",

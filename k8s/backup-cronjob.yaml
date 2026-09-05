@@ -61,16 +61,39 @@ spec:
                 - |
                   set -o pipefail
                   file="/backups/nexo-$(date -u +%F).sql.gz"
-                  pg_dump --no-owner --no-privileges "$DATABASE_URL" | gzip > "$file"
-                  find /backups -name '*.sql.gz' -mtime +7 -delete
+                  # Write aside, rename on success: a half-written dump left under the real name
+                  # is what the fetch script would hand you as "the newest backup".
+                  # --schema=public: our tables only, without the provider's managed schemas.
+                  # No --clean: the restore runbook wipes the target explicitly, which is easier
+                  # to verify than replaying DROPs that error against a live schema.
+                  pg_dump --schema=public --no-owner --no-privileges \
+                    "$DATABASE_URL" | gzip > "$file.part"
+                  mv "$file.part" "$file"
+                  # Keep the 7 newest, whatever the schedule did — count, not age.
+                  ls -1t /backups/*.sql.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
                   ls -lh /backups
-                  wget -q -O- --timeout=10 "$BACKUP_HEARTBEAT_URL" >/dev/null
+                  # The dump's success is the job's result, not the watchdog's: a healthchecks
+                  # blip must not fail the job and re-run pg_dump on retry.
+                  [ -n "$BACKUP_HEARTBEAT_URL" ] &&
+                    { wget -q -O- --timeout=10 "$BACKUP_HEARTBEAT_URL" >/dev/null ||
+                      echo 'heartbeat ping failed' >&2; }
+                  exit 0
+              # Only what the dump needs — the pod must not carry the bot token or the proxy
+              # credentials just because they live in the same Secret.
               env:
                 - name: PGSSLROOTCERT
                   value: /etc/ssl/db/ca.crt
-              envFrom:
-                - secretRef:
-                    name: nexo-assist-secrets
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: nexo-assist-secrets
+                      key: DATABASE_URL
+                - name: BACKUP_HEARTBEAT_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: nexo-assist-secrets
+                      key: BACKUP_HEARTBEAT_URL
+                      optional: true
               resources:
                 requests:
                   cpu: 50m

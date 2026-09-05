@@ -23,9 +23,10 @@ cleanup() { kubectl delete pod "$POD" --now --ignore-not-found >/dev/null 2>&1 |
 trap cleanup EXIT
 
 kubectl run "$POD" --restart=Never --image=busybox:1.37 \
-  --overrides='{"spec":{"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"nexo-assist-backups"}}],"containers":[{"name":"c","image":"busybox:1.37","command":["sleep","300"],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}]}}' >/dev/null
+  --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":1000},"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"nexo-assist-backups"}}],"containers":[{"name":"c","image":"busybox:1.37","command":["sleep","300"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}},"volumeMounts":[{"name":"b","mountPath":"/backups"}]}]}}' >/dev/null
 kubectl wait --for=condition=Ready "pod/$POD" --timeout=60s >/dev/null
 
+# *.part is a dump still being written (or one that died mid-write) — never hand that over.
 NEWEST=$(kubectl exec "$POD" -- sh -c 'ls -1t /backups/*.sql.gz 2>/dev/null | head -1')
 [[ -n "$NEWEST" ]] || { echo "no dumps yet — the CronJob runs at 03:00 UTC" >&2; exit 1; }
 

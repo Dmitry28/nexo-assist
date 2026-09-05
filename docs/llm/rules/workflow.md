@@ -4,7 +4,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 ## 1. Plan
 
-- Gather context: read existing code, docs, related files — verify theory before making claims.
+- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps ("where is X", "what calls Y", "how does Z work across modules") go to a subagent ([context-budget.md § Delegate the sweeps](context-budget.md#delegate-the-sweeps)).
 - Describe the solution; for complex tasks add non-goals, milestones, acceptance criteria.
 - **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs?
 - For complex tasks, document key architectural decisions: what was chosen vs. rejected and why (prevents re-deliberation).
@@ -15,8 +15,10 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 - One milestone at a time: describe the plan → wait for approval → implement → show the diff → wait for approval → next. Keep changes focused and atomic.
 - When the user asks to work **step by step**, follow [step-by-step-flow.md](step-by-step-flow.md) — it adds a per-step review before each commit.
-- Implement → verify → report, **leaving all changes uncommitted**.
-- **Never commit without approval of the reviewed diff** — the user has seen these specific changes and said to commit. Pushing and opening the PR need no approval; merging needs its own ([github.md § Approval](github.md#approval)).
+- **Show a milestone for review only when it is finished** — implemented _and_ verified (§ 3). A half-done diff costs a review pass that has to be repeated.
+- **No new tests while implementing** — run the existing suite to catch regressions; new tests come once, at [post-completion step 1](#post-completion-checklist). A test written against one milestone gets rewritten by the next and bloats every diff the user reviews on the way.
+- Implement → verify → report, **leaving all changes uncommitted**; the two approval gates are in
+  [github.md § Approval](github.md#approval).
 - After opening a PR, surface the URL so the user can review.
 - Reflect on what was learned — if new findings affect the solution, address them before moving on.
 - If you hit ambiguity or a blocking decision mid-task — **surface it immediately instead of guessing.**
@@ -30,7 +32,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 - Confirm the plan step is fully realized (nothing skipped).
 - Run `/verify-task-result` on changed files.
-- For behavioral changes, run the app and exercise the path (`/run`, `/verify`) — not only unit tests.
+- For behavioral changes, run the app and exercise the path (`/run`) — not only unit tests.
 - Self-check: [philosophy questions](development-philosophy.md#self-check) (simple / clear / concise / DRY / no excess) + architecture, types, naming, edge cases.
 
 ## 4. Fix
@@ -47,6 +49,8 @@ _(Repeat steps 2–4 for each milestone)_
 
 **Run every step in order, do not skip.** "This change is too small" → scale the check down, don't skip it.
 
+**A change that makes no decision** — a typo, a constant, a doc sentence, a config value — skips steps 1 and 4–6: the reviews and the test pass exist to catch decisions it didn't make. Anything that adds behaviour, a dependency, a query or a state change takes the full list.
+
 1. Cover critical logic with tests if not yet covered — only what matters.
 2. Update every doc the change affects (ENTRY_POINT § Keep docs current).
 3. Run `/verify-task-result` with full checks.
@@ -55,26 +59,23 @@ _(Repeat steps 2–4 for each milestone)_
 6. Fix what survives — **`[H]` only** (ENTRY_POINT § Core Rules); everything else gets a `TODO` or a backlog entry. Touched behavior or fixed an `[H]`? Re-run the review — applying a fix is where the next defect appears.
 7. Sweep the issues you noticed along the way — pre-existing inconsistencies, dead code, edge cases — and apply **fix it or log it** (ENTRY_POINT § Core Rules).
 8. **Reflection** — improve **repo-tracked** instructions (`docs/llm/`, `.claude/skills/`) so the next contributor avoids the same friction. **Not personal memory — only files committed to the repo.** Edit when an instruction misled you, was easy to skip, or missed a pattern you used. Each edit: specific (cite file/section), minimal (one focused change). Skip if nothing came up — don't invent improvements to fill the slot.
+
+   **A correction the user makes mid-task lands in its instruction doc right away** — not here, and not in the plan file.
+
 9. Changed anything in steps 6–8? Re-run `/review-code` over the final diff — otherwise the last edits ship as the only unreviewed part of the change.
-10. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
+10. **Read the checklist back** — one line per step, done or skipped and why. A step nobody can name is a step that was skipped.
+11. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
 
 ---
 
 ## Scaling Guide
 
-| Task size          | Plan                       | Milestones                 | Progress tracking         |
-| ------------------ | -------------------------- | -------------------------- | ------------------------- |
-| Simple (1 step)    | 2–3 lines                  | —                          | —                         |
-| Medium (2–3 steps) | Solution + non-goals       | 2–3 explicit               | —                         |
-| Complex (3+ steps) | Full breakdown + decisions | Each with scope boundaries | Externalized progress log |
+| Task size          | Plan                       | Milestones                 |
+| ------------------ | -------------------------- | -------------------------- |
+| Simple (1 step)    | 2–3 lines                  | —                          |
+| Medium (2–3 steps) | Solution + non-goals       | 2–3 explicit               |
+| Complex (3+ steps) | Full breakdown + decisions | Each with scope boundaries |
 
-### Externalized Progress (complex tasks)
-
-For long tasks, maintain a progress section in the plan (or a scratch file) that survives context compression:
-
-- Completed milestones (one-liner each)
-- Current milestone and remaining work
-- Key decisions made (one-liner each)
-- Known issues to address later
-
-Update after each milestone.
+Complex tasks also keep a progress log in the plan or a scratch file — done / current / key
+decisions / known issues, updated after each milestone — so progress survives context compression
+and a fresh session ([context-budget.md § One session, one phase](context-budget.md#one-session-one-phase)).
