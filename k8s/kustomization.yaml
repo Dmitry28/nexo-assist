@@ -7,6 +7,7 @@ resources:
   - configmap.yaml
   - db-ca-configmap.yaml
   - deployment.yaml
+  - backup-cronjob.yaml
   - service.yaml
 
 # The image actually deployed. Pinned by commit sha (immutable) — `latest`/branch tags

@@ -1,0 +1,93 @@
+# Daily database dump. Supabase's free plan has no backups (checked in the panel, 2026-09-05),
+# so this is the only copy of the subscriptions besides the live database.
+#
+# It lands on the app node — a different failure domain from the managed database, which is what
+# the realistic threats need: a bad migration, an accidental delete, a provider incident. Losing
+# BOTH at once is not covered; `npm run db:backup:fetch` pulls a copy off the server for that.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nexo-assist-backups
+spec:
+  accessModes: [ReadWriteOnce]
+  # A dump is a few MB; a gigabyte holds years of them. k3s ships the local-path provisioner,
+  # so this is a directory on the node's disk.
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nexo-assist-backup
+spec:
+  # 03:00 UTC — off the 09:00 watch run, so a dump never competes with delivery.
+  schedule: '0 3 * * *'
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # One retry: a transient network blip should not skip a night.
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: nexo-assist-backups
+            - name: db-ca
+              configMap:
+                name: db-ca
+            - name: tmp
+              emptyDir: {}
+          containers:
+            - name: dump
+              # Same major as production Postgres: pg_dump refuses a newer server than itself.
+              image: postgres:17-alpine
+              command: ['/bin/sh', '-ec']
+              args:
+                # NOTE: PGSSLROOTCERT, not NODE_EXTRA_CA_CERTS — pg_dump is libpq, not Node, so
+                # the app's way of trusting the provider CA does not apply here.
+                # The ping at the end is the point of the whole thing: a backup that silently
+                # stopped is not a backup, and a failed CronJob is invisible in k8s.
+                - |
+                  set -o pipefail
+                  file="/backups/nexo-$(date -u +%F).sql.gz"
+                  pg_dump --no-owner --no-privileges "$DATABASE_URL" | gzip > "$file"
+                  find /backups -name '*.sql.gz' -mtime +7 -delete
+                  ls -lh /backups
+                  wget -q -O- --timeout=10 "$BACKUP_HEARTBEAT_URL" >/dev/null
+              env:
+                - name: PGSSLROOTCERT
+                  value: /etc/ssl/db/ca.crt
+              envFrom:
+                - secretRef:
+                    name: nexo-assist-secrets
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: '1'
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: db-ca
+                  mountPath: /etc/ssl/db
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
