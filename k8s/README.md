@@ -21,6 +21,7 @@ kubectl kustomize k8s/           # render without applying — exactly what will
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `configmap.yaml`       | Non-secret env. Credentials live in the `nexo-assist-secrets` Secret referenced by the deployment.                                                                                                                |
 | `deployment.yaml`      | 1 replica (long-polling bot + in-memory pending prompts — see NOTE in the manifest), migrate initContainer, probes, resource limits, non-root + read-only-rootfs security context, Prometheus scrape annotations. |
+| `backup-cronjob.yaml`  | Nightly `pg_dump` to a node volume + the PVC it writes to (the provider has no backups)                                                                                                                           |
 | `db-ca-configmap.yaml` | The provider's public root CA, mounted into both containers and trusted via `NODE_EXTRA_CA_CERTS`.                                                                                                                |
 | `service.yaml`         | ClusterIP on port 80 → container port 3000.                                                                                                                                                                       |
 | `kustomization.yaml`   | Ties the four together and pins the image; the committed tag is a placeholder — CD rewrites it with the sha it deploys.                                                                                           |
@@ -37,7 +38,7 @@ kubectl kustomize k8s/           # render without applying — exactly what will
 One cluster object is created by hand — everything else here is deployed from the repo.
 
 **Secret `nexo-assist-secrets`** — `TELEGRAM_BOT_TOKEN`, `DATABASE_URL` (carries the
-database password), `SCRAPE_PROXY_URL`, `SENTRY_DSN`, `ADMIN_TELEGRAM_ID`, `HEARTBEAT_URL`. Create it **before**
+database password), `SCRAPE_PROXY_URL`, `SENTRY_DSN`, `ADMIN_TELEGRAM_ID`, `HEARTBEAT_URL`, `BACKUP_HEARTBEAT_URL`. Create it **before**
 applying: in production the app refuses to boot without the token, `SCRAPE_PROXY_URL` (kufar
 would otherwise be fetched directly and 403) or `ADMIN_TELEGRAM_ID` (every owner alert would go
 nowhere silently), and the `migrate` initContainer needs `DATABASE_URL`.
