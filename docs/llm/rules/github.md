@@ -12,13 +12,29 @@
 ## Branch Flow
 
 - Branch off `dev`; never commit straight to `dev` or `main`.
+- **Cut every branch from `dev`, never from another still-open branch** — otherwise this PR carries
+  the other one's commits and its review. A step that genuinely cannot work without the previous
+  one belongs in the same PR.
 - PRs target `dev`. Promote `dev → main` only after testing on `dev`.
 - One PR may bundle several steps — keep them as separate, focused commits.
+- **`* [new branch]` when pushing a branch you already pushed means the remote one is gone** —
+  usually its PR merged and `--delete-branch` removed it, and the push re-creates it with commits
+  already on `dev`. Check the PR state (`gh pr view <n> --json state`) before doing anything;
+  if it did merge, re-cut from `origin/dev` and carry over only what is genuinely new.
 
 ## Commits & PR Text
 
 - Message format → [../commands/git/rules/changes-message-format-rules.md](../commands/git/rules/changes-message-format-rules.md).
 - Generate a commit with `/git-commit`, a PR description with `/pr-description`.
+- Correcting a PR or issue comment → **edit the existing one**, never post a second.
+
+## Calling the API
+
+- Pass a multi-line body as a **file** (`gh pr create --body-file <path>`, `curl -d @<path>`) —
+  never a heredoc or `-d "$(…)"`. Command substitution swallows the builder's failure: the request
+  still fires, with an empty or mangled body.
+- `gh api … | jq` reports **jq's** exit status, so a failed call prints nothing and looks like
+  "no data". Re-run without the pipe before believing an empty result.
 
 ## PR Lifecycle
 

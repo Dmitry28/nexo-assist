@@ -4,11 +4,8 @@
 
 DRY, KISS, SOLID, YAGNI — applied in § Self-Check below.
 
+- Type safety and static analysis
 - If the user's proposed approach has significant trade-offs or risks — raise them **before** implementing, not after
-- **Acceptance criteria state the problem, not the solution.** They are drafted without reading the
-  code, so the wording can be wrong even when the pain is real. Build the simplest thing that
-  actually fixes it; where that diverges from the stated criterion, do the better thing and say so
-  in the PR. A named constraint (contract, security rule) still binds.
 - **No guessing.** Back every technical claim with Read/Grep, a command, or fetched docs. Before asserting, self-check: "verified now, or recalled?" — if recalled, verify or say "not verified". If a fact can't be verified and blocks the task — ask the user instead of guessing.
 
 ## Self-Check

@@ -85,6 +85,7 @@ explanation because a model already knows it destroys their point.
 | Any change under `src/**`                             | `docs/llm/rules/architecture.md`, `docs/llm/rules/development-philosophy.md` |
 | `*.ts`                                                | `docs/llm/rules/code-style.md`, `docs/llm/rules/typescript.md`               |
 | `*.spec.ts`, `*.e2e-spec.ts`, `test/**`               | `docs/llm/rules/testing.md`                                                  |
+| `package.json`, `package-lock.json`                   | `docs/llm/rules/dependencies.md`                                             |
 | `docs/llm/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md` | `docs/llm/rules/llm-skills-guide.md`                                         |
 | Other `*.md` (product docs, root `README`)            | § Human-Facing Docs (above)                                                  |
 

@@ -37,8 +37,9 @@ All commands are read-only and safe — no approval needed. Run for the final ve
 
 ## Completion claims
 
-Report only what a command printed in this session, with the actual numbers
-(`X passed, Y failed, Z skipped`) — never "should work" / "seems to pass".
+- **Never claim "everything works" without fresh run evidence from this session.**
+- Forbidden in conclusions: "should work", "probably fine", "seems to pass".
+- State actual numbers: `X passed, Y failed, Z skipped`.
 
 ## Output
 

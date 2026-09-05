@@ -24,5 +24,6 @@ Follow [changes-message-format-rules.md](rules/changes-message-format-rules.md) 
 
 - NO explanations or process descriptions.
 - Output ONLY the PR title and description in a markdown code block.
+- Follow Conventional Commits types: `feat`, `fix`, `refactor`, `chore`, `test`, `docs`, `ci`, `build`, `perf`, `style`.
 - Focus on outcomes, not implementation details.
 - Skip a section entirely if there's nothing to put there.

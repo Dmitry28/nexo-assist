@@ -69,6 +69,12 @@ that removes a tool is `disallowed-tools`. List what the skill's doc actually te
 recognized at the **end** of a pattern — `Bash(npm:ci)` matches the literal string `npm:ci`, never
 `npm ci`.
 
+### Long-running commands
+
+A forked skill reports nothing until it finishes, so a stall looks exactly like work. Print one
+line per step (`step 3 — migrations applied`), and never let a single command run silently for
+minutes: pipe long installs, test runs and deploys through `tail` and report the tail.
+
 ### Body beyond the link
 
 Two things may precede the link to the content doc; everything else belongs in that doc:
