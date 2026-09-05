@@ -1,6 +1,6 @@
 ---
 name: testing
-description: Testing conventions — spec placement, fixtures/helpers, error-path coverage, console rules. Use when writing or modifying *.spec.ts / *.e2e-spec.ts files.
+description: Testing conventions — AAA layout, fixtures/helpers placement, error-path coverage, console rules. Use when writing or modifying *.spec.ts / *.e2e-spec.ts files.
 user-invocable: false
 allowed-tools: Read
 ---
