@@ -5,7 +5,13 @@ metadata:
   labels:
     app.kubernetes.io/name: nexo-assist
 spec:
-  replicas: 2
+  # NOTE: singleton by design — grammY long polling allows one poller per token
+  # (a second pod gets Telegram 409s) and the store is in-memory (each replica
+  # would hold disjoint subscriptions). Scale out only after webhook + DB land.
+  replicas: 1
+  # Recreate: a rolling update would briefly run two pollers (409s).
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: nexo-assist
@@ -29,6 +35,54 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        # Managed Postgres (Supabase) uses its OWN root CA, which isn't in Node's public
+        # trust store — without it `sslmode=verify-full` fails with SELF_SIGNED_CERT_IN_CHAIN.
+        # Mounted (not a secret — a public cert) and trusted via NODE_EXTRA_CA_CERTS, which
+        # covers both the app and the migrate initContainer with zero code.
+        # Ships in git as db-ca-configmap.yaml — a root cert is public, so `apply -k` is enough.
+        - name: db-ca
+          configMap:
+            name: db-ca
+      # Apply DB migrations before the app starts. Same image, plain node on the compiled
+      # data-source (migration:run:prod). Idempotent (TypeORM migrations table); a failure
+      # here blocks startup, so the app never runs against an unmigrated schema.
+      initContainers:
+        - name: migrate
+          image: nexo-assist:latest # kept in sync with the app image by CD (kustomize sets both)
+          imagePullPolicy: IfNotPresent
+          command:
+            [
+              'node',
+              './node_modules/typeorm/cli.js',
+              'migration:run',
+              '-d',
+              'dist/database/data-source.js',
+            ]
+          envFrom:
+            - configMapRef:
+                name: nexo-assist-config
+            # DATABASE_URL lives in the Secret (the URL carries a password) — see README.
+            - secretRef:
+                name: nexo-assist-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: '1'
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/ssl/db
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: app
           image: nexo-assist:latest # set by your CD pipeline (e.g. registry/nexo-assist:<sha>)
@@ -39,8 +93,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: nexo-assist-config
-            # - secretRef:
-            #     name: nexo-assist-secrets
+            # TELEGRAM_BOT_TOKEN lives here — create the Secret first (see README);
+            # production refuses to boot without the token.
+            - secretRef:
+                name: nexo-assist-secrets
           resources:
             requests:
               cpu: 100m
@@ -84,6 +140,9 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/ssl/db
+              readOnly: true
           # Container-level hardening.
           securityContext:
             allowPrivilegeEscalation: false

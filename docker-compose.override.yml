@@ -1,0 +1,16 @@
+# Auto-merged by `docker compose up` — local development only.
+# Runs the app in a container with hot-reload: source is bind-mounted, node_modules
+# stays from the image (anonymous volume), and Nest runs in watch mode.
+#   npm run dev:docker
+services:
+  app:
+    build:
+      target: dev
+    # Apply pending migrations, then start Nest in watch mode.
+    command: sh -c "npm run migration:run && npm run start:dev"
+    environment:
+      NODE_ENV: development
+      APP_ENV: development
+    volumes:
+      - .:/app
+      - /app/node_modules

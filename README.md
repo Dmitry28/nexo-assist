@@ -1,9 +1,27 @@
 # nexo-assist
 
-Production-ready [NestJS](https://nestjs.com) skeleton. Opinionated, batteries-included
-starting point for building real modules: validated config, structured logging, global
-error handling, request validation, OpenAPI docs, health checks, and a full lint/format/test
-pipeline.
+Telegram listing-watch bot: paste a kufar.by / realt.by search link and get new
+listings on a schedule. Built on a production-ready [NestJS](https://nestjs.com) 11
+base: validated config, structured logging, global error handling, OpenAPI docs,
+health checks, and a full lint/format/test pipeline. Product spec:
+[docs/PRODUCT.md](docs/PRODUCT.md).
+
+## Using the bot
+
+Send the bot a search link from **kufar.by** or **realt.by** with your filters already applied;
+it offers a "Следить" button and, from then on, sends the listings that appeared since the
+last check, once a day, in a capped digest (batching is the next step). Delivery rules and what
+the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its beta audience
+does.
+
+| Command  | What it does                                                                |
+| -------- | --------------------------------------------------------------------------- |
+| `/start` | greeting and the prompt to send a link                                      |
+| `/list`  | your subscriptions: ❌ removes one, ⏸ marks a paused one, ▶️ brings it back |
+| `/help`  | the same summary inside the bot                                             |
+
+It stores your Telegram id, name, @username, interface language and the links it watches — only
+to deliver notifications; ask the owner to have them deleted.
 
 ## Stack
 
@@ -21,7 +39,7 @@ pipeline.
 | Tracing       | OpenTelemetry (OTLP, opt-in)                        |
 | Security      | `helmet`, CORS, `compression`                       |
 | Tests         | Jest (unit) + Supertest (e2e)                       |
-| Lint / Format | ESLint 9 (flat config) + Prettier 3                 |
+| Lint / Format | ESLint 10 (flat config) + Prettier 3                |
 | Git hooks     | Husky + lint-staged                                 |
 | CI            | GitHub Actions                                      |
 | Container     | Multi-stage Dockerfile + docker-compose             |
@@ -37,8 +55,14 @@ pipeline.
 ```bash
 npm install
 cp .env.example .env
+npm run db:up          # start local Postgres (docker)
+npm run migration:run  # create the schema
 npm run start:dev
 ```
+
+Put the **dev** bot's token in `.env` (`TELEGRAM_BOT_TOKEN`) — there is one bot per
+environment, and Telegram delivers updates to a single long-polling consumer per token, so the
+production token must never be used locally. Left unset, the app runs with the bot disabled.
 
 - API base URL: `http://localhost:3000/api/v1`
 - Swagger UI: `http://localhost:3000/api/docs` (non-production only)
@@ -48,19 +72,34 @@ npm run start:dev
 
 ## Scripts
 
-| Script                 | Description                       |
-| ---------------------- | --------------------------------- |
-| `npm run start:dev`    | Run with watch mode               |
-| `npm run start:prod`   | Run compiled output (`dist/main`) |
-| `npm run build`        | Compile to `dist/`                |
-| `npm run lint`         | ESLint (fails on warnings)        |
-| `npm run lint:fix`     | ESLint with autofix               |
-| `npm run format`       | Prettier write                    |
-| `npm run format:check` | Prettier check (CI)               |
-| `npm run typecheck`    | `tsc --noEmit`                    |
-| `npm test`             | Unit tests                        |
-| `npm run test:cov`     | Unit tests with coverage          |
-| `npm run test:e2e`     | End-to-end tests                  |
+| Script                                                         | Description                                                     |
+| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `npm run start:dev`                                            | Run with watch mode                                             |
+| `npm run start:prod`                                           | Run compiled output (`dist/main`)                               |
+| `npm run build`                                                | Compile to `dist/`                                              |
+| `npm run lint`                                                 | ESLint (fails on warnings) + package & marker checks            |
+| `npm run lint:fix`                                             | ESLint with autofix                                             |
+| `npm run format`                                               | Prettier write                                                  |
+| `npm run format:check`                                         | Prettier check (CI)                                             |
+| `npm run typecheck`                                            | `tsc --noEmit`                                                  |
+| `npm test`                                                     | Unit tests                                                      |
+| `npm run test:cov`                                             | Unit tests with coverage                                        |
+| `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                 |
+| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                |
+| `npm run dev:docker`                                           | Full local stack in docker with hot-reload                      |
+| `npm run db:up`                                                | Start local Postgres (docker)                                   |
+| `npm run db:down`                                              | Stop local Postgres                                             |
+| `npm run db:reset`                                             | Recreate the DB (wipes data)                                    |
+| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes                        |
+| `npm run migration:run`                                        | Apply pending migrations                                        |
+| `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer) |
+| `npm run migration:revert`                                     | Revert the last migration                                       |
+| `npm run migration:show`                                       | List migrations + status                                        |
+| `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster (needs `CD_HOST`)     |
+| `npm run k8s:backup:fetch`                                     | Pull the newest DB dump off the cluster (needs the tunnel)      |
+| `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)              |
+| `npm run k8s:status`                                           | Pods in the cluster                                             |
+| `npm run k8s:logs`                                             | Follow the bot's logs                                           |
 
 ## Project structure
 
@@ -74,17 +113,14 @@ src/
 │   ├── configuration.ts     # Typed, namespaced config (app.*)
 │   └── env.validation.ts    # Env schema — app refuses to boot if invalid
 ├── common/                  # Cross-cutting building blocks
-│   ├── dto/                 # Pagination request/response DTOs
-│   └── filters/             # Global exception filter (consistent error JSON)
+│   ├── filters/             # Global exception filter (consistent error JSON)
+│   └── url.ts               # URL helpers (extract, host pinning, query params)
 ├── health/                  # Liveness + readiness probes (Terminus)
 ├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
-    └── users/               # Reference feature module (copy this shape)
-        ├── dto/             # Request DTOs (create/update)
-        ├── entities/        # API-facing models
-        ├── users.controller.ts
-        ├── users.service.ts # In-memory store — swap for a DB repo
-        └── users.module.ts
+    ├── sources/             # Source plugins: SourceAdapter registry + kufar/realt scrapers
+    ├── subscriptions/       # Domain: subscription store + watch (baseline/diff) logic
+    └── telegram/            # Bot: grammY handlers, daily watch scheduler, digests
 
 k8s/                         # Kubernetes manifests (Kustomize)
 docker-compose.yml           # Local stack
@@ -92,7 +128,7 @@ docker-compose.yml           # Local stack
 
 ## Adding a new module
 
-Mirror `src/modules/users/`. Full checklist:
+Mirror `src/modules/subscriptions/`. Full checklist:
 [`docs/llm/rules/architecture.md`](docs/llm/rules/architecture.md).
 
 ## Configuration
@@ -102,8 +138,10 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
 
 ## Observability
 
-- **Metrics** — Prometheus scrape endpoint at `/api/v1/metrics` (default Node/process
-  metrics included). Add custom counters/histograms via `@willsoto/nestjs-prometheus`.
+- **Metrics** — Prometheus scrape endpoint at `/api/v1/metrics`. Default Node/process
+  metrics plus product metrics: `nexo_deliveries_total`, `nexo_poll_errors_total`,
+  `nexo_subscriptions_paused_total`, `nexo_users`, `nexo_active_subscriptions` (see
+  `src/metrics/watch.metrics.ts`).
 - **Tracing** — OpenTelemetry, opt-in. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optionally
   `OTEL_SERVICE_NAME`) to start the SDK; auto-instruments HTTP/Express. See `src/tracing.ts`.
   Control sampling without code changes via standard env: `OTEL_TRACES_SAMPLER=parentbased_traceidratio`
@@ -126,26 +164,41 @@ proxy layers (e.g. a CDN in front of the ingress).
 ## Docker
 
 ```bash
-# Single image
+# Single image (production runtime). Apply the schema first — migrations run from this
+# same image via `npm run migration:run:prod` (as the k8s initContainer does).
 docker build -t nexo-assist .
 docker run -p 3000:3000 --env-file .env nexo-assist
 
-# Local stack (app + room for postgres/redis)
-docker compose up --build
+# Full local dev stack — Postgres + app with hot-reload (runs migrations, watches src/)
+npm run dev:docker            # = docker compose up --build
 ```
 
 Multi-stage build, runs as non-root, ships only production dependencies, with a `HEALTHCHECK`.
 
+**Dev in Docker:** `docker-compose.override.yml` (auto-merged by `docker compose`) builds the
+`dev` image stage, bind-mounts the source, and runs `nest start --watch` — editing `src/**`
+on the host reloads inside the container. `node_modules` stays from the image (anonymous
+volume). To run only the database instead, use `npm run db:up` and `npm run start:dev` on the host.
+
+## Branches & deployment
+
+`dev` is the integration branch — feature branches are cut from it and merged back into it,
+and CI builds every push, but nothing is deployed from `dev`. Releases go out by merging
+`dev → main` after the change has been run locally: a push to `main` triggers the deploy job,
+which rolls that exact commit out to the cluster.
+
 ## Kubernetes
 
-Manifests live in `k8s/` (Kustomize). See `k8s/README.md`.
+Manifests live in `k8s/` (Kustomize). See `k8s/README.md` for the manifest reference
+and [`docs/DEPLOY.md`](docs/DEPLOY.md) for a step-by-step deploy + DevOps learning guide.
 
 ```bash
 kubectl apply -k k8s/
 ```
 
-Includes liveness/readiness/startup probes, resource requests+limits, HPA (2→10),
-non-root + read-only-rootfs security context, and Prometheus scrape annotations.
+Includes liveness/readiness/startup probes, resource requests+limits, non-root +
+read-only-rootfs security context, and Prometheus scrape annotations. Runs as a
+single replica — long-polling bot (one poller per token; in-memory pending prompts — see the NOTE in the manifest).
 
 ## Conventions
 

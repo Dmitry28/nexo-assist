@@ -2,24 +2,29 @@
 
 ## Core Principles
 
-- DRY, KISS, SOLID, YAGNI
-- Type safety and static analysis
-- Always follow existing patterns and code style in the codebase
+DRY, KISS, SOLID, YAGNI — applied in § Self-Check below.
+
 - If the user's proposed approach has significant trade-offs or risks — raise them **before** implementing, not after
+- **Acceptance criteria state the problem, not the solution.** They are drafted without reading the
+  code, so the wording can be wrong even when the pain is real. Build the simplest thing that
+  actually fixes it; where that diverges from the stated criterion, do the better thing and say so
+  in the PR. A named constraint (contract, security rule) still binds.
 - **No guessing.** Back every technical claim with Read/Grep, a command, or fetched docs. Before asserting, self-check: "verified now, or recalled?" — if recalled, verify or say "not verified". If a fact can't be verified and blocks the task — ask the user instead of guessing.
 
 ## Self-Check
 
-Apply after every iteration and during code review:
+Apply after every iteration, after editing any `.md`, and during code review:
 
-- **Simple** — prefer the least complex approach that does the job.
+- **Simple (KISS)** — prefer the least complex approach that does the job.
 - **Clear** — next reader gets intent without a comment.
 - **Concise** — cut anything that doesn't add meaning.
 - **DRY** — single source for any duplicated logic, constant, or prose.
+- **Lean (YAGNI)** — no over-engineering; no abstraction before a second consumer (see § No Over-Engineering).
+- **Idiomatic** — follows established best practices, patterns and standards; matches peer code.
 
 ## Before Adding New Code — Check in This Order
 
-1. **Search the codebase** — reuse existing functionality (the `users` module is the reference shape).
+1. **Search the codebase** — reuse existing functionality (an existing module, e.g. `subscriptions`, is the reference shape).
 2. **Check `package.json`** — use already installed packages before adding new ones.
 3. **Search npm** — only if nothing fits internally.
 

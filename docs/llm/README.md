@@ -14,35 +14,11 @@ Single source of truth: content lives here in `docs/llm/`; skills and agents onl
 
 ## Structure
 
-```
-docs/llm/
-├── ENTRY_POINT.md           # Always-loaded context (project description, key commands)
-├── README.md                # This file
-├── mcp.example.json         # MCP servers reference (context7, github)
-├── rules/                   # Background knowledge (one doc per topic, one skill per doc)
-│   ├── development-philosophy.md  # DRY, KISS, SOLID
-│   ├── code-style.md              # Naming, NestJS conventions
-│   ├── typescript.md              # Type safety rules
-│   ├── architecture.md            # Module structure, layer responsibilities
-│   ├── workflow.md                # Plan → Implement → Verify → Fix
-│   ├── code-review.md             # CCR labels, Pattern Check, triggers, process checks
-│   ├── logic-review.md            # Behavior vs task: AC traceability, edge cases
-│   ├── debugging.md               # Systematic debugging — Iron Law + 5 phases
-│   ├── testing.md                 # AAA, fixtures, error paths, console rules
-│   └── llm-skills-guide.md        # How to create/modify skills
-└── commands/                # Instructions behind user-invocable skills
-    ├── git/
-    │   ├── commit-local-changes.md       # /git-commit
-    │   ├── generate-pr-description.md    # /pr-description
-    │   └── rules/
-    │       └── changes-message-format-rules.md
-    ├── review/
-    │   ├── review-code.md                # /review-code
-    │   └── logic-review.md               # /logic-review
-    └── check/
-        ├── verify-task-result.md         # /verify-task-result
-        └── refine.md                     # /refine
-```
+- `ENTRY_POINT.md` — always-loaded context; its Quick Reference table lists every rule.
+- `rules/` — background knowledge, one doc per topic.
+- `commands/` — instructions behind user-invocable skills (`/git-commit`, `/review-code`,
+  `/logic-review`, `/pr-description`, `/verify-task-result`, `/refine`).
+- `mcp.example.json` — MCP servers reference.
 
 ## MCP Servers
 

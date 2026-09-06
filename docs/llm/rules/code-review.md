@@ -16,11 +16,21 @@
 
 ## How to Review
 
-1. Get the list of changed files (`git diff --name-only` or PR diff).
+1. Get the list of changed files (`git diff --name-only` or PR diff) and split them per **File Priority** below.
 2. For each row in the **Triggers** table — if a changed file matches, load the listed DOC(s) in full and check every rule against every matching file. **Do not load DOCs whose triggers did not match.**
 3. Apply every row of the **Process Checks** table to its artifact.
 4. Apply **Pattern Check** (below) to every candidate finding.
-5. Record only findings grounded in a loaded DOC rule, a Process Check, or a Pattern Check deviation with a cited `file:line`.
+5. Record only findings grounded in a loaded DOC rule, a Process Check, a Pattern Check deviation with a cited `file:line`, **or § Whole-Change Pass**.
+6. Run **§ Whole-Change Pass**.
+
+## File Priority
+
+**Secondary** — `*.spec.ts`, `*.e2e-spec.ts`, `__tests__/**`, fixtures. **Primary** — everything else.
+
+Review primary first and at full depth: a test-heavy change must not spend its first pass on
+fixtures while a service file sits unread. Both tiers are still reviewed in full — a run that
+cannot finish stops inside the secondary tier and reports the rest as the under-coverage `[H]`
+(§ Output Format), never with a primary file unread.
 
 ## Pattern Check
 
@@ -33,27 +43,51 @@ For other candidate findings — grep the codebase for how peers handle the same
 - ≥2 patterns each with ≥3 occurrences → **drop "unify" suggestions**.
 - Near-zero-precedent variant while a dominant alternative exists → **flag**, cite one `file:line` of canonical usage in the SA.
 
+Grep twice before emitting a `[M]`/`[L]` that rests on Pattern Check — a first-pass grep misses peers; if the changed code matches the dominant pattern, route it to § Skipped instead of the findings. Exempt: `[H]` correctness/security and § Whole-Change Pass, which argues against the dominant pattern by design.
+
 Escape hatches: 0 peers anywhere → suspend Pattern Check (rely on DOCs); changed code follows a documented migration direction → don't flag against the legacy pattern.
 
-## Pre-Output Verification
+## Whole-Change Pass
 
-Before emitting any `[M]` / `[L]` candidate, do a second-pass Pattern Check — first-pass grep can miss peer usages; this pass filters false positives so they never reach the user.
+Pattern Check keeps the review honest, but it structurally silences one thing: _"this could be
+simpler than anything we do today."_ So run one pass, **exempt from Pattern Check**, asking a
+different question — **is this the best version of itself?** Precedent is not required; instead of
+citing a peer, state what it costs to leave as is.
 
-1. Re-read the cited rule and SA.
-2. Grep how peers handle the same case (≥2 files, ≥3 occurrences = dominant pattern).
-3. Changed code already matches the dominant pattern → mark **SKIPPED — pattern already followed**, move to § Skipped; do NOT include in main findings.
-4. Otherwise emit as a normal finding.
+- Judge the change **as a whole**, not hunk by hunk, and read the **final state**, not the diff.
+- Ask what can be **deleted**: a payload copied to a second call site, a test that is a weaker
+  copy of its neighbour, a rule re-explained where it's used instead of linked, prose an LLM
+  already knows (**LLM instructions only** — see § Human-Facing Docs for why product docs are
+  the opposite).
+- Label these `[D]` — they are proposals, not rule violations. An outright defect found here is
+  just an `[H]`/`[M]`, as anywhere else.
 
-`[H]` correctness/security findings skip this pass — emit immediately.
+**Re-run this pass after findings are applied** ([workflow.md § Post-completion checklist](workflow.md#post-completion-checklist), step 6): fixing one
+thing is where the next defect usually appears, and this pass is the only one that sees it.
+
+## Human-Facing Docs
+
+For `*.md` outside `docs/llm/` — product docs and the root `README`. § Self-Check already applies
+(Process Checks, both modes); these add what only docs can get wrong:
+
+- **True right now.** Every claim checkable against the code, and checked. A doc that promises
+  behavior the code doesn't have is worse than no doc — it is trusted.
+- The claim's scope matches the code's: no "always" where the code has an exception.
+
+**Do not apply "non-obvious only" here** — that rule is for LLM instructions. These docs explain
+concepts to a person on purpose ([DEPLOY.md](../../DEPLOY.md) is a learning guide), so removing an
+explanation because a model already knows it destroys their point.
 
 ## Triggers
 
 | Trigger (changed paths / file types)                  | DOC to read                                                                  |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Any change under `src/**`                             | `docs/llm/rules/architecture.md`, `docs/llm/rules/development-philosophy.md` |
+| A new or changed `catch` / error path in `src/**`     | `docs/llm/rules/observability.md`                                            |
 | `*.ts`                                                | `docs/llm/rules/code-style.md`, `docs/llm/rules/typescript.md`               |
 | `*.spec.ts`, `*.e2e-spec.ts`, `test/**`               | `docs/llm/rules/testing.md`                                                  |
 | `docs/llm/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md` | `docs/llm/rules/llm-skills-guide.md`                                         |
+| Other `*.md` (product docs, root `README`)            | § Human-Facing Docs (above)                                                  |
 
 ## Process Checks
 
@@ -62,18 +96,18 @@ Before emitting any `[M]` / `[L]` candidate, do a second-pass Pattern Check — 
 | Self-Check      | Both   | [development-philosophy.md § Self-Check](development-philosophy.md#self-check)                                                                 |
 | Commit messages | Both   | `docs/llm/commands/git/rules/changes-message-format-rules.md` § 1                                                                              |
 | PR title + body | Remote | `docs/llm/commands/git/rules/changes-message-format-rules.md` § 2                                                                              |
-| DOC updates     | Both   | [workflow.md](workflow.md) post-completion step 6 — docs updated when architecture/patterns changed                                            |
+| DOC updates     | Both   | Every doc the change affects updated in the same change (ENTRY_POINT § Keep docs current)                                                      |
 | Tests           | Both   | New endpoints/services covered per `docs/llm/rules/testing.md`                                                                                 |
 | CI              | Remote | `gh pr checks` green. Failing job caused by this PR → `[H]`. Also failing on `main` → `[Q]` "pre-existing". Still running → note, don't block. |
 
 ## Output Format
 
-Start with a one-line coverage receipt, then findings grouped by file. Skip files with no issues. Within a file, order findings **H → M → L → D → Q**.
+Start with a one-line coverage receipt, then findings grouped by file, **primary tier first** (§ File Priority). Skip files with no issues. Within a file, order findings **H → M → L → D → Q**.
 
 ```
 ## Review
 
-Reviewed: N/N files | findings: <H>H + <M>M + <L>L | DOCs: code-style.md, … | mode: <local|remote>
+Reviewed: N/N files (P primary + S secondary) | findings: <H>H + <M>M + <L>L + <D>D | DOCs: code-style.md, … | mode: <local|remote>
 
 ### `path/to/file.ts`
 - [H] Description of the issue
@@ -83,9 +117,10 @@ Reviewed: N/N files | findings: <H>H + <M>M + <L>L | DOCs: code-style.md, … | 
   SA: How to fix (cite `file:line` of canonical usage for Pattern Check findings)
 
 ## Improvement plan
-1. **Fix first** — `[H]` findings (bugs, security)
-2. **Refactor** — `[M]` findings (pattern violations, architecture)
-3. **Polish** — `[L]` findings (style, minor)
+1. **Fix first** — `[H]` findings (bugs, security). The only tier fixed mid-task.
+2. **Refactor** — `[M]` findings (pattern violations, architecture) → to log
+3. **Polish** — `[L]` findings (style, minor) → to log
+4. **Discuss** — `[D]` proposals (§ Whole-Change Pass, stale instructions): accept or reject each explicitly
 
 ## Skipped (pattern already followed)
 - `path/to/file.ts` — what was checked, dominant pattern cited as `file:line`
@@ -97,6 +132,10 @@ Under-coverage (`N < total`) → `[H]` finding listing the missing files, not a 
 
 ## Reflection
 
-Propose updates to shared instructions (`docs/llm/`, `.claude/skills/`) only when grounded in a real review finding — specific, minimal. Skip if nothing came up.
+This review reports; it never edits. When a finding shows an instruction is stale or misleading,
+emit a `[D]` naming the file and section, so the Reflection step in
+[workflow.md](workflow.md#post-completion-checklist) can apply it as a normal reviewed change.
 
-**DOC vs code:** when multiple files violate the same rule the same way, consider whether the DOC is stale (and update it) instead of fixing each file — massive same-shape violations signal the convention has shifted.
+**DOC vs code:** when multiple files violate the same rule the same way, say so — a same-shape
+violation across files usually means the convention shifted and the DOC is stale, so fixing the
+DOC beats fixing each file.

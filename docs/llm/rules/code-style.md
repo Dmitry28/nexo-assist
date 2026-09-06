@@ -2,13 +2,9 @@
 
 ## Naming
 
-- Descriptive variables with auxiliary verbs: `isLoading`, `hasError`, `hasPermission`.
 - Boolean flags follow **verb + noun** order with the resource explicit (`isUserCreationAllowed`), never noun + verb or a bare verb without a resource (`isCreating`).
-- NestJS file conventions: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
-- **Named exports** for all modules, services, utilities (no default exports except framework requirements).
-- File names: kebab-case (`users.service.ts`).
-- Classes: PascalCase (`UsersService`).
-- Interfaces / type aliases: PascalCase (enforced via ESLint `naming-convention`).
+- **Named exports** everywhere (no default exports except where a framework demands one).
+- File names kebab-case, suffixed by role: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
 
 ## Constants
 
@@ -17,7 +13,10 @@
 
 ## Function Parameters
 
-2+ parameters → object parameter:
+3+ parameters, or any two adjacent same-typed/boolean arguments a call site could
+swap silently → object parameter. Two clearly-distinct params stay positional
+(`notify(chatId, text)`), as do pairs mirroring a platform API
+(`withParam(url, key, value)` ~ `URLSearchParams.set`).
 
 ```typescript
 // ❌
@@ -30,9 +29,6 @@ function send(params: { message: string; channel: string; retries: number }) {}
 ## NestJS Specifics
 
 - One class per file.
-- DTOs use `class-validator` decorators (`@IsString()`, `@IsEmail()`, etc.) and `@ApiProperty` for OpenAPI.
-- Services contain business logic only — no HTTP concerns.
-- Controllers handle HTTP only — delegate to services; throw NestJS exceptions (`NotFoundException`, …).
 - Config: inject the typed `AppConfig` via `@Inject(configuration.KEY)` (see [architecture.md](architecture.md#config-access)) — never `process.env` or string-path `ConfigService.get()` inside modules.
 - Use the `@/*` path alias for intra-`src` imports across folders.
 
@@ -53,19 +49,25 @@ if (hasActivePaidAccess) { … }
 
 ## Comments
 
-- Plain `//` comments explain non-obvious WHY — the dominant codebase style (e.g. `src/app.setup.ts`, `src/main.ts`).
-- `TODO` and `FIXME` mark actionable items and must include a priority `[H|M|L]` and clear description.
+- Comments explain non-obvious WHY, never WHAT — well-named identifiers carry intent. Default to none.
+- `NOTE:` flags non-obvious logic or technical behavior — a hidden constraint, subtle invariant, workaround, or surprising API behavior; also on a method/field whose name doesn't fully convey its meaning (e.g. `getSeen`).
+- Plain `//` is fine for brief context (dominant style, e.g. `src/main.ts`, `src/app.module.ts`).
+- `TODO` and `FIXME` mark actionable items and must include a priority `[H|M|L]` and clear
+  description. The priority goes **before the colon** (`TODO [M]: …`), not at the end of the
+  sentence. A marker counts wherever it opens a comment, in any letter case and whatever
+  punctuation follows — `TODO fix later`, `@todo` and `TODO(owner):` are violations too.
+  Enforced by `npm run lint` well beyond the `.ts` ESLint sees; the exact scope and its
+  deliberate limits live in `scripts/lint/check-todo-format.js`, not restated here.
 - Always in English.
-- Default to writing no comments — only add when the WHY is non-obvious (a hidden constraint, subtle invariant, workaround).
-- Never narrate WHAT the code does (well-named identifiers do that).
 - Never remove relevant existing comments.
 
 Format:
 
 ```typescript
-// Explanation of non-obvious logic or context.
-// TODO: what needs to be done [H|M|L]
-// FIXME: what is broken and why [H|M|L]
+// Brief context.
+// NOTE: non-obvious logic or technical behavior.
+// TODO [H|M|L]: what needs to be done
+// FIXME [H|M|L]: what is broken and why
 ```
 
 ## General

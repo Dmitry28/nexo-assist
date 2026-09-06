@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { SpanStatusCode, trace } from '@opentelemetry/api';
+import * as Sentry from '@sentry/nestjs';
 import type { Request, Response } from 'express';
 
 interface ErrorResponseBody {
@@ -65,6 +66,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         `${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
+      // A 5xx is a bug we must hear about — logs alone are not read.
+      Sentry.captureException(exception);
     }
 
     const body: ErrorResponseBody = {

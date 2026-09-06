@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
-import type { Environment, LogLevel } from './env.validation';
-import { validateEnv } from './env.validation';
+import type { LogLevel } from './env.validation';
+import { AppEnv, Environment, validateEnv } from './env.validation';
 
 /**
  * Typed, namespaced config object. Inject the whole object by token:
@@ -11,7 +11,13 @@ import { validateEnv } from './env.validation';
  *   app.get<AppConfig>(configuration.KEY)
  */
 export interface AppConfig {
-  env: Environment;
+  /** Deployment stage — drives app behavior. */
+  appEnv: AppEnv;
+  /** Derived from `appEnv` — use these instead of comparing `appEnv` inline. */
+  isDevelopment: boolean;
+  isStaging: boolean;
+  isProduction: boolean;
+  isTest: boolean;
   port: number;
   apiPrefix: string;
   apiVersion: string;
@@ -20,6 +26,30 @@ export interface AppConfig {
   logLevel: LogLevel;
   throttleTtl: number;
   throttleLimit: number;
+  /** Telegram bot token; `undefined` keeps the bot disabled. */
+  telegramBotToken: string | undefined;
+  /** Telegram id of the owner: `/stats`, and `/check` in production; `undefined` = no admin. */
+  adminTelegramId: number | undefined;
+  /** Cron expression for the daily subscription check. */
+  watchCron: string;
+  /** Base pause between subscription polls, in ms. */
+  watchMinDelayMs: number;
+  /** Extra random pause (0..this) added to the base, in ms. */
+  watchJitterMs: number;
+  /** Postgres connection URL (local docker by default; Neon in staging/prod). */
+  databaseUrl: string;
+}
+
+/** Derived `appEnv` flags — the single mapping, shared with test fixtures. */
+export function stageFlags(
+  appEnv: AppEnv,
+): Pick<AppConfig, 'isDevelopment' | 'isStaging' | 'isProduction' | 'isTest'> {
+  return {
+    isDevelopment: appEnv === AppEnv.Development,
+    isStaging: appEnv === AppEnv.Staging,
+    isProduction: appEnv === AppEnv.Production,
+    isTest: appEnv === AppEnv.Test,
+  };
 }
 
 /**
@@ -29,15 +59,30 @@ export interface AppConfig {
  */
 export default registerAs('app', (): AppConfig => {
   const env = validateEnv(process.env);
+  // NOTE: APP_ENV is the deployment stage; default to test under jest, else development.
+  const appEnv =
+    env.APP_ENV ?? (env.NODE_ENV === Environment.Test ? AppEnv.Test : AppEnv.Development);
   return {
-    env: env.NODE_ENV,
+    appEnv,
+    ...stageFlags(appEnv),
     port: env.PORT,
     apiPrefix: env.API_PREFIX,
     apiVersion: env.API_VERSION,
     corsOrigins:
-      env.CORS_ORIGIN === '*' ? '*' : env.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+      env.CORS_ORIGIN === '*'
+        ? '*'
+        : // filter(Boolean): an empty CORS_ORIGIN → an empty allowlist (no cross-origin), not [''].
+          env.CORS_ORIGIN.split(',')
+            .map((origin) => origin.trim())
+            .filter(Boolean),
     logLevel: env.LOG_LEVEL,
     throttleTtl: env.THROTTLE_TTL,
     throttleLimit: env.THROTTLE_LIMIT,
+    telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+    adminTelegramId: env.ADMIN_TELEGRAM_ID,
+    watchCron: env.WATCH_CRON,
+    watchMinDelayMs: env.WATCH_MIN_DELAY_MS,
+    watchJitterMs: env.WATCH_JITTER_MS,
+    databaseUrl: env.DATABASE_URL,
   };
 });

@@ -11,36 +11,54 @@ src/
 ├── config/
 │   ├── configuration.ts   # registerAs('app', ...) — typed AppConfig + single validation point
 │   └── env.validation.ts  # class-validator schema; single source of defaults; fail-fast on boot
-├── common/                # Cross-cutting building blocks
+├── database/                 # TypeORM CLI data-source + generated migrations
+│   ├── data-source.ts        # DataSource for the migration CLI (separate from the Nest module)
+│   └── migrations/           # generated schema migrations
+├── common/                # Cross-cutting building blocks (never import from modules/)
 │   ├── filters/           # Global exception filters (consistent error JSON)
-│   └── dto/               # Shared DTOs — PaginationQueryDto, PaginatedResponse, @ApiPaginatedResponse
+│   └── url.ts             # Generic URL helpers (extract/withParam/matchesHost)
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
 ├── metrics/            # MetricsModule + Prometheus controller override; @SkipThrottle()
 └── modules/
-    └── <feature>/      # Feature module — copy the `users` shape
-        ├── dto/
-        ├── entities/
-        ├── <feature>.controller.ts
-        ├── <feature>.service.ts
-        └── <feature>.module.ts
+    ├── <feature>/      # Feature module — mirror an existing one (e.g. subscriptions)
+    │   ├── dto/
+    │   ├── entities/
+    │   ├── __tests__/       # specs (+ fixtures) for this layer
+    │   ├── <feature>.controller.ts
+    │   ├── <feature>.service.ts
+    │   └── <feature>.module.ts
+    └── sources/        # Source-plugin layer (specialized module)
+        ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
+        ├── source-registry.ts  # Resolves an adapter by URL/id
+        ├── sources.module.ts
+        ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
+        └── <site>/             # One adapter per site (kufar, realt) + parser
 ```
+
+Specs live in a `__tests__/` folder within their own layer (not beside the source) — see [testing.md](testing.md#layout).
 
 ## Module Rules
 
 - Each feature = one NestJS module in `src/modules/<feature>/`.
+- A module without HTTP (bot, background worker, domain service) omits the controller — e.g. `telegram`, `subscriptions`.
+- Split a growing service into focused collaborators (e.g. `telegram.service.ts` lifecycle + `telegram.handlers.ts` logic); keep files small.
 - A module exports only what other modules explicitly need.
 - Shared layers (`common/`, `config/`) never import from `modules/` — enforced by ESLint `import-x/no-restricted-paths`.
 - `@Global()` only for truly app-wide shared infrastructure.
 
-## Layer Responsibilities
+## Environments
 
-| Layer      | Responsibility                                                     |
-| ---------- | ------------------------------------------------------------------ |
-| Controller | HTTP only — parse request via DTOs, call service, shape response   |
-| Service    | Business logic — no HTTP, no Express/req objects                   |
-| Module     | Wire dependencies, declare exports                                 |
-| DTO        | Input validation via `class-validator` + `@ApiProperty`            |
-| Entity     | API-facing model (kept separate from any future persistence model) |
+Two separate vars — never branch app logic on `NODE_ENV`:
+
+| Stage      | `APP_ENV`     | Where         | `NODE_ENV` (technical) |
+| ---------- | ------------- | ------------- | ---------------------- |
+| local      | `development` | your machine  | development            |
+| staging    | `staging`     | `dev` branch  | production             |
+| production | `production`  | `main` branch | production             |
+| test       | `test`        | jest          | test                   |
+
+- **`APP_ENV`** is the single source for app behavior. Branch via the derived flags `appConfig.isProduction` / `isStaging` / `isDevelopment` / `isTest`, not inline comparisons.
+- **`NODE_ENV`** stays technical (framework/tooling optimizations). `APP_ENV` defaults to `test` under jest, else `development`.
 
 ## Config Access
 
@@ -65,56 +83,37 @@ process.env.PORT;
 this.config.get('app.port');
 ```
 
+**One exception: credential-like values** (a proxy URL with a password, a watchdog ping URL). They
+stay out of `AppConfig` because the bootstrap logs the whole config object — declare them in the
+schema (so an invalid value still fails at boot) and read them from `process.env` where they are
+used, saying why in the schema docblock. Precedents: `sources/scraping/http.ts`,
+`health/heartbeat.service.ts`.
+
 ## Adding a New Feature Module
 
-1. Create `src/modules/<feature>/` mirroring `users/`.
-2. DTOs in `src/modules/<feature>/dto/` with `class-validator` + `@ApiProperty`.
-3. Keep the entity API-facing — never leak ORM internals.
-4. Throw Nest HTTP exceptions; the global `AllExceptionsFilter` formats them.
-5. Register the module in `src/app.module.ts`.
-6. Add a `*.service.spec.ts` (unit) and extend `test/app.e2e-spec.ts`.
+Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What is ours:
 
-## CLI Scripts (`src/scripts/`)
+- DTOs in `dto/` (`class-validator` + `@ApiProperty`), entities in `entities/`; **map entities to
+  DTOs at the controller boundary** — never return a raw entity.
+- Throw Nest HTTP exceptions; the global `AllExceptionsFilter` shapes the response.
+- Schema changes only via a generated migration (see below).
 
-For seed scripts, one-shot migrations, admin tasks, or anything that needs the DI container without HTTP, use `NestFactory.createApplicationContext` instead of `NestFactory.create`:
+## Database & migrations
 
-```typescript
-// src/scripts/<name>.ts
-import { NestFactory } from '@nestjs/core';
+Postgres via TypeORM. `TypeOrmModule.forRootAsync` (in `app.module.ts`) wires the app;
+`synchronize: false` — schema changes go **only** through generated migrations. The
+migration CLI uses a standalone `src/database/data-source.ts` (separate from the Nest
+module): `npm run migration:generate|run|revert|show`.
 
-import { AppModule } from '@/app.module';
-import { SomeService } from '@/modules/<feature>/<feature>.service';
-
-async function main(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['log', 'warn', 'error'],
-  });
-  try {
-    await app.get(SomeService).doSomething();
-  } finally {
-    await app.close();
-  }
-}
-
-void main();
-```
-
-Run via (install `ts-node` + `tsconfig-paths` as devDependencies with the first script — they are intentionally absent until then):
-
-```jsonc
-// package.json
-"scripts": {
-  "task:<name>": "ts-node -r tsconfig-paths/register src/scripts/<name>.ts"
-}
-```
-
-This keeps maintenance work in the same dependency graph as the app — no duplicated bootstrap, no out-of-band code.
+For one-off DI scripts (seeds, admin tasks) use `NestFactory.createApplicationContext` in
+`src/scripts/` via a `"task:<name>": "ts-node -r tsconfig-paths/register …"` script
+(`ts-node`/`tsconfig-paths` are already devDependencies).
 
 ## Adding a New Env Variable
 
 Update **all of these** in lockstep:
 
 1. `src/config/env.validation.ts` — declare on `EnvironmentVariables` with a validator + default (the single source of truth).
-2. `src/config/configuration.ts` — extend `AppConfig` and map it.
+2. `src/config/configuration.ts` — extend `AppConfig` and map it. Skip for credential-like values (see § Config Access) — they are read where used.
 3. `.env.example` — document it.
 4. `k8s/configmap.yaml` — add it when the production value must differ from the default.

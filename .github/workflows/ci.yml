@@ -8,11 +8,28 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded runs are cancelled to save minutes — but never on `main`, which deploys.
+  # Cancelling there kills the SSH session mid-deploy, so deploy.sh dies before its rollback
+  # can run and the bot stays down. On other refs there is nothing to leave half-done.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
 
@@ -46,16 +63,103 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run migrations
+        run: npm run migration:run
+
       - name: E2E tests
         run: npm run test:e2e
 
   docker-and-k8s:
     runs-on: ubuntu-latest
+    needs: build-and-test # never publish an image from a commit that failed lint/typecheck/tests
+    permissions:
+      contents: read
+      packages: write # push the image to GHCR
     steps:
       - uses: actions/checkout@v7
 
-      - name: Docker build
-        run: docker build -t nexo-assist:ci .
-
       - name: Validate k8s manifests
         run: kubectl kustomize k8s/ > /dev/null
+
+      # QEMU + buildx: the app node is Hetzner CX23 (amd64), so amd64 is what actually
+      # deploys; arm64 is kept so the image is not tied to one host architecture (an ARM box
+      # or an Apple-silicon laptop runs it too). The arm64 half is emulated, hence slower —
+      # drop it, not amd64, if that ever stops being worth the minutes.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # Push only on branch pushes (dev/main); PRs just build to validate the Dockerfile.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }} # metadata-action lowercases the name
+          # `latest` follows production, i.e. `main` — not the default branch, which is `dev`
+          # (where we integrate and test locally before promoting), so no {{is_default_branch}}.
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy the commit that was just built. Only on a push to `main` — production is promoted
+  # from `dev` by merging it here (never from a PR — a fork must not be able to reach the
+  # cluster) — and only after tests AND the image are green.
+  deploy:
+    needs: [build-and-test, docker-and-k8s]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One deploy at a time; a newer commit supersedes an older one still waiting.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      # No kubeconfig or cluster port is exposed: we SSH in, and the key on the server is
+      # restricted to running deploy.sh (see deploy/setup-server.sh), so it can do nothing else.
+      - name: Deploy over SSH
+        env:
+          CD_SSH_KEY: ${{ secrets.CD_SSH_KEY }}
+          CD_HOST: ${{ secrets.CD_HOST }}
+          CD_HOST_KEY: ${{ secrets.CD_HOST_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$CD_SSH_KEY" > ~/.ssh/cd_key
+          chmod 600 ~/.ssh/cd_key
+          # Pin the host key rather than ssh-keyscan it — why, in docs/DEPLOY.md §5b.
+          # TODO [L]: validate CD_SSH_KEY too (empty/mangled reads as "Permission denied", i.e.
+          # looks like a server problem), and require a base64 field in CD_HOST_KEY —
+          # "ssh-ed25519" alone passes today and yields an obscure ssh error instead of this one.
+          if [ -z "$CD_HOST" ]; then
+            echo "::error::CD_HOST is not set — see docs/DEPLOY.md §5b."
+            exit 1
+          fi
+          case "$CD_HOST_KEY" in
+            ssh-* | ecdsa-*) ;;
+            *)
+              echo "::error::CD_HOST_KEY is missing or malformed — refusing to deploy without verifying the host. Its value is printed by deploy/setup-server.sh on the box; see docs/DEPLOY.md §5b."
+              exit 1
+              ;;
+          esac
+          printf '%s %s\n' "$CD_HOST" "$CD_HOST_KEY" > ~/.ssh/known_hosts
+          # The sha is the only argument the server accepts; it validates it before use.
+          ssh -i ~/.ssh/cd_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            deploy@"$CD_HOST" "${{ github.sha }}"

@@ -8,6 +8,14 @@ RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
+# ---- Dev stage (hot-reload; source is bind-mounted at runtime, node_modules kept) ----
+FROM node:24-alpine AS dev
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+CMD ["npm", "run", "start:dev"]
+
 # ---- Runtime stage ----
 FROM node:24-alpine AS runtime
 ENV NODE_ENV=production

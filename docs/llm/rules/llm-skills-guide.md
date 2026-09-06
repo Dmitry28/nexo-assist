@@ -17,6 +17,13 @@ Rules and skills must be:
 - **Essential only** — no redundant explanations or excessive examples.
 - **Non-obvious only** — skip what an LLM can easily infer from the code.
 - **Actionable** — focus on what to do, not what not to do.
+- **Cold-reread before finalizing** — read the final text as someone without your context: catch
+  self-contradictions, and cut qualifiers (_especially_, _mainly_) that fit the example you had in
+  mind but not the general rule.
+- **Idiomatic** — skill/command mechanics follow the
+  [Claude Code docs](https://code.claude.com/docs/en/overview) and
+  [Cookbook](https://github.com/anthropics/claude-cookbooks); don't invent local conventions
+  where an official one exists.
 
 ## Cross-references
 
@@ -31,7 +38,7 @@ A skill exists to give Claude **discoverability** (auto-load on triggers) or **a
 
 ## Skill File Format (`.claude/skills/<name>/SKILL.md`)
 
-8–15 lines total.
+8–15 lines total. The filename must be exactly `SKILL.md` — nothing else is discovered.
 
 ```yaml
 ---
@@ -43,39 +50,47 @@ allowed-tools: Read
 Read and apply [topic] rules from [docs/llm/rules/topic.md](../../../docs/llm/rules/topic.md).
 ```
 
-### Frontmatter fields
+### Frontmatter
 
-| Field                      | Required | Description                                                                                             |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `name`                     | yes      | Skill identifier, used in `/name`.                                                                      |
-| `description`              | yes      | Trigger description, under 200 chars.                                                                   |
-| `user-invocable`           | no       | Show in `/` menu (default: `false`).                                                                    |
-| `disable-model-invocation` | no       | Only user can invoke (default: `false`).                                                                |
-| `context`                  | no       | `conversation` (default) — runs in current context; `fork` — runs in isolated context, returns summary. |
-| `argument-hint`            | no       | Placeholder hint shown after `/name` in menu.                                                           |
-| `allowed-tools`            | no       | Restrict available tools for this skill.                                                                |
+Fields and their defaults — [Claude Code docs](https://code.claude.com/docs/en/skills); don't
+restate them here. Our choices:
+
+- **Background rule** (auto-loaded on triggers): `user-invocable: false` — the default is `true`.
+- **Command** (`/name` only): `disable-model-invocation: true`.
+- **Large output** (diffs, reviews, PR descriptions): `context: fork`, so the output stays out of
+  the main conversation.
+
+**`allowed-tools` grants, it does not gate.** It pre-approves the listed tools for that turn —
+everything else still works, it just prompts, which silently stalls an unattended run. The field
+that removes a tool is `disallowed-tools`. List what the skill's doc actually tells it to run;
+`.claude/settings.json` already pre-approves much of it project-wide.
+
+**Bash patterns:** `Bash(npm:*)` and `Bash(npm *)` are equivalent, but the `:*` shorthand is only
+recognized at the **end** of a pattern — `Bash(npm:ci)` matches the literal string `npm:ci`, never
+`npm ci`.
+
+### Long-running commands
+
+A forked skill reports nothing until it finishes, so a stall looks exactly like work. Print one
+line per step (`step 3 — migrations applied`), and never let a single command run silently for
+minutes: pipe long installs, test runs and deploys through `tail` and report the tail.
+
+### Body beyond the link
+
+Two things may precede the link to the content doc; everything else belongs in that doc:
+
+- `$ARGUMENTS` — the argument string as typed (`Arguments: $ARGUMENTS`); `$0`, `$1` for positional.
+- `` !`<command>` `` — runs before the skill reaches Claude and substitutes its output, so the
+  skill opens with live data (``Current branch: !`git branch --show-current` ``). The command needs
+  its own `allowed-tools` entry.
 
 ### Description rules
 
-- **Specific** — mention file types, features, or actions.
-- **Positive triggers** — "Use when working with…" (not "Do NOT use for…").
-- **Concise** — under 200 chars.
-- **Keyword-rich** — file extensions, domain terms, action verbs.
-
-Examples:
+One line, ≤200 chars (the platform allows more, but every description is loaded in every
+session). Specific — file types, domain terms, action verbs — and phrased as a positive trigger:
 
 - ✅ "Code review rules — CCR labels and checklist. Use when reviewing PRs."
 - ❌ "Use when writing code" (too broad).
-
-## Skill Types
-
-| Type           | Config                                                     | When triggered                      |
-| -------------- | ---------------------------------------------------------- | ----------------------------------- |
-| **Background** | `user-invocable: false`                                    | Auto-loaded by Claude when relevant |
-| **Command**    | `user-invocable: true` + `disable-model-invocation: true`  | Only via `/skill-name`              |
-| **Hybrid**     | `user-invocable: true` + `disable-model-invocation: false` | Both Claude and `/skill-name`       |
-
-Command skills with large output (diffs, reviews, PR descriptions) should use `context: fork` to avoid polluting the main conversation context.
 
 ## Adding a New Skill
 
