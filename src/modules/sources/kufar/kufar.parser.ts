@@ -1,4 +1,4 @@
-import { parseNextData } from '../scraping/next-data';
+import { asRecord, parseNextData } from '../scraping/next-data';
 import type { Listing } from '../source-adapter';
 
 /** Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read. */
@@ -36,12 +36,11 @@ export function extractPage(html: string): KufarPage {
   const data = parseNextData(html);
   if (!data) throw new Error('kufar: __NEXT_DATA__ missing or unparseable');
 
-  const props = data.props as Record<string, unknown> | undefined;
-  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  const props = asRecord(data.props);
+  const pageProps = asRecord(props?.pageProps);
   // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
-  const initialState = (pageProps?.initialState ?? props?.initialState) as
-    Record<string, unknown> | undefined;
-  const listing = initialState?.listing as Record<string, unknown> | undefined;
+  const initialState = asRecord(pageProps?.initialState ?? props?.initialState);
+  const listing = asRecord(initialState?.listing);
   const ads = listing?.ads as RawKufarAd[] | undefined;
   if (!Array.isArray(ads)) throw new Error('kufar: listing.ads missing — page layout changed?');
   const pagination = (listing?.pagination as RawPagination[] | undefined) ?? [];

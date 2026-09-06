@@ -4,6 +4,7 @@ import type { Bot, Context } from 'grammy';
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
+import { makeSubscription } from '@/__tests__/helpers/subscription';
 import { AppEnv } from '@/config/env.validation';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
@@ -51,7 +52,7 @@ const makeCtx = (over: { text?: string; userId?: number; match?: RegExpMatchArra
 };
 
 const sub = (over: Partial<Subscription> = {}): Subscription =>
-  ({ id: 'sub-1', user: { telegramId: 1 }, source: 'kufar', url: 'u1', ...over }) as Subscription;
+  makeSubscription({ url: 'u1', ...over });
 
 // Collaborators are mocked — these tests cover the bot conversation (pending nonces,
 // ownership, replies), not persistence (the DB layer is covered by the integration e2e).
@@ -107,9 +108,12 @@ describe('TelegramHandlers', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  const pressButton = async (data: string, userId = 1) => {
+  // NOTE: 'anonymous' rather than `undefined` — a default parameter fires on an explicit
+  // `undefined`, so that could not express "a sender-less update" at a call site.
+  const pressButton = async (data: string, from: number | 'anonymous' = 1) => {
     const entry = bot.callbacks.find((c) => c.pattern.test(data));
     if (!entry) throw new Error(`no handler for ${data}`);
+    const userId = from === 'anonymous' ? undefined : from;
     const ctx = makeCtx({ userId, match: data.match(entry.pattern) ?? undefined });
     await entry.fn(ctx);
     return ctx;
@@ -303,6 +307,16 @@ describe('TelegramHandlers', () => {
     subscriptions.remove.mockResolvedValue(false);
     const ctx = await pressButton('remove:s1', 999);
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Уже удалено');
+  });
+
+  // The spinner is the only feedback a tap gives. An unanswered callback keeps spinning until
+  // Telegram times it out, which reads as a dead bot — so even a malformed one must be answered.
+  it.each(['remove:s1', 'resume:s1'])('clears the spinner on an anonymous %s tap', async (data) => {
+    const ctx = await pressButton(data, 'anonymous');
+
+    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith();
+    expect(subscriptions.remove).not.toHaveBeenCalled();
+    expect(subscriptions.resume).not.toHaveBeenCalled();
   });
 
   it('/check baselines a pending subscription instead of flooding it as new', async () => {

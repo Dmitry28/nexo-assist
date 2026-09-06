@@ -114,10 +114,14 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
-        this.report(err, sub, 'process');
+        this.report({ err, sub, op: 'process' });
         continue;
       }
-      this.tallySource(sourceStats, sub.source, result === 'poll-failed');
+      this.tallySource({
+        stats: sourceStats,
+        source: sub.source,
+        failed: result === 'poll-failed',
+      });
       if (result === 'blocked') {
         blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
         await this.pauseUser(sub.userId);
@@ -127,11 +131,19 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     await this.alertFailedSources(sourceStats);
   }
 
-  private tallySource(stats: Map<string, SourceStats>, source: string, failed: boolean): void {
-    const s = stats.get(source) ?? { attempts: 0, failures: 0 };
-    s.attempts += 1;
-    if (failed) s.failures += 1;
-    stats.set(source, s);
+  private tallySource({
+    stats,
+    source,
+    failed,
+  }: {
+    stats: Map<string, SourceStats>;
+    source: Subscription['source'];
+    failed: boolean;
+  }): void {
+    const tally = stats.get(source) ?? { attempts: 0, failures: 0 };
+    tally.attempts += 1;
+    if (failed) tally.failures += 1;
+    stats.set(source, tally);
   }
 
   /** Alert the admin about any source whose polls all failed this run (likely a broken adapter). */
@@ -161,7 +173,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         this.subscriptions.countUsers(),
         this.subscriptions.countActive(),
       ]);
-      this.metrics.setTotals(users, active);
+      this.metrics.setTotals({ users, activeSubscriptions: active });
     } catch (err) {
       this.logger.warn({ err }, 'Failed to record totals');
     }
@@ -177,13 +189,13 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
       // The scheduled run — not /check — is where site outages actually land, so this is the
       // path that has to carry `kind: source`; otherwise that split never shows up in practice.
-      this.report(err, sub, 'poll');
+      this.report({ err, sub, op: 'poll' });
       this.metrics.recordPollError(sub.source);
       // Guard the bookkeeping so a DB hiccup can't hide a poll failure from the source
       // tally — otherwise a broken adapter + failing write would suppress the outage alert.
       await this.recordFailure(sub).catch((e: unknown) => {
         this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`);
-        this.report(e, sub, 'record-failure');
+        this.report({ err: e, sub, op: 'record-failure' });
       });
       return 'poll-failed';
     }
@@ -210,24 +222,29 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         await this.watch.markSeen(sub, delivered);
       } catch (err) {
         this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
-        this.report(err, sub, 'mark-seen', { resending: delivered.length });
+        this.report({ err, sub, op: 'mark-seen', details: { resending: delivered.length } });
       }
     }
 
     if (!error) return false;
     if (isBotBlocked(error)) return true;
     this.logger.error({ err: error }, `Delivery failed for subscription ${sub.id}`);
-    this.report(error, sub, 'deliver', { deliveredBefore: delivered.length });
+    this.report({ err: error, sub, op: 'deliver', details: { deliveredBefore: delivered.length } });
     return false;
   }
 
   /** Report a swallowed per-subscription failure — same who/where for every operation. */
-  private report(
-    err: unknown,
-    sub: Subscription,
-    op: ReportOp,
-    details?: Record<string, string | number>,
-  ): void {
+  private report({
+    err,
+    sub,
+    op,
+    details,
+  }: {
+    err: unknown;
+    sub: Subscription;
+    op: ReportOp;
+    details?: Record<string, string | number>;
+  }): void {
     reportUserFacing(err, {
       userId: sub.user.telegramId,
       action: 'daily',

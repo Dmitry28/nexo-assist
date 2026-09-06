@@ -19,7 +19,7 @@ export class RealtAdapter implements SourceAdapter {
   private readonly logger = new Logger(RealtAdapter.name);
 
   matches(url: string): boolean {
-    return matchesHost(url, HOST);
+    return matchesHost({ url, host: HOST });
   }
 
   async fetch(url: string): Promise<Listing[]> {

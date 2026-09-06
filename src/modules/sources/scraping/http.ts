@@ -54,12 +54,17 @@ export class SourceUnavailableError extends Error {
  * `redirect: 'manual'` we resolve each `Location` (relative ones against the current URL) and
  * reject an off-host hop before following it.
  */
-async function fetchFollowingHost(
-  url: string,
-  host: string,
-  signal: AbortSignal,
-  useProxy: boolean,
-): Promise<Response> {
+async function fetchFollowingHost({
+  url,
+  host,
+  signal,
+  useProxy,
+}: {
+  url: string;
+  host: string;
+  signal: AbortSignal;
+  useProxy: boolean;
+}): Promise<Response> {
   // `dispatcher` is undici's per-request transport hook — set only when this source is proxied.
   const init: RequestInit & { dispatcher?: Dispatcher } = {
     signal,
@@ -83,7 +88,7 @@ async function fetchFollowingHost(
     const location = res.headers.get('location');
     if (location === null) return res; // broken redirect — let the caller's !res.ok check reject it
     const next = new URL(location, currentUrl).toString();
-    if (!matchesHost(next, host)) {
+    if (!matchesHost({ url: next, host })) {
       throw new Error(`Redirected off ${host} (${next}) for ${url}`);
     }
     currentUrl = next;
@@ -110,7 +115,7 @@ export async function fetchHtml({
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchFollowingHost(url, host, controller.signal, useProxy);
+    const res = await fetchFollowingHost({ url, host, signal: controller.signal, useProxy });
     if (!res.ok) {
       throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
     }
