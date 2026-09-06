@@ -8,7 +8,9 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 
 ## How to Review
 
-1. Get the list of changed files and the task source: linked GitHub issue, PR description, the plan agreed in conversation, or — the canonical source for this repo — the product spec [`docs/PRODUCT.md`](../../PRODUCT.md) and roadmap [`docs/PRODUCT_PLAN.md`](../../PRODUCT_PLAN.md).
+1. Get the list of changed files (specs and fixtures read last — they are evidence about the
+   behaviour the diff claims, see [code-review.md § File Priority](code-review.md#file-priority))
+   and the task source: linked GitHub issue, PR description, the plan agreed in conversation, or — the canonical source for this repo — the product spec [`docs/PRODUCT.md`](../../PRODUCT.md) and roadmap [`docs/PRODUCT_PLAN.md`](../../PRODUCT_PLAN.md).
 2. Extract the **acceptance criteria** (AC) from the task source as an explicit list. No written AC → reconstruct them from the agreed plan and confirm the list before reviewing.
 3. For each AC — grep / read the diff to locate its implementation. Record `file:line`. Missing → `[H]`; ambiguous → `[M]`.
 4. Walk the **Logic Checklist** below against the diff and the task.
@@ -20,7 +22,10 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 
 ### Task alignment
 
-- Every acceptance criterion is met — letter **and** intent.
+- Every acceptance criterion is met in **intent**. Code diverging from a criterion's letter is a
+  finding only when the divergence is unexplained or leaves the pain unfixed — a deliberate, better
+  solution stated in the PR is `[~]`, not `[H]`
+  ([why](development-philosophy.md#core-principles)).
 - No out-of-scope changes; if any, justified in the PR description.
 - Behavior matches what a real caller does, not just the happy path.
 - **Nothing left half-done** — the awkward parts of the task too, not only the easy ones.
@@ -52,7 +57,7 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 
 Start with a one-line coverage receipt, then the AC traceability matrix, then findings grouped by file (H → M → L → D → Q).
 
-AC matrix legend: `[x]` met (concrete `file:line`) · `[~]` ambiguous → `[M]` finding · `[ ]` not implemented → `[H]` finding.
+AC matrix legend: `[x]` met (concrete `file:line`) · `[~]` ambiguous, or solved differently on purpose → `[M]` finding · `[ ]` not implemented → `[H]` finding.
 
 ```
 ## Logic Review
