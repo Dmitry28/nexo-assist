@@ -33,8 +33,10 @@
 - Pass a multi-line body as a **file** (`gh pr create --body-file <path>`, `curl -d @<path>`) —
   never a heredoc or `-d "$(…)"`. Command substitution swallows the builder's failure: the request
   still fires, with an empty or mangled body.
-- `gh api … | jq` reports **jq's** exit status, so a failed call prints nothing and looks like
-  "no data". Re-run without the pipe before believing an empty result.
+- **An empty answer is not evidence of empty data** — a failed call behind `| jq` prints nothing, a
+  wrong path yields `[]`, an ignored filter parameter returns everything, and a listing can omit a
+  field the dedicated endpoint has. Check the raw body once before believing it, and never turn a
+  failed call into a negative result: retry, then report what could not be fetched.
 
 ## PR Lifecycle
 

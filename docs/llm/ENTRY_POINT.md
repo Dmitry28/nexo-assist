@@ -91,6 +91,7 @@ Follow the [Workflow Loop](rules/workflow.md) for every task: Plan → Implement
 | Context budget         | [rules/context-budget.md](rules/context-budget.md)                 |
 | Testing                | [rules/testing.md](rules/testing.md)                               |
 | Dependencies           | [rules/dependencies.md](rules/dependencies.md)                     |
+| Observability          | [rules/observability.md](rules/observability.md)                   |
 | Workflow               | [rules/workflow.md](rules/workflow.md)                             |
 | Step-by-step flow      | [rules/step-by-step-flow.md](rules/step-by-step-flow.md)           |
 | GitHub workflow        | [rules/github.md](rules/github.md)                                 |
