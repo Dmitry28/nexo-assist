@@ -81,8 +81,10 @@ jobs:
       - name: Validate k8s manifests
         run: kubectl kustomize k8s/ > /dev/null
 
-      # QEMU + buildx: build arm64 too, since the target k3s node is ARM (Oracle Ampere);
-      # amd64 stays for local dev / other runtimes. Cross-arch build is emulated (slower).
+      # QEMU + buildx: the app node is Hetzner CX23 (amd64), so amd64 is what actually
+      # deploys; arm64 is kept so the image is not tied to one host architecture (an ARM box
+      # or an Apple-silicon laptop runs it too). The arm64 half is emulated, hence slower —
+      # drop it, not amd64, if that ever stops being worth the minutes.
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
@@ -140,9 +142,9 @@ jobs:
           printf '%s\n' "$CD_SSH_KEY" > ~/.ssh/cd_key
           chmod 600 ~/.ssh/cd_key
           # Pin the host key rather than ssh-keyscan it — why, in docs/DEPLOY.md §5b.
-          # TODO: validate CD_SSH_KEY too (empty/mangled reads as "Permission denied", i.e. looks
-          # like a server problem), and require a base64 field in CD_HOST_KEY — "ssh-ed25519"
-          # alone passes today and yields an obscure ssh error instead of this clear one [L].
+          # TODO [L]: validate CD_SSH_KEY too (empty/mangled reads as "Permission denied", i.e.
+          # looks like a server problem), and require a base64 field in CD_HOST_KEY —
+          # "ssh-ed25519" alone passes today and yields an obscure ssh error instead of this one.
           if [ -z "$CD_HOST" ]; then
             echo "::error::CD_HOST is not set — see docs/DEPLOY.md §5b."
             exit 1

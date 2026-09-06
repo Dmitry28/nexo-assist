@@ -19,5 +19,6 @@
 - [ ] Code follows project conventions (`docs/llm/rules/`)
 - [ ] `npm run lint && npm run typecheck && npm test` pass locally
 - [ ] Tests added/updated
-- [ ] `.env.example` + `env.validation.ts` + `configuration.ts` updated if new env variables
+- [ ] New env variable? All four updated: `env.validation.ts` + `configuration.ts` +
+      `.env.example` + `k8s/configmap.yaml` (see `docs/llm/rules/architecture.md`)
 - [ ] No secrets or sensitive data committed
