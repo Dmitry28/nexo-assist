@@ -73,7 +73,7 @@ npm run start:dev
 | `npm run start:dev`                                            | Run with watch mode                                             |
 | `npm run start:prod`                                           | Run compiled output (`dist/main`)                               |
 | `npm run build`                                                | Compile to `dist/`                                              |
-| `npm run lint`                                                 | ESLint (fails on warnings)                                      |
+| `npm run lint`                                                 | ESLint (fails on warnings) + package & marker checks            |
 | `npm run lint:fix`                                             | ESLint with autofix                                             |
 | `npm run format`                                               | Prettier write                                                  |
 | `npm run format:check`                                         | Prettier check (CI)                                             |

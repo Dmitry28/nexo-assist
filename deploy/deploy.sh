@@ -44,8 +44,8 @@ RENDERED=$(k3s kubectl kustomize "$REPO_DIR/k8s/") || {
   echo "$UNTOUCHED" >&2
   exit 2
 }
-# TODO: assert ALL rendered image lines are equal to the expected one (sort -u) instead of these
-# two greps — an image renamed to e.g. `nexo-assist-migrate:` matches neither and passes [M].
+# TODO [M]: assert ALL rendered image lines are equal to the expected one (sort -u) instead of
+# these two greps — an image renamed to e.g. `nexo-assist-migrate:` matches neither and passes.
 # Both conditions matter: our tag must be there, AND no unsubstituted `nexo-assist:` placeholder
 # may survive — one `images:` entry rewrites both containers today, but nothing enforces that, so
 # a second image name would otherwise leave a partial pin that still passes the positive check.

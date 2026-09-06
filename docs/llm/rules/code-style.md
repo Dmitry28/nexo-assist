@@ -52,7 +52,12 @@ if (hasActivePaidAccess) { … }
 - Comments explain non-obvious WHY, never WHAT — well-named identifiers carry intent. Default to none.
 - `NOTE:` flags non-obvious logic or technical behavior — a hidden constraint, subtle invariant, workaround, or surprising API behavior; also on a method/field whose name doesn't fully convey its meaning (e.g. `getSeen`).
 - Plain `//` is fine for brief context (dominant style, e.g. `src/main.ts`, `src/app.module.ts`).
-- `TODO` and `FIXME` mark actionable items and must include a priority `[H|M|L]` and clear description.
+- `TODO` and `FIXME` mark actionable items and must include a priority `[H|M|L]` and clear
+  description. The priority goes **before the colon** (`TODO [M]: …`), not at the end of the
+  sentence. A marker counts wherever it opens a comment, in any letter case and whatever
+  punctuation follows — `TODO fix later`, `@todo` and `TODO(owner):` are violations too.
+  Enforced by `npm run lint` well beyond the `.ts` ESLint sees; the exact scope and its
+  deliberate limits live in `scripts/lint/check-todo-format.js`, not restated here.
 - Always in English.
 - Never remove relevant existing comments.
 
