@@ -109,6 +109,8 @@ export class EnvironmentVariables {
   /**
    * Telegram bot token from @BotFather. When unset, the bot stays disabled —
    * but the bot IS the product, so production refuses to boot without it.
+   * One bot per environment (dev token in the local `.env`, production token in the cluster
+   * Secret): Telegram serves updates to a single long-polling consumer per token.
    */
   // NOTE: production-only, deliberately not RequiredInProduction() — outside production an empty
   // token means "bot disabled", not a typo, and @IsNotEmpty would start rejecting it.

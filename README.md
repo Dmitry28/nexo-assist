@@ -60,6 +60,10 @@ npm run migration:run  # create the schema
 npm run start:dev
 ```
 
+Put the **dev** bot's token in `.env` (`TELEGRAM_BOT_TOKEN`) — there is one bot per
+environment, and Telegram delivers updates to a single long-polling consumer per token, so the
+production token must never be used locally. Left unset, the app runs with the bot disabled.
+
 - API base URL: `http://localhost:3000/api/v1`
 - Swagger UI: `http://localhost:3000/api/docs` (non-production only)
 - Liveness: `http://localhost:3000/api/v1/health/live`
@@ -175,6 +179,13 @@ Multi-stage build, runs as non-root, ships only production dependencies, with a 
 `dev` image stage, bind-mounts the source, and runs `nest start --watch` — editing `src/**`
 on the host reloads inside the container. `node_modules` stays from the image (anonymous
 volume). To run only the database instead, use `npm run db:up` and `npm run start:dev` on the host.
+
+## Branches & deployment
+
+`dev` is the integration branch — feature branches are cut from it and merged back into it,
+and CI builds every push, but nothing is deployed from `dev`. Releases go out by merging
+`dev → main` after the change has been run locally: a push to `main` triggers the deploy job,
+which rolls that exact commit out to the cluster.
 
 ## Kubernetes
 

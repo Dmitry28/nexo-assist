@@ -4,7 +4,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 ## 1. Plan
 
-- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps ("where is X", "what calls Y", "how does Z work across modules") go to a subagent ([context-budget.md § Delegate the sweeps](context-budget.md#delegate-the-sweeps)).
+- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps ("where is X", "what calls Y", "how does Z work across modules") go to a subagent.
 - Describe the solution; for complex tasks add non-goals, milestones, acceptance criteria.
 - **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs?
 - For complex tasks, document key architectural decisions: what was chosen vs. rejected and why (prevents re-deliberation).
@@ -78,4 +78,4 @@ _(Repeat steps 2–4 for each milestone)_
 
 Complex tasks also keep a progress log in the plan or a scratch file — done / current / key
 decisions / known issues, updated after each milestone — so progress survives context compression
-and a fresh session ([context-budget.md § One session, one phase](context-budget.md#one-session-one-phase)).
+and a fresh session.
