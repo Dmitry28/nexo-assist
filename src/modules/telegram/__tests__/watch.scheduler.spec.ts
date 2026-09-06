@@ -5,6 +5,7 @@ import { GrammyError } from 'grammy';
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
+import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
 import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -19,14 +20,13 @@ import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.sch
 import { WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
-  ({
+  makeSubscription({
     id: String(id),
     userId: String(userId),
     user: { telegramId: userId },
-    source: 'kufar',
     url: `u${id}`,
     consecutiveFailures,
-  }) as Subscription;
+  });
 
 // Collaborators are mocked — the scheduler's job is orchestration, not persistence
 // (the DB layer is covered by the integration e2e).
@@ -311,7 +311,7 @@ describe('WatchScheduler.runDaily', () => {
 
     expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
     expect(metrics.recordPollError).toHaveBeenCalledWith('kufar');
-    expect(metrics.setTotals).toHaveBeenCalledWith(7, 2);
+    expect(metrics.setTotals).toHaveBeenCalledWith({ users: 7, activeSubscriptions: 2 });
   });
 
   it('alerts the admin when a user blocks the bot (403)', async () => {
@@ -451,8 +451,8 @@ describe('WatchScheduler.runDaily overlap', () => {
 
 describe('jitteredDelay', () => {
   it('returns the base with no jitter, and stays within [min, min+jitter]', () => {
-    expect(jitteredDelay(2000, 0)).toBe(2000);
-    expect(jitteredDelay(2000, 3000, () => 0)).toBe(2000); // low end
-    expect(jitteredDelay(2000, 3000, () => 0.999999)).toBe(5000); // high end
+    expect(jitteredDelay({ minMs: 2000, jitterMs: 0 })).toBe(2000);
+    expect(jitteredDelay({ minMs: 2000, jitterMs: 3000, random: () => 0 })).toBe(2000); // low end
+    expect(jitteredDelay({ minMs: 2000, jitterMs: 3000, random: () => 0.999999 })).toBe(5000); // high end
   });
 });

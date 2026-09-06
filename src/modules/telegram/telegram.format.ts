@@ -8,7 +8,6 @@ export const NO_LINK_PREVIEW = { is_disabled: true } as const;
 // Shared char budget with headroom under Telegram's 4096-char message limit (an
 // oversized send throws — and would then be rebuilt oversized and fail on every retry).
 export const MAX_MESSAGE_BUDGET_CHARS = 3500;
-// Digest item-count cap for readability.
 // Items per message, for readability; MAX_LISTINGS_PER_DELIVERY caps the whole delivery.
 export const DIGEST_LIMIT = 10;
 // Clamp a pathological listing — one huge line (long title OR link) must not eat the char
@@ -152,7 +151,7 @@ export const HELP_MESSAGE = [
 ].join('\n');
 
 /** Admin `/stats` snapshot. */
-export const formatStats = (s: {
+export const formatStats = (stats: {
   users: number;
   active: number;
   paused: number;
@@ -160,8 +159,8 @@ export const formatStats = (s: {
 }): string =>
   [
     '📊 Статистика',
-    `👥 пользователей: ${s.users}`,
-    `📋 активных подписок: ${s.active}`,
-    `⏸ на паузе: ${s.paused}`,
-    `🕒 последний прогон: ${s.lastRunAt ? s.lastRunAt.toISOString() : 'не было'}`,
+    `👥 пользователей: ${stats.users}`,
+    `📋 активных подписок: ${stats.active}`,
+    `⏸ на паузе: ${stats.paused}`,
+    `🕒 последний прогон: ${stats.lastRunAt ? stats.lastRunAt.toISOString() : 'не было'}`,
   ].join('\n');

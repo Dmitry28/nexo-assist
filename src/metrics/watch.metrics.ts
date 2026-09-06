@@ -36,7 +36,7 @@ export class WatchMetrics {
   }
 
   /** Snapshot of current totals — set once per run. */
-  setTotals(users: number, activeSubscriptions: number): void {
+  setTotals({ users, activeSubscriptions }: { users: number; activeSubscriptions: number }): void {
     this.users.set(users);
     this.activeSubscriptions.set(activeSubscriptions);
   }

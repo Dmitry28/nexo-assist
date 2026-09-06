@@ -2,7 +2,14 @@ import type { AppConfig } from '@/config/configuration';
 import { stageFlags } from '@/config/configuration';
 import { AppEnv, DEFAULT_DATABASE_URL, LogLevel } from '@/config/env.validation';
 
-/** A valid AppConfig for unit tests; override only what the test cares about. */
+/**
+ * A valid AppConfig for unit tests; override only what the test cares about.
+ *
+ * NOTE: the values are spelled out rather than taken from `configuration()` on purpose — that
+ * factory reads `process.env`, so a developer's exported variables would leak into unit tests
+ * and make them pass or fail per machine. The cost is that a changed default in
+ * env.validation.ts must be mirrored here.
+ */
 export const makeAppConfig = (overrides: Partial<AppConfig> = {}): AppConfig => {
   const merged: AppConfig = {
     appEnv: AppEnv.Development,

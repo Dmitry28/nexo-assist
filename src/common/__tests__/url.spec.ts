@@ -28,7 +28,7 @@ describe('matchesHost', () => {
     ['https://kufar.by:6379/x', false],
     ['not a url', false],
   ])('matchesHost(%s, kufar.by) → %s', (url, expected) => {
-    expect(matchesHost(url, 'kufar.by')).toBe(expected);
+    expect(matchesHost({ url, host: 'kufar.by' })).toBe(expected);
   });
 });
 

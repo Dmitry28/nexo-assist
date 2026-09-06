@@ -20,7 +20,8 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
 
   // Use pino as the framework logger.
-  app.useLogger(app.get(Logger));
+  const logger = app.get(Logger);
+  app.useLogger(logger);
 
   const appConfig = app.get<AppConfig>(configuration.KEY);
 
@@ -33,7 +34,6 @@ async function bootstrap(): Promise<void> {
 
   // Last-resort safety nets. Node's default behaviour leaves the process in an unknown
   // state — log via pino, then exit so the orchestrator (k8s / docker) can restart us.
-  const logger = app.get(Logger);
   // NOTE: pass the text as `msg` inside the object — nestjs-pino treats a trailing string
   // arg as the log *context*, not the message, so a positional message would be lost here.
   // NOTE: report BEFORE exiting and wait for the send — process.exit() would otherwise kill the

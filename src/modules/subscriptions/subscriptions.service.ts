@@ -54,12 +54,8 @@ export class SubscriptionsService {
     // blocked); an active one is a real duplicate.
     if (existing && !existing.pausedAt) throw new DuplicateSubscriptionError();
 
-    // Count active only — auto-paused subs create no scraping load, so they must not lock a
-    // user out. A revive reactivates a paused sub, so it's capped the same as a fresh add.
-    const activeCount = await this.subs.countBy({ userId: user.id, pausedAt: IsNull() });
-    if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) {
-      throw new SubscriptionLimitError();
-    }
+    // A revive reactivates a paused sub, so it's capped the same as a fresh add.
+    await this.assertUnderActiveCap(user.id);
     if (existing) return this.revive(existing); // paused (checked above) → reactivate
     try {
       return await this.subs.save(
@@ -124,6 +120,15 @@ export class SubscriptionsService {
     await this.subs.update({ id }, { pausedAt: new Date() });
   }
 
+  /**
+   * Throw once the user is at the active-subscription cap. Counts active only — auto-paused
+   * subs create no scraping load, so they must not lock a user out.
+   */
+  private async assertUnderActiveCap(userId: Subscription['userId']): Promise<void> {
+    const activeCount = await this.subs.countBy({ userId, pausedAt: IsNull() });
+    if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) throw new SubscriptionLimitError();
+  }
+
   /** Re-activate a paused subscription (user re-sent its URL): clear pause + failure streak. */
   private async revive(sub: Subscription): Promise<Subscription> {
     await this.subs.update({ id: sub.id }, { pausedAt: null, consecutiveFailures: 0 });
@@ -138,8 +143,7 @@ export class SubscriptionsService {
     const sub = await this.subs.findOneBy({ id, user: { telegramId: telegramUserId } });
     if (!sub) return false;
     if (!sub.pausedAt) return true; // already active — nothing to do
-    const activeCount = await this.subs.countBy({ userId: sub.userId, pausedAt: IsNull() });
-    if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) throw new SubscriptionLimitError();
+    await this.assertUnderActiveCap(sub.userId);
     await this.revive(sub);
     return true;
   }
@@ -190,7 +194,7 @@ export class SubscriptionsService {
   // (ON DELETE CASCADE) already rules out orphan rows. A subscription removed mid-run
   // surfaces as a caught insert error in the caller, not a silent no-op.
   markSeen(subscriptionId: string, externalIds: string[]): Promise<void> {
-    return this.insertSeen(this.seen.manager, subscriptionId, externalIds);
+    return this.insertSeen({ manager: this.seen.manager, subscriptionId, externalIds });
   }
 
   /**
@@ -199,17 +203,21 @@ export class SubscriptionsService {
    */
   async seedBaseline(subscriptionId: string, externalIds: string[]): Promise<void> {
     await this.subs.manager.transaction(async (manager) => {
-      await this.insertSeen(manager, subscriptionId, externalIds);
+      await this.insertSeen({ manager, subscriptionId, externalIds });
       await manager.update(Subscription, { id: subscriptionId }, { baselinedAt: new Date() });
     });
   }
 
   // Insert-or-ignore on the composite PK (ON CONFLICT DO NOTHING) — safe to re-mark.
-  private async insertSeen(
-    manager: EntityManager,
-    subscriptionId: string,
-    externalIds: string[],
-  ): Promise<void> {
+  private async insertSeen({
+    manager,
+    subscriptionId,
+    externalIds,
+  }: {
+    manager: EntityManager;
+    subscriptionId: Subscription['id'];
+    externalIds: string[];
+  }): Promise<void> {
     if (externalIds.length === 0) return;
     await manager
       .createQueryBuilder()

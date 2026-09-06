@@ -32,6 +32,18 @@ export enum AppEnv {
 /** Local docker Postgres — the default DB URL, shared with the migration CLI data-source. */
 export const DEFAULT_DATABASE_URL = 'postgres://app:app@localhost:5432/app';
 
+/**
+ * Validate a variable in production — where it is required — and whenever it is set at all, so a
+ * typo outside production still fails at boot instead of silently degrading. `@IsOptional()`
+ * cannot express this: it would skip the required check too.
+ */
+function RequiredInProduction(): PropertyDecorator {
+  return ValidateIf(
+    (env: EnvironmentVariables, value: unknown) =>
+      env.APP_ENV === AppEnv.Production || value !== undefined,
+  );
+}
+
 export enum LogLevel {
   Trace = 'trace',
   Debug = 'debug',
@@ -98,6 +110,8 @@ export class EnvironmentVariables {
    * Telegram bot token from @BotFather. When unset, the bot stays disabled —
    * but the bot IS the product, so production refuses to boot without it.
    */
+  // NOTE: production-only, deliberately not RequiredInProduction() — outside production an empty
+  // token means "bot disabled", not a typo, and @IsNotEmpty would start rejecting it.
   @ValidateIf((env: EnvironmentVariables) => env.APP_ENV === AppEnv.Production)
   @IsString()
   @IsNotEmpty({ message: 'TELEGRAM_BOT_TOKEN is required when APP_ENV=production' })
@@ -110,12 +124,9 @@ export class EnvironmentVariables {
    * look exactly like nothing going wrong. Lives in the Secret, not the ConfigMap — the repo
    * is public and this is a personal id.
    */
-  // Same ValidateIf shape as SCRAPE_PROXY_URL: also validate when merely set, or a typo would
-  // convert to NaN (and an empty value to 0) and silently deny the owner everything.
-  @ValidateIf(
-    (env: EnvironmentVariables) =>
-      env.APP_ENV === AppEnv.Production || env.ADMIN_TELEGRAM_ID !== undefined,
-  )
+  // Validated when merely set too, or a typo would convert to NaN (and an empty value to 0)
+  // and silently deny the owner everything.
+  @RequiredInProduction()
   @IsInt()
   @Min(1, { message: 'ADMIN_TELEGRAM_ID must be a positive id; required when APP_ENV=production' })
   ADMIN_TELEGRAM_ID?: number;
@@ -154,10 +165,7 @@ export class EnvironmentVariables {
    * (`src/health/heartbeat.service.ts`, which explains the mechanism) — whoever holds the URL can
    * fake our pings, and the bootstrap logs the whole config object.
    */
-  @ValidateIf(
-    (env: EnvironmentVariables) =>
-      env.APP_ENV === AppEnv.Production || env.HEARTBEAT_URL !== undefined,
-  )
+  @RequiredInProduction()
   @IsString()
   @IsNotEmpty({ message: 'HEARTBEAT_URL is required when APP_ENV=production' })
   @Matches(/^https?:\/\/\S+$/, { message: 'HEARTBEAT_URL must be an http(s) URL' })
@@ -175,14 +183,9 @@ export class EnvironmentVariables {
    * check a link that is fine. Refusing to boot turns a missing setting into a loud, instant
    * failure (crashloop → rollback) instead of a wrong accusation days later.
    */
-  // Validate when production (then it must be present) or when it is set at all (then it must be
-  // a URL) — `@IsOptional()` can't express that: it would skip the required check too.
   // Production only, deliberately: there is no staging stage yet. Add it in the change that
   // first deploys one — staging shares the datacenter IP, so it would need the proxy too.
-  @ValidateIf(
-    (env: EnvironmentVariables) =>
-      env.APP_ENV === AppEnv.Production || env.SCRAPE_PROXY_URL !== undefined,
-  )
+  @RequiredInProduction()
   @IsString()
   @IsNotEmpty({
     message:

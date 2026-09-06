@@ -73,7 +73,7 @@ npm run start:dev
 | `npm run start:dev`                                            | Run with watch mode                                             |
 | `npm run start:prod`                                           | Run compiled output (`dist/main`)                               |
 | `npm run build`                                                | Compile to `dist/`                                              |
-| `npm run lint`                                                 | ESLint (fails on warnings)                                      |
+| `npm run lint`                                                 | ESLint (fails on warnings) + package & marker checks            |
 | `npm run lint:fix`                                             | ESLint with autofix                                             |
 | `npm run format`                                               | Prettier write                                                  |
 | `npm run format:check`                                         | Prettier check (CI)                                             |
@@ -82,6 +82,7 @@ npm run start:dev
 | `npm run test:cov`                                             | Unit tests with coverage                                        |
 | `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                 |
 | `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                |
+| `npm run dev:docker`                                           | Full local stack in docker with hot-reload                      |
 | `npm run db:up`                                                | Start local Postgres (docker)                                   |
 | `npm run db:down`                                              | Stop local Postgres                                             |
 | `npm run db:reset`                                             | Recreate the DB (wipes data)                                    |
