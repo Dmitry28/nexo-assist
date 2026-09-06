@@ -23,6 +23,8 @@ In e2e, apply `configureApp(app)` from `src/app.setup.ts` after `createNestAppli
 
 For a unit with no injected dependencies, instantiate it directly (`new UsersService()`) — `Test.createTestingModule` earns its ceremony only once providers need wiring.
 
+The global stubs in `src/__tests__/setup/` (Sentry, `undici` fetch) are deliberately generic so most specs need no setup. Bend one for a single case with `mockImplementationOnce` / `mockResolvedValueOnce` on its helper — **never `jest.mock()` the same module inside a spec**, which replaces the shared stub for that whole file and leaves the helpers reading nothing ([observability.md § Testing a report](observability.md#testing-a-report)).
+
 ## Fixtures and Helpers
 
 When the same fixture is rebuilt in 2+ specs, extract it. Reuse generic helpers globally; override only when a specific test needs different behaviour.
