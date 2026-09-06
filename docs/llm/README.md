@@ -17,10 +17,8 @@ Single source of truth: content lives here in `docs/llm/`; skills and agents onl
 - `ENTRY_POINT.md` — always-loaded context; its Quick Reference table lists every rule.
 - `rules/` — background knowledge, one doc per topic.
 - `commands/` — instructions behind user-invocable skills (`/git-commit`, `/review-code`,
-  `/logic-review`, `/pr-description`, `/verify-task-result`, `/refine`, `/session-learnings`).
+  `/logic-review`, `/pr-description`, `/verify-task-result`, `/refine`).
 - `mcp.example.json` — MCP servers reference.
-- `scripts/llm/` (repo root) — tooling a command needs, e.g. the session-log extractor behind
-  `/session-learnings`.
 
 ## MCP Servers
 
