@@ -83,6 +83,7 @@ explanation because a model already knows it destroys their point.
 | Trigger (changed paths / file types)                  | DOC to read                                                                  |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Any change under `src/**`                             | `docs/llm/rules/architecture.md`, `docs/llm/rules/development-philosophy.md` |
+| A new or changed `catch` / error path in `src/**`     | `docs/llm/rules/observability.md`                                            |
 | `*.ts`                                                | `docs/llm/rules/code-style.md`, `docs/llm/rules/typescript.md`               |
 | `*.spec.ts`, `*.e2e-spec.ts`, `test/**`               | `docs/llm/rules/testing.md`                                                  |
 | `package.json`, `package-lock.json`                   | `docs/llm/rules/dependencies.md`                                             |
