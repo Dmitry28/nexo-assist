@@ -18,6 +18,9 @@ resolver), including the `wasm32-wasi` fallback. Local stays green, then `npm ci
 
 ## Bumping
 
+Updates are manual — Dependabot is off, and why is in
+[PRODUCT_PLAN.md § Решения](../../PRODUCT_PLAN.md) ("Обновление зависимостей").
+
 - Bump peer-locked families together (the whole eslint or nest stack) — one package alone fails on
   peer conflicts even when the group would install cleanly.
 - A major that can't install is a **blocker to record**, not a fight to win: revert
