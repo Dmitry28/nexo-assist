@@ -8,10 +8,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Superseded runs are cancelled to save minutes — but never on `dev`, which deploys.
+  # Superseded runs are cancelled to save minutes — but never on `main`, which deploys.
   # Cancelling there kills the SSH session mid-deploy, so deploy.sh dies before its rollback
   # can run and the bot stays down. On other refs there is nothing to leave half-done.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-and-test:
@@ -102,10 +102,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }} # metadata-action lowercases the name
+          # `latest` follows production, i.e. `main` — not the default branch, which is `dev`
+          # (where we integrate and test locally before promoting), so no {{is_default_branch}}.
           tags: |
             type=sha
             type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -119,15 +121,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Deploy the commit that was just built. Only on a push to dev (never from a PR — a fork must
-  # not be able to reach the cluster) and only after tests AND the image are green.
+  # Deploy the commit that was just built. Only on a push to `main` — production is promoted
+  # from `dev` by merging it here (never from a PR — a fork must not be able to reach the
+  # cluster) — and only after tests AND the image are green.
   deploy:
     needs: [build-and-test, docker-and-k8s]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # One deploy at a time; a newer commit supersedes an older one still waiting.
     concurrency:
-      group: deploy-dev
+      group: deploy-prod
       cancel-in-progress: false
     steps:
       # No kubeconfig or cluster port is exposed: we SSH in, and the key on the server is

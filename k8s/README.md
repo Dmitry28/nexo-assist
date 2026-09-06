@@ -2,7 +2,7 @@
 
 Plain manifests wired together with Kustomize — no Helm required.
 
-Applied by CD on every merge to `dev` — `deploy/deploy.sh` pins the image of the deployed
+Applied by CD on every merge to `main` — `deploy/deploy.sh` pins the image of the deployed
 commit and runs `kubectl apply -k`. Manual apply is the fallback when CI is unavailable:
 
 ```bash

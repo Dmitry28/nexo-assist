@@ -22,6 +22,9 @@ export KUBECONFIG=${NEXO_KUBECONFIG:-$HOME/.kube/nexo.yaml}
 SECRET=${SECRET:-nexo-assist-secrets}
 # ADMIN_TELEGRAM_ID is not a credential, but it is the owner's personal Telegram id and the
 # repo is public — so it lives here rather than in the ConfigMap.
+# TELEGRAM_BOT_TOKEN here is the PRODUCTION bot's — never the dev one from a local .env: one
+# token allows one long-polling consumer, so a shared token would make the two steal each
+# other's updates.
 ALL_KEYS=(TELEGRAM_BOT_TOKEN DATABASE_URL SCRAPE_PROXY_URL SENTRY_DSN ADMIN_TELEGRAM_ID HEARTBEAT_URL BACKUP_HEARTBEAT_URL)
 KEYS=("${@:-${ALL_KEYS[@]}}")
 

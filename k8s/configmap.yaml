@@ -6,7 +6,10 @@ metadata:
     app.kubernetes.io/name: nexo-assist
 data:
   NODE_ENV: 'production'
-  # Deployment stage — drives app behavior (set to 'staging' on the dev-branch deploy).
+  # Deployment stage — drives app behavior. The cluster is production, and only production:
+  # `dev` is verified by running it locally against the dev bot, not by a second deploy
+  # (docs/DEPLOY.md § Как код попадает в прод). Hence also the production bot token in the
+  # Secret — the dev bot's stays on the developer's machine.
   APP_ENV: 'production'
   PORT: '3000'
   # Cron for the daily subscription check (09:00 UTC).

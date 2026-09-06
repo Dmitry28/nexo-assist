@@ -4,7 +4,7 @@
 # (no password login), installs fail2ban, and prints the host key for the CD_HOST_KEY secret.
 #
 # Run as root ON THE HOST, after k3s is installed (see docs/DEPLOY.md §4):
-#   curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/main/deploy/setup-server.sh | bash
 # or, from a checkout OUTSIDE $REPO_DIR:  sudo bash deploy/setup-server.sh
 # TODO [M]: refuse when $0 resolves inside $REPO_DIR — step 3's force checkout rewrites the
 # file bash is reading, which can half-configure a host mid-migration.
@@ -17,7 +17,7 @@ set -euo pipefail
 REPO_URL=${REPO_URL:-https://github.com/Dmitry28/nexo-assist.git}
 REPO_DIR=${REPO_DIR:-/opt/nexo-assist}
 CD_KEY=${CD_KEY:-/root/cd_key}
-REPO_REF=${REPO_REF:-dev}  # ref this script installs deploy.sh from (CD then deploys a sha)
+REPO_REF=${REPO_REF:-main}  # production ref this script installs deploy.sh from (CD then deploys a sha)
 
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 command -v k3s >/dev/null || { echo "k3s is not installed — see docs/DEPLOY.md §4.4" >&2; exit 1; }
@@ -31,8 +31,9 @@ install -m 600 -o deploy -g deploy /etc/rancher/k3s/k3s.yaml /home/deploy/.kube/
 
 # 3. Repo checkout — deploys apply the manifests from git, so a deploy is reproducible.
 #    One path for both cases: clone if absent, then always land on $REPO_REF. A bare `git clone`
-#    checks out the remote's DEFAULT branch (main here, far behind dev), so branching on
-#    clone-vs-refresh would silently give a fresh host a different deploy.sh than a re-run.
+#    checks out the remote's DEFAULT branch (`dev`, where we integrate), not the production ref,
+#    so branching on clone-vs-refresh would silently give a fresh host a different deploy.sh
+#    than a re-run.
 #    NOTE: this leaves the checkout at the tip of $REPO_REF — not at whatever sha is running.
 #    The next deploy re-syncs it; until then don't `apply -k` from here (see deploy.sh).
 #    NOTE: don't run this script from inside $REPO_DIR — the checkout below rewrites the file

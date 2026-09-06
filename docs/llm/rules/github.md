@@ -12,10 +12,14 @@
 ## Branch Flow
 
 - Branch off `dev`; never commit straight to `dev` or `main`.
+- **Two branches, two roles:** `dev` is where everything integrates and is tested locally before
+  a release; `main` is production — a push to it deploys. Nothing reaches `main` except a merge
+  of `dev`.
 - **Cut every branch from `dev`, never from another still-open branch** — otherwise this PR carries
   the other one's commits and its review. A step that genuinely cannot work without the previous
   one belongs in the same PR.
-- PRs target `dev`. Promote `dev → main` only after testing on `dev`.
+- PRs target `dev`. Promote `dev → main` only after the change was **run and tested locally** —
+  that merge is the release, and it deploys to production.
 - One PR may bundle several steps — keep them as separate, focused commits.
 - **`* [new branch]` when pushing a branch you already pushed means the remote one is gone** —
   usually its PR merged and `--delete-branch` removed it, and the push re-creates it with commits
@@ -43,6 +47,8 @@
 1. Push the branch, open the PR against `dev` (`gh pr create --base dev`).
 2. Wait for required CI checks (`gh pr checks <n> --watch`).
 3. Merge and delete the branch (`gh pr merge <n> --merge --delete-branch`).
+4. **Release** (separate approval): test the change locally against `dev`, then promote —
+   `gh pr create --base main --head dev` → merge. That push to `main` is what deploys.
 
 ## Approval
 
@@ -51,6 +57,8 @@ think is right" is not either one. Between them, **push and open the PR freely**
 where the owner reads the diff ([../commands/git/commit-local-changes.md](../commands/git/commit-local-changes.md)).
 
 The two gates exist for different reasons: a commit is what the owner reviews, and merging
-`dev` **auto-deploys to production** — so merge approval is never implied by commit approval.
+into `main` **auto-deploys to production** — so merge approval is never implied by commit
+approval. Merging a feature branch into `dev` deploys nothing, but still needs its own approval;
+the `dev → main` promotion needs a separate one again, after local testing.
 Report the CI result, then ask. Force-pushing your own unmerged branch is fine (that is how a
 mistake stays out of `dev`'s history); force-pushing `dev` or `main` is not.
