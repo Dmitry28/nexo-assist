@@ -1,5 +1,6 @@
 import type { Listing } from '@/modules/sources/source-adapter';
 
+import { wait } from './pacing';
 import type { DigestBatch } from './telegram.format';
 import { newListingsBatches } from './telegram.format';
 
@@ -12,8 +13,6 @@ export interface DeliveryResult {
   delivered: Listing[];
   error?: unknown;
 }
-
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Send a digest as however many messages it takes, paced, and report exactly what got through.

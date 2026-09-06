@@ -20,6 +20,7 @@ import { WatchService } from '@/modules/subscriptions/watch.service';
 
 import { deliverDigest } from './deliver';
 import { pace } from './pacing';
+import type { ReportOp } from './report';
 import { reportUserFacing } from './report';
 import {
   HELP_MESSAGE,
@@ -334,12 +335,12 @@ export class TelegramHandlers {
           await this.watch.markSeen(sub, delivered);
         } catch (err) {
           this.logger.error({ err }, `markSeen failed after /check delivery for ${sub.url}`);
-          reportUserFacing(err, {
-            userId: ctx.from?.id,
-            action: 'check',
-            url: sub.url,
+          this.reportCheck({
+            err,
+            ctx,
+            sub,
             op: 'mark-seen',
-            details: { id: sub.id, source: sub.source, resending: delivered.length },
+            details: { resending: delivered.length },
           });
         }
       }
@@ -347,12 +348,12 @@ export class TelegramHandlers {
       // "(1/5)" and would wait for four messages that never come.
       if (error) {
         this.logger.warn({ err: error }, `Delivery failed during /check for ${sub.url}`);
-        reportUserFacing(error, {
-          userId: ctx.from?.id,
-          action: 'check',
-          url: sub.url,
+        this.reportCheck({
+          err: error,
+          ctx,
+          sub,
           op: 'deliver',
-          details: { id: sub.id, source: sub.source, deliveredBefore: delivered.length },
+          details: { deliveredBefore: delivered.length },
         });
         await ctx.reply(
           delivered.length > 0
@@ -363,7 +364,7 @@ export class TelegramHandlers {
       return true;
     } catch (err) {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);
-      reportUserFacing(err, { userId: ctx.from?.id, action: 'check', url: sub.url });
+      this.reportCheck({ err, ctx, sub });
       await ctx.reply(
         `Не получилось проверить поиск на ${sub.source} — попробуйте позже.\n${sub.url}`,
       );
@@ -395,27 +396,18 @@ export class TelegramHandlers {
   }
 
   private async onRemove(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    const id = this.matchParam(ctx);
-    // Malformed callback (no user / no id) — just clear the spinner.
-    if (userId === undefined || id === undefined) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
+    const target = await this.callbackTarget(ctx);
+    if (!target) return;
 
-    const removed = await this.subscriptions.remove(id, userId);
+    const removed = await this.subscriptions.remove(target.id, target.userId);
     await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено');
   }
 
   private async onResume(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    const id = this.matchParam(ctx);
-    if (userId === undefined || id === undefined) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
+    const target = await this.callbackTarget(ctx);
+    if (!target) return;
     try {
-      const resumed = await this.subscriptions.resume(id, userId);
+      const resumed = await this.subscriptions.resume(target.id, target.userId);
       await ctx.answerCallbackQuery(resumed ? 'Возобновлено' : 'Подписка не найдена');
     } catch (err) {
       if (err instanceof SubscriptionLimitError) {
@@ -424,6 +416,42 @@ export class TelegramHandlers {
       }
       throw err;
     }
+  }
+
+  /** Report a /check failure — same who/where for every operation, as WatchScheduler does. */
+  private reportCheck({
+    err,
+    ctx,
+    sub,
+    op,
+    details,
+  }: {
+    err: unknown;
+    ctx: Context;
+    sub: Subscription;
+    op?: ReportOp;
+    details?: Record<string, string | number>;
+  }): void {
+    reportUserFacing(err, {
+      userId: ctx.from?.id,
+      action: 'check',
+      url: sub.url,
+      op,
+      details: { id: sub.id, source: sub.source, ...details },
+    });
+  }
+
+  /** Sender and callback param, or null after clearing the spinner on a malformed callback. */
+  private async callbackTarget(
+    ctx: Context,
+  ): Promise<{ userId: number; id: Subscription['id'] } | null> {
+    const userId = ctx.from?.id;
+    const id = this.matchParam(ctx);
+    if (userId === undefined || id === undefined) {
+      await ctx.answerCallbackQuery();
+      return null;
+    }
+    return { userId, id };
   }
 
   /** The capture group of the matched callback_data pattern, if any. */

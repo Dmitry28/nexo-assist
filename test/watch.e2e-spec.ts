@@ -41,9 +41,9 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
           type: 'postgres',
           url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
           entities: [Subscription, SeenListing, User],
-          // TODO: hand-written — a new migration not listed here creates no table locally, so the
-          // RLS invariant below passes. CI is covered (migration:run globs them first); switch to
-          // the globbed path to close the local gap [L].
+          // TODO [L]: hand-written — a new migration not listed here creates no table locally, so
+          // the RLS invariant below passes. CI is covered (migration:run globs them first); switch
+          // to the globbed path to close the local gap.
           migrations: [
             InitSchema1783163228738,
             AddUsers1783179934781,

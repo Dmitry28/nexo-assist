@@ -19,7 +19,7 @@ export class KufarAdapter implements SourceAdapter {
   private readonly logger = new Logger(KufarAdapter.name);
 
   matches(url: string): boolean {
-    return matchesHost(url, HOST);
+    return matchesHost({ url, host: HOST });
   }
 
   async fetch(url: string): Promise<Listing[]> {

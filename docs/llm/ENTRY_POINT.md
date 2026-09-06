@@ -21,7 +21,7 @@ npm run start:dev       # dev server with hot-reload
 npm run build           # compile TypeScript
 npm run start:prod      # run production build
 npm run typecheck       # type check without emitting (fast)
-npm run lint            # ESLint
+npm run lint            # ESLint + package-version and marker-format checks
 npm run lint:fix        # ESLint with auto-fix
 npm run format:check    # Prettier check (no writes)
 npm test                # unit tests

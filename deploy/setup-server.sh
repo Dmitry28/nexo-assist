@@ -6,8 +6,8 @@
 # Run as root ON THE HOST, after k3s is installed (see docs/DEPLOY.md §4):
 #   curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
 # or, from a checkout OUTSIDE $REPO_DIR:  sudo bash deploy/setup-server.sh
-# TODO: refuse when $0 resolves inside $REPO_DIR — step 3's force checkout rewrites the file
-# bash is reading, which can half-configure a host mid-migration [M].
+# TODO [M]: refuse when $0 resolves inside $REPO_DIR — step 3's force checkout rewrites the
+# file bash is reading, which can half-configure a host mid-migration.
 #
 # Idempotent — safe to re-run; it installs whatever is pushed to $REPO_REF, so a local edit must
 # be committed and pushed first. Prints the *path* of the CD private key (copy its contents into
@@ -66,8 +66,8 @@ install -m 755 -o root -g root "$REPO_DIR/deploy/deploy.sh" /usr/local/bin/deplo
 # A stale .pub with the private key gone makes ssh-keygen ask to overwrite — and under the
 # documented `curl | bash` its stdin IS the script, so the answer would be the script's own text.
 [[ -f "$CD_KEY" ]] || { rm -f "$CD_KEY.pub"; ssh-keygen -t ed25519 -N '' -C 'github-actions-cd' -f "$CD_KEY" -q </dev/null; }
-# TODO: AUTH is not overridable, so a test run with REPO_DIR/CD_KEY pointed elsewhere still
-# rewrites the real deploy user's authorized_keys — it locked CD out once during testing [L].
+# TODO [L]: AUTH is not overridable, so a test run with REPO_DIR/CD_KEY pointed elsewhere still
+# rewrites the real deploy user's authorized_keys — it locked CD out once during testing.
 AUTH=/home/deploy/.ssh/authorized_keys
 RESTRICTIONS='command="/usr/local/bin/deploy.sh",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding'
 CD_PUB=$(cat "$CD_KEY.pub")
@@ -88,7 +88,8 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 EOF
-# TODO: drop once the current host is rebuilt — it only clears a manual edit predating this step.
+# TODO [L]: drop once the current host is rebuilt — it only clears a manual edit predating this
+# step.
 rm -f /etc/ssh/sshd_config.d/99-hardening.conf
 # Refuse to lock ourselves out: only apply a config sshd itself accepts.
 sshd -t || { echo "sshd config invalid — 01-hardening.conf not applied" >&2; exit 1; }
