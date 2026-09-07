@@ -27,12 +27,17 @@ src/
     │   ├── <feature>.controller.ts
     │   ├── <feature>.service.ts
     │   └── <feature>.module.ts
-    └── sources/        # Source-plugin layer (specialized module)
-        ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
-        ├── source-registry.ts  # Resolves an adapter by URL/id
-        ├── sources.module.ts
-        ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
-        └── <site>/             # One adapter per site (kufar, realt) + parser
+    ├── sources/        # Source-plugin layer (specialized module)
+    │   ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
+    │   ├── source-registry.ts  # Resolves an adapter by URL/id
+    │   ├── sources.module.ts
+    │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
+    │   └── <site>/             # One adapter per site (kufar, realt) + parser
+    └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
+        ├── telegram.module.ts
+        ├── report.ts           # Owned by neither concern → module root
+        ├── bot/                # The conversation (service, handlers, format, deliver)
+        └── watch/              # The scheduled run (scheduler, status, pacing, tally)
 ```
 
 Specs live in a `__tests__/` folder within their own layer (not beside the source) — see [testing.md](testing.md#layout).
@@ -42,7 +47,8 @@ Specs live in a `__tests__/` folder within their own layer (not beside the sourc
 - Each feature = one NestJS module in `src/modules/<feature>/`.
 - A module without HTTP (bot, background worker, domain service) omits the controller — e.g. `telegram`, `subscriptions`.
 - Split a growing service into focused collaborators (e.g. `telegram.service.ts` lifecycle + `telegram.handlers.ts` logic); keep files small.
-- Once a module holds two subsystems, a `<concern>.` filename prefix says which one **owns** the file — the owner, not the only caller (`telegram/`: `telegram.*` = the bot, `watch.*` = the scheduled run; `telegram.deliver.ts` is owned by the bot though the run calls it). A file no single concern owns stays unprefixed (`report.ts`).
+- Once a module holds two subsystems, say which one **owns** each file — the owner, not the only caller. A file no single concern owns stays at the module root (`telegram/report.ts`).
+- **`modules/telegram/` groups its files into `bot/` and `watch/` concern subfolders** (`bot/` = the conversation, `watch/` = the scheduled run; `bot/telegram.deliver.ts` is owned by the bot though the run calls it). This departs from the flat per-module layout NestJS generates and every other module here uses — a deliberate owner decision for legibility as the module grows, not a pattern to copy or to "fix" back. The real fix is the `modules/watch` split in [PRODUCT_PLAN.md](../../PRODUCT_PLAN.md) § Технический бэклог. NOTE: the folder boundary is **not** a dependency boundary — `bot/` imports `watch/watch.status.ts` and `watch/watch.pacing.ts`, and `watch/watch.scheduler.ts` imports `bot/telegram.deliver.ts`, so imports cross in both directions.
 - A module exports only what other modules explicitly need.
 - Shared layers (`common/`, `config/`) never import from `modules/` — enforced by ESLint `import-x/no-restricted-paths`.
 - `@Global()` only for truly app-wide shared infrastructure.

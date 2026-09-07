@@ -11,10 +11,10 @@ import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
+import { SEND_DELAY_MS } from '@/modules/telegram/bot/telegram.deliver';
+import { DIGEST_LIMIT } from '@/modules/telegram/bot/telegram.format';
+import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
-import { SEND_DELAY_MS } from '../telegram.deliver';
-import { DIGEST_LIMIT } from '../telegram.format';
-import type { TelegramService } from '../telegram.service';
 import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
 import { WatchStatus } from '../watch.status';
 

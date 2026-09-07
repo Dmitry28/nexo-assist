@@ -4,8 +4,8 @@ import { Bot } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { reportUserFacing } from '@/modules/telegram/report';
 
-import { reportUserFacing } from './report';
 import { BOT_COMMANDS, NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
 

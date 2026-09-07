@@ -120,7 +120,7 @@ src/
 └── modules/
     ├── sources/             # Source plugins: SourceAdapter registry + kufar/realt scrapers
     ├── subscriptions/       # Domain: subscription store + watch (baseline/diff) logic
-    └── telegram/            # Bot: grammY handlers, daily watch scheduler, digests
+    └── telegram/            # Bot + daily watch run, split into bot/ and watch/ subfolders
 
 k8s/                         # Kubernetes manifests (Kustomize)
 docker-compose.yml           # Local stack

@@ -485,7 +485,7 @@ Read-only админка для обзора всего сервиса (не д�
   (сеть, флаки) — отдельной командой и по расписанию. Цена вопроса — разбор дифа при каждом
   безобидном изменении разметки; делать, когда источников станет больше двух.
 - **Оркестрация прогона живёт в модуле `telegram`.** `watch.scheduler.ts` (суточный крон),
-  `watch.status.ts` (общий слот опроса) и `watch.pacing.ts` лежат в `src/modules/telegram/` не по
+  `watch.status.ts` (общий слот опроса) и `watch.pacing.ts` лежат в `src/modules/telegram/watch/` не по
   смыслу, а потому, что так был развязан цикл зависимостей DI: `WatchScheduler` зависит от
   `TelegramService`, тот — от `TelegramHandlers`, которому нужен слот опроса. Правильная форма —
   отдельный `modules/watch`, а `TelegramService` экспортируется из `TelegramModule` как транспорт

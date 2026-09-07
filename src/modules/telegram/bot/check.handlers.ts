@@ -7,14 +7,14 @@ import type { Listing } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
+import type { ReportOp } from '@/modules/telegram/report';
+import { reportUserFacing } from '@/modules/telegram/report';
+import { pace } from '@/modules/telegram/watch/watch.pacing';
+import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { isAdmin } from './admin';
-import type { ReportOp } from './report';
-import { reportUserFacing } from './report';
 import { deliverAndMark } from './telegram.deliver';
 import { NO_LINK_PREVIEW, PROMPT, formatCurrentListings } from './telegram.format';
-import { pace } from './watch.pacing';
-import { WatchStatus } from './watch.status';
 
 // Refusal for both on-demand pollers (/check, which claims the slot, and the «Показать текущие»
 // button, which only peeks at it) — one wording so the two cannot drift. Worded for either

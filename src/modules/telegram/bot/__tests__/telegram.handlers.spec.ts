@@ -12,11 +12,11 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
+import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import type { CheckHandlers } from '../check.handlers';
 import { HELP_MESSAGE } from '../telegram.format';
 import { TelegramHandlers } from '../telegram.handlers';
-import { WatchStatus } from '../watch.status';
 
 import { makeCtx } from './fixtures/bot-ctx';
 

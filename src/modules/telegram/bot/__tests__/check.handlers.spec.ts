@@ -9,11 +9,11 @@ import { AppEnv } from '@/config/env.validation';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
+import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { CheckHandlers } from '../check.handlers';
 import { SEND_DELAY_MS } from '../telegram.deliver';
 import { DIGEST_LIMIT } from '../telegram.format';
-import { WatchStatus } from '../watch.status';
 
 import { makeCtx } from './fixtures/bot-ctx';
 

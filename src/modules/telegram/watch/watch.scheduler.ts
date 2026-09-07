@@ -12,13 +12,13 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
+import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
+import { deadSubscriptionNotice } from '@/modules/telegram/bot/telegram.format';
+import { TelegramService } from '@/modules/telegram/bot/telegram.service';
+import type { ReportOp } from '@/modules/telegram/report';
+import { reportUserFacing } from '@/modules/telegram/report';
 
-import type { ReportOp } from './report';
-import { reportUserFacing } from './report';
 import { SourceTally } from './source-tally';
-import { deliverAndMark } from './telegram.deliver';
-import { deadSubscriptionNotice } from './telegram.format';
-import { TelegramService } from './telegram.service';
 import { pace } from './watch.pacing';
 import { WatchStatus } from './watch.status';
 
