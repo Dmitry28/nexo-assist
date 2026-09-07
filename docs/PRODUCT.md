@@ -22,19 +22,22 @@ start; more frequent once throttling/dedupe land).
 - Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
   one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
   it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
-  ▶️ clears the pause and the failure streak but keeps the seen set, so nothing that appeared
-  during the pause is re-sent; re-sending the URL revives the subscription and then re-baselines
-  it, silently dropping whatever accumulated while it was paused. The two paths should share one
-  semantic — PRODUCT_PLAN.md, «Технический бэклог», findings of 2026-09-07.
+  ▶️ clears the pause and the failure streak and leaves the seen set alone — what appeared during
+  the pause was never delivered, so it was never marked seen and it all arrives on the next run;
+  re-sending the URL revives the subscription and then re-baselines it, which marks that backlog
+  seen and drops it. The two paths should share one semantic — PRODUCT_PLAN.md,
+  «Технический бэклог», findings of 2026-09-07.
+  The «Показать текущие» button fetches live, so it stays off the sources while a run is in
+  progress — but it only peeks at the polling slot, never holds it: any user can tap it, and
+  holding the slot would let one tap cancel the day's run for everyone. The residual race is
+  documented and accepted: a tap that lands just before a run starts still polls concurrently.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
   `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
   the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
   so a longer loop would freeze the bot for everyone), and shares one polling slot with the
   daily run: whichever starts second is refused, so they never poll the same subscriptions at
-  once or race each other's "seen" bookkeeping. The «Показать текущие» button fetches live too, so
-  it is refused while a run is in progress — but it never holds the slot itself: it only reads,
-  and any user can tap it, so holding it would let one tap cancel the day's run for everyone.
+  once or race each other's "seen" bookkeeping.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
