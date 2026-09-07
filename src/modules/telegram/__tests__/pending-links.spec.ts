@@ -33,6 +33,15 @@ describe('PendingLinks', () => {
     expect(new PendingLinks().take('no-such-nonce', 1)).toBeNull();
   });
 
+  // An anonymous sender (a channel post) has no id, and `undefined` must not match an entry.
+  it('refuses an anonymous tap without consuming the prompt', () => {
+    const pending = new PendingLinks();
+    const nonce = pending.add(link(1, 'https://re.kufar.by/l/minsk'));
+
+    expect(pending.take(nonce, undefined)).toBeNull();
+    expect(pending.take(nonce, 1)).toEqual(link(1, 'https://re.kufar.by/l/minsk'));
+  });
+
   it('evicts the oldest entry at the cap — the map must not grow unbounded', () => {
     const pending = new PendingLinks();
     const oldest = pending.add(link(1, 'https://re.kufar.by/l/oldest'));

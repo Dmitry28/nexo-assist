@@ -15,8 +15,10 @@ start; more frequent once throttling/dedupe land).
 - Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
 - Events: **new only**; a text digest split across as many messages as it takes (up to 100
   listings per delivery, one message a second), no photos yet. Anything beyond that ceiling is
-  announced, not dropped, and arrives on the next run. An over-long title is truncated so that
-  price and link always survive.
+  announced, not dropped, and arrives over the following runs — bounded by the page window, so a
+  backlog past roughly 150 listings does fall out of it (PRODUCT_PLAN.md, findings of 2026-09-07).
+  An over-long title is truncated first, so price and link survive; only a pathological link
+  (~490+ chars) forces the whole line to be clamped, link included.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
 - Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit

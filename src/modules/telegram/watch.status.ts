@@ -43,7 +43,12 @@ export class WatchStatus {
    *
    * Deliberately a peek, not a claim: claiming would let anyone who can trigger a read-only
    * fetch cancel the daily run, because runDaily abandons the run when the slot is taken.
-   * Only a poller that writes the seen set (the run itself, /check) may hold the slot.
+   * So the slot is held only by the loops that both poll and write the seen set — the run
+   * itself and /check.
+   *
+   * NOTE: baseline-on-subscribe is the one exception, and not by design: it fetches and writes
+   * the seen set outside the slot entirely (see PRODUCT_PLAN.md § Технический бэклог). Making
+   * it wait behind a run would break signup, so it is unthrottled for now.
    */
   get isPollInProgress(): boolean {
     return this.polling;
