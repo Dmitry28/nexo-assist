@@ -62,11 +62,21 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       .catch((err: unknown) => {
         // The bot is this app's sole job — a dead polling loop must not linger as a
         // healthy-looking process (probes see nothing). Exit; the orchestrator restarts us.
+        // TODO [M]: a shutdown racing an in-flight start() makes grammY's setup reject (stop()
+        // aborts it), so this exits DURING onApplicationShutdown — killing the TypeORM close and
+        // any in-flight markSeen, and reporting a crash exit. Guard it with an isShuttingDown flag.
+        // TODO [M]: logger.fatal + process.exit(1) bypasses main.ts's reportAndExit (bound only to
+        // uncaughtException/unhandledRejection), so the one failure that kills the product
+        // produces no Sentry event and no flush. Report and flush before exiting.
         this.logger.fatal({ err }, 'Bot polling stopped — exiting');
         process.exit(1);
       });
   }
 
+  // TODO [L]: bot.stop() issues one more getUpdates with no abort signal, so an unreachable
+  // Telegram API hangs shutdown until SIGKILL; and `this.bot` is never cleared, so a still-running
+  // daily run keeps calling notify() into a torn-down transport instead of the "Bot is disabled"
+  // throw. Stop with a timeout/abort and clear the field.
   async onApplicationShutdown(): Promise<void> {
     await this.bot?.stop();
   }

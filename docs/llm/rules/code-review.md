@@ -97,7 +97,7 @@ explanation because a model already knows it destroys their point.
 | Commit messages | Both   | `docs/llm/commands/git/rules/changes-message-format-rules.md` § 1                                                                              |
 | PR title + body | Remote | `docs/llm/commands/git/rules/changes-message-format-rules.md` § 2                                                                              |
 | DOC updates     | Both   | Every doc the change affects updated in the same change (ENTRY_POINT § Keep docs current)                                                      |
-| Tests           | Both   | New endpoints/services covered per `docs/llm/rules/testing.md`                                                                                 |
+| Tests           | Both   | New endpoints/services — and every guard/cap the diff adds — covered per `docs/llm/rules/testing.md`                                           |
 | CI              | Remote | `gh pr checks` green. Failing job caused by this PR → `[H]`. Also failing on `main` → `[Q]` "pre-existing". Still running → note, don't block. |
 
 ## Output Format

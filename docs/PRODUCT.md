@@ -15,13 +15,24 @@ start; more frequent once throttling/dedupe land).
 - Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
 - Events: **new only**; a text digest split across as many messages as it takes (up to 100
   listings per delivery, one message a second), no photos yet. Anything beyond that ceiling is
-  announced, not dropped, and arrives on the next run. An over-long title is truncated so that
-  price and link always survive.
+  announced, not dropped, and arrives over the following runs — bounded by the page window, so a
+  backlog past roughly 150 listings does fall out of it (PRODUCT_PLAN.md, findings of 2026-09-07).
+  An over-long title is truncated first, so price and link survive; only a pathological link
+  (~490+ chars) forces the whole line to be clamped, link included.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
 - Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
   one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
-  it — same effect as re-sending its URL, and it respects the active-subscription limit.
+  it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
+  ▶️ clears the pause and the failure streak and leaves the seen set alone — what appeared during
+  the pause was never delivered, so it was never marked seen and it all arrives on the next run;
+  re-sending the URL revives the subscription and then re-baselines it, which marks that backlog
+  seen and drops it. The two paths should share one semantic — PRODUCT_PLAN.md,
+  «Технический бэклог», findings of 2026-09-07.
+  The «Показать текущие» button fetches live, so it stays off the sources while a run is in
+  progress — but it only peeks at the polling slot, never holds it: any user can tap it, and
+  holding the slot would let one tap cancel the day's run for everyone. The residual race is
+  documented and accepted: a tap that lands just before a run starts still polls concurrently.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
   `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
@@ -37,7 +48,8 @@ start; more frequent once throttling/dedupe land).
 - Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the
   seen set survive restarts; seen is pruned to a bounded window per subscription;
   per-user limit on **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
-- Deployment: **single replica** (long-polling bot + in-memory pending prompts; see k8s NOTE);
+- Deployment: **single replica** (long-polling bot + in-memory pending prompts and polling slot —
+  a second replica would double-deliver, see k8s NOTE);
   production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
   the process so the orchestrator restarts it.
 - Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
@@ -64,7 +76,10 @@ Everything below this section describes the target design.
    optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.
-6. Persist only what was actually delivered (on failure, retry next run — no loss, no duplicates).
+6. Persist only what was actually delivered (on failure, retry next run). The guarantee is
+   **no loss**, not exactly-once: if recording the seen set fails after a successful send, or the
+   pod dies between the two, those listings are re-sent next run. Duplicates are the deliberate
+   choice over silence (see `src/modules/telegram/telegram.deliver.ts`).
 
 **Two "seen" levels:** the delta is per source (normalized URL, dedupe); delivery
 is per subscription (a new subscriber gets a baseline, not a flood).

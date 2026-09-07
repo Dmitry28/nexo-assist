@@ -13,7 +13,10 @@
 - **Behaviour, not implementation** — and the error paths, not just the happy one.
 - **One concern per `test`.** Several `expect`s are fine when they verify one behaviour.
 - A new test must **fail against the unfixed code** — otherwise you don't know what it guards.
+  **Verify it, never assume: delete the guard (or revert the fix), re-run, see red, restore.**
   Re-check that after refactoring the code it covers.
+- **Every guard clause, cap and ordering rule is behaviour** and takes the same deletion check.
+  Skipping it is how a dozen of them shipped into `modules/telegram/` deletable with a green suite.
 
 ## Don't Over-Mock
 

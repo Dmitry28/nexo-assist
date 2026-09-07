@@ -16,7 +16,7 @@ src/
 │   └── migrations/           # generated schema migrations
 ├── common/                # Cross-cutting building blocks (never import from modules/)
 │   ├── filters/           # Global exception filters (consistent error JSON)
-│   └── url.ts             # Generic URL helpers (extract/withParam/matchesHost)
+│   └── <helper>.ts        # Generic single-concern helpers (url, wait, …)
 ├── health/             # Liveness + readiness probes (Terminus); @SkipThrottle()
 ├── metrics/            # MetricsModule + Prometheus controller override; @SkipThrottle()
 └── modules/
@@ -42,6 +42,7 @@ Specs live in a `__tests__/` folder within their own layer (not beside the sourc
 - Each feature = one NestJS module in `src/modules/<feature>/`.
 - A module without HTTP (bot, background worker, domain service) omits the controller — e.g. `telegram`, `subscriptions`.
 - Split a growing service into focused collaborators (e.g. `telegram.service.ts` lifecycle + `telegram.handlers.ts` logic); keep files small.
+- Once a module holds two subsystems, a `<concern>.` filename prefix says which one **owns** the file — the owner, not the only caller (`telegram/`: `telegram.*` = the bot, `watch.*` = the scheduled run; `telegram.deliver.ts` is owned by the bot though the run calls it). A file no single concern owns stays unprefixed (`report.ts`).
 - A module exports only what other modules explicitly need.
 - Shared layers (`common/`, `config/`) never import from `modules/` — enforced by ESLint `import-x/no-restricted-paths`.
 - `@Global()` only for truly app-wide shared infrastructure.

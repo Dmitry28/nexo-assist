@@ -12,8 +12,7 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { SEND_DELAY_MS } from '../deliver';
-import { jitteredDelay } from '../pacing';
+import { SEND_DELAY_MS } from '../telegram.deliver';
 import { DIGEST_LIMIT } from '../telegram.format';
 import type { TelegramService } from '../telegram.service';
 import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
@@ -187,6 +186,7 @@ describe('WatchScheduler.runDaily', () => {
     });
     telegram.notify.mockRejectedValue(blocked);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
@@ -194,6 +194,10 @@ describe('WatchScheduler.runDaily', () => {
     expect(metrics.recordPause).toHaveBeenCalledWith('blocked', 2); // counted per subscription
     expect(telegram.notify).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
     expect(watch.markSeen).not.toHaveBeenCalled();
+    // A blocked user is an expected state handled by the pause above, not a defect — reporting
+    // it would flood Sentry with noise on every run.
+    expect(sentryCapture()).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('keeps running when the pause write fails after a 403', async () => {
@@ -446,13 +450,5 @@ describe('WatchScheduler.runDaily overlap', () => {
     await expect(scheduler.runDaily()).rejects.toThrow('db down');
 
     expect(status.tryStartPolling()).toBe(true);
-  });
-});
-
-describe('jitteredDelay', () => {
-  it('returns the base with no jitter, and stays within [min, min+jitter]', () => {
-    expect(jitteredDelay({ minMs: 2000, jitterMs: 0 })).toBe(2000);
-    expect(jitteredDelay({ minMs: 2000, jitterMs: 3000, random: () => 0 })).toBe(2000); // low end
-    expect(jitteredDelay({ minMs: 2000, jitterMs: 3000, random: () => 0.999999 })).toBe(5000); // high end
   });
 });

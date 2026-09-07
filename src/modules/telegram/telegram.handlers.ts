@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InlineKeyboard } from 'grammy';
 import type { Bot, Context } from 'grammy';
@@ -7,7 +5,6 @@ import type { Bot, Context } from 'grammy';
 import { extractUrl } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import type { SourceId } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
@@ -18,50 +15,31 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { deliverDigest } from './deliver';
-import { pace } from './pacing';
-import type { ReportOp } from './report';
+import { isAdmin } from './admin';
+import { CheckHandlers } from './check.handlers';
+import type { PendingLink } from './pending-links';
+import { PendingLinks } from './pending-links';
 import { reportUserFacing } from './report';
 import {
   HELP_MESSAGE,
   MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
-  formatCurrentListings,
+  PROMPT,
   formatStats,
 } from './telegram.format';
 import { WatchStatus } from './watch.status';
 
-// NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
-// Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
-const PROMPT =
-  'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
 // /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected
 // reply costs the user /list entirely. Counted in buttons, not rows: a paused row carries two
 // (❌ and ▶️), and paused subscriptions are not capped per user (the limit counts active ones).
 const MAX_LIST_BUTTONS = 90;
-// How many subscriptions one /check polls. grammY handles updates sequentially, so the paced
-// loop blocks every other user meanwhile; at MAX_SUBSCRIPTIONS_PER_USER that would be minutes.
-// Five bounds it to four pacing gaps plus five fetches — enough to prove the chain works,
-// which is what /check is for.
-const MAX_CHECK_SUBSCRIPTIONS = 5;
-
-// Bound for the pending-confirmation map — evict the oldest entry beyond this.
-const MAX_PENDING = 500;
-
-interface PendingLink {
-  userId: number;
-  source: SourceId;
-  url: string;
-}
 
 /** Bot conversation: turn a pasted link into a subscription via inline buttons. */
 @Injectable()
 export class TelegramHandlers {
   private readonly logger = new Logger(TelegramHandlers.name);
-  // NOTE: links awaiting a Subscribe/Cancel tap, keyed by a per-prompt nonce carried in
-  // callback_data (too small for a URL) — so an old prompt can't subscribe a newer link.
-  private readonly pending = new Map<string, PendingLink>();
+  private readonly pending = new PendingLinks();
 
   constructor(
     @Inject(configuration.KEY) private readonly appConfig: AppConfig,
@@ -69,6 +47,7 @@ export class TelegramHandlers {
     private readonly watch: WatchService,
     private readonly registry: SourceRegistry,
     private readonly status: WatchStatus,
+    private readonly check: CheckHandlers,
   ) {}
 
   register(bot: Bot): void {
@@ -84,14 +63,18 @@ export class TelegramHandlers {
     // Production only, deliberately: there is no staging stage yet (same caveat as
     // SCRAPE_PROXY_URL in env.validation.ts). A staging overlay would publish an on-demand
     // scraping command to every user, so revisit in the change that first deploys one.
-    bot.command('check', (ctx) => this.onCheck(ctx));
+    bot.command('check', (ctx) => this.check.onCheck(ctx));
     // NOTE: register commands before message:text — grammY runs the first matching handler only.
     bot.on('message:text', (ctx) => this.onText(ctx));
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery(/^cancel:(.+)$/, (ctx) => this.onCancel(ctx));
+    // TODO [L]: remove/resume pass the tapped id straight to a scoped query, so it reaches a
+    // Postgres `uuid` column and raises 22P02 — one Sentry issue per malformed tap via bot.catch.
+    // Match the uuid shape instead, so a malformed tap simply doesn't match. (`show:` is safe —
+    // onShowCurrent filters an already-loaded list in JS and just answers «Подписка не найдена.».)
     bot.callbackQuery(/^remove:(.+)$/, (ctx) => this.onRemove(ctx));
     bot.callbackQuery(/^resume:(.+)$/, (ctx) => this.onResume(ctx));
-    bot.callbackQuery(/^show:(.+)$/, (ctx) => this.onShowCurrent(ctx));
+    bot.callbackQuery(/^show:(.+)$/, (ctx) => this.check.onShowCurrent(ctx, this.matchParam(ctx)));
   }
 
   private async onText(ctx: Context): Promise<void> {
@@ -111,7 +94,7 @@ export class TelegramHandlers {
       return;
     }
 
-    const nonce = this.addPending({ userId, source: adapter.id, url });
+    const nonce = this.pending.add({ userId, source: adapter.id, url });
     const keyboard = new InlineKeyboard()
       .text('Следить', `subscribe:${nonce}`)
       .text('Отмена', `cancel:${nonce}`);
@@ -194,8 +177,10 @@ export class TelegramHandlers {
       await ctx.answerCallbackQuery(EXPIRED);
       return;
     }
+    // Answer first, like onSubscribe — a failed edit must not leave the button spinning.
+    // The answer is cosmetic: if it fails (late/duplicate callback), still edit the prompt.
+    await ctx.answerCallbackQuery().catch(() => undefined);
     await ctx.editMessageText('Отменено.');
-    await ctx.answerCallbackQuery();
   }
 
   private async showList(ctx: Context): Promise<void> {
@@ -239,6 +224,9 @@ export class TelegramHandlers {
       lines.push(line);
       length += line.length + '\n\n'.length;
     }
+    // TODO [L]: the legend is pushed after the "…и ещё N" overflow line, and `anyPaused` counts
+    // only the rendered prefix — a user whose only paused subscription falls past the cut never
+    // sees it. Compute it from all subs and insert the hint before the overflow line.
     if (anyPaused) lines.push('▶️ — возобновить, ❌ — удалить');
     await ctx.reply(lines.join('\n\n'), {
       reply_markup: keyboard,
@@ -246,15 +234,9 @@ export class TelegramHandlers {
     });
   }
 
-  /** The owner, per ADMIN_TELEGRAM_ID. No admin configured — nobody qualifies. */
-  private isAdmin(ctx: Context): boolean {
-    const adminId = this.appConfig.adminTelegramId;
-    return adminId !== undefined && ctx.from?.id === adminId;
-  }
-
   /** Admin-only service snapshot. Silent for everyone else — don't reveal the command. */
   private async onStats(ctx: Context): Promise<void> {
-    if (!this.isAdmin(ctx)) return;
+    if (!isAdmin({ senderId: ctx.from?.id, adminId: this.appConfig.adminTelegramId })) return;
 
     const [users, active, paused] = await Promise.all([
       this.subscriptions.countUsers(),
@@ -262,137 +244,6 @@ export class TelegramHandlers {
       this.subscriptions.countPaused(),
     ]);
     await ctx.reply(formatStats({ users, active, paused, lastRunAt: this.status.lastRunAt }));
-  }
-
-  private async onCheck(ctx: Context): Promise<void> {
-    // Silent for non-owners in production, like /stats — an explicit refusal would advertise
-    // a command that hits sources.
-    if (this.appConfig.isProduction && !this.isAdmin(ctx)) return;
-
-    const userId = ctx.from?.id;
-    // Anonymous senders have no subscriptions to check.
-    if (userId === undefined) return;
-
-    const all = await this.subscriptions.listByUser(userId);
-    if (all.length === 0) {
-      await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
-      return;
-    }
-    // Skip paused ones, like the daily run does: reporting listings for a search that
-    // delivers nothing would just mislead.
-    const subs = all.filter((sub) => !sub.pausedAt);
-    if (subs.length === 0) {
-      await ctx.reply('Все подписки на паузе — верните их кнопкой ▶️ в /list.');
-      return;
-    }
-
-    // Share the polling slot with the daily run — see WatchStatus.
-    if (!this.status.tryStartPolling()) {
-      await ctx.reply('Проверка уже идёт — подождите её окончания.');
-      return;
-    }
-    try {
-      const checked = subs.slice(0, MAX_CHECK_SUBSCRIPTIONS);
-      // The paced loop is silent for seconds per subscription, so say what is being checked —
-      // otherwise the silence reads as a dead bot, and a capped check looks like a full one.
-      if (subs.length > 1) {
-        await ctx.reply(`Проверяю подписок: ${checked.length} из ${subs.length}…`);
-      }
-      let replied = false;
-      for (const [i, sub] of checked.entries()) {
-        // Pace like the daily run does: /check now runs against production sources, and a user
-        // at the subscription limit would otherwise fire 50 requests back-to-back from our IP.
-        if (i > 0) await pace(this.appConfig);
-        replied = (await this.checkOne(ctx, sub)) || replied;
-      }
-      // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
-      if (!replied) await ctx.reply('Ничего нового.');
-    } finally {
-      this.status.finishPolling();
-    }
-  }
-
-  /** Poll one subscription and reply with its outcome. Returns true if it replied anything. */
-  private async checkOne(ctx: Context, sub: Subscription): Promise<boolean> {
-    try {
-      const outcome = await this.watch.poll(sub);
-      if (outcome.kind === 'nothing') return false;
-      if (outcome.kind === 'baselined') {
-        await ctx.reply(
-          `${sub.source} — объявлений сейчас: ${outcome.count}, дальше только новые.\n${sub.url}`,
-          { link_preview_options: NO_LINK_PREVIEW },
-        );
-        return true;
-      }
-      const { delivered, error } = await deliverDigest(outcome.listings, (text) =>
-        ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW }),
-      );
-      // Whatever arrived is marked seen, even if a later message failed — re-sending it would
-      // duplicate what the user just read. A markSeen failure must not surface as "could not
-      // check" (that would contradict the digest); report it, the items resurface next run.
-      if (delivered.length > 0) {
-        try {
-          await this.watch.markSeen(sub, delivered);
-        } catch (err) {
-          this.logger.error({ err }, `markSeen failed after /check delivery for ${sub.url}`);
-          this.reportCheck({
-            err,
-            ctx,
-            sub,
-            op: 'mark-seen',
-            details: { resending: delivered.length },
-          });
-        }
-      }
-      // A send that failed part-way must not pass silently: the user sees a digest numbered
-      // "(1/5)" and would wait for four messages that never come.
-      if (error) {
-        this.logger.warn({ err: error }, `Delivery failed during /check for ${sub.url}`);
-        this.reportCheck({
-          err: error,
-          ctx,
-          sub,
-          op: 'deliver',
-          details: { deliveredBefore: delivered.length },
-        });
-        await ctx.reply(
-          delivered.length > 0
-            ? 'Часть объявлений не отправилась — пришлю в следующую проверку.'
-            : `Не получилось отправить объявления по поиску на ${sub.source} — попробуйте позже.`,
-        );
-      }
-      return true;
-    } catch (err) {
-      this.logger.warn({ err }, `Check failed for ${sub.url}`);
-      this.reportCheck({ err, ctx, sub });
-      await ctx.reply(
-        `Не получилось проверить поиск на ${sub.source} — попробуйте позже.\n${sub.url}`,
-      );
-      return true;
-    }
-  }
-
-  private async onShowCurrent(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    const id = this.matchParam(ctx);
-    const sub =
-      userId !== undefined && id !== undefined
-        ? (await this.subscriptions.listByUser(userId)).find((s) => s.id === id)
-        : undefined;
-    if (!sub) {
-      await ctx.answerCallbackQuery('Подписка не найдена.');
-      return;
-    }
-
-    await ctx.answerCallbackQuery();
-    try {
-      const listings = await this.watch.current(sub);
-      await ctx.reply(formatCurrentListings(listings), { link_preview_options: NO_LINK_PREVIEW });
-    } catch (err) {
-      this.logger.warn({ err }, `Show-current failed for ${sub.url}`);
-      reportUserFacing(err, { userId: ctx.from?.id, action: 'show-current', url: sub.url });
-      await ctx.reply('Не получилось загрузить объявления — попробуйте позже.');
-    }
   }
 
   private async onRemove(ctx: Context): Promise<void> {
@@ -414,31 +265,10 @@ export class TelegramHandlers {
         await ctx.answerCallbackQuery(`Предел — ${MAX_SUBSCRIPTIONS_PER_USER} активных подписок`);
         return;
       }
+      // TODO [L]: this rethrow leaves the callback query unanswered, so the button spins until
+      // Telegram's ~15s timeout — every other callback path answers exactly once. Answer first.
       throw err;
     }
-  }
-
-  /** Report a /check failure — same who/where for every operation, as WatchScheduler does. */
-  private reportCheck({
-    err,
-    ctx,
-    sub,
-    op,
-    details,
-  }: {
-    err: unknown;
-    ctx: Context;
-    sub: Subscription;
-    op?: ReportOp;
-    details?: Record<string, string | number>;
-  }): void {
-    reportUserFacing(err, {
-      userId: ctx.from?.id,
-      action: 'check',
-      url: sub.url,
-      op,
-      details: { id: sub.id, source: sub.source, ...details },
-    });
   }
 
   /** Sender and callback param, or null after clearing the spinner on a malformed callback. */
@@ -459,23 +289,8 @@ export class TelegramHandlers {
     return Array.isArray(ctx.match) && typeof ctx.match[1] === 'string' ? ctx.match[1] : undefined;
   }
 
-  private addPending(link: PendingLink): string {
-    // Evict the oldest entry at the cap (Map preserves insertion order).
-    if (this.pending.size >= MAX_PENDING) {
-      const oldest = this.pending.keys().next().value;
-      if (oldest !== undefined) this.pending.delete(oldest);
-    }
-    const nonce = randomUUID().slice(0, 8);
-    this.pending.set(nonce, link);
-    return nonce;
-  }
-
-  /** Resolve and consume the pending link for this callback; null if expired or not the owner. */
+  /** Consume the pending link of the tapped prompt; null if expired or not the owner. */
   private takePending(ctx: Context): PendingLink | null {
-    const nonce = this.matchParam(ctx);
-    const entry = nonce !== undefined ? this.pending.get(nonce) : undefined;
-    if (nonce === undefined || !entry || entry.userId !== ctx.from?.id) return null;
-    this.pending.delete(nonce);
-    return entry;
+    return this.pending.take(this.matchParam(ctx), ctx.from?.id);
   }
 }
