@@ -83,6 +83,19 @@ describe('newListingsBatches', () => {
     expect(text.length).toBeLessThan(4096);
   });
 
+  it('keeps the link whole when the tail alone fills the line — no ellipsis budget left', () => {
+    // A link long enough to leave the title zero budget: tail = '\n$5000\n' + link is exactly
+    // MAX_LINE_CHARS, so truncate() is asked for a non-positive budget and must yield nothing.
+    // Returning '…' instead would push the line over the cap and cut the link off its end.
+    const link = `https://x.by/${'x'.repeat(493 - 'https://x.by/'.length)}`;
+    const tailLength = `\n$5000\n${link}`.length;
+    expect(tailLength).toBe(MAX_LINE_CHARS);
+
+    const [{ text }] = newListingsBatches([listing(1, { title: 'a title', priceUsd: 5000, link })]);
+
+    expect(text).toContain(link);
+  });
+
   it('splits by characters too, and every message stays sendable', () => {
     const longLinks = Array.from({ length: 10 }, (_, i) =>
       listing(i + 1, { link: `https://re.kufar.by/vi/${'x'.repeat(400)}${i}` }),

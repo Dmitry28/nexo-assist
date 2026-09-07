@@ -21,14 +21,20 @@ start; more frequent once throttling/dedupe land).
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
 - Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
   one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
-  it — same effect as re-sending its URL, and it respects the active-subscription limit.
+  it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
+  ▶️ clears the pause and the failure streak but keeps the seen set, so nothing that appeared
+  during the pause is re-sent; re-sending the URL revives the subscription and then re-baselines
+  it, silently dropping whatever accumulated while it was paused. The two paths should share one
+  semantic — PRODUCT_PLAN.md, «Технический бэклог», findings of 2026-09-07.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
   `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
   the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
   so a longer loop would freeze the bot for everyone), and shares one polling slot with the
   daily run: whichever starts second is refused, so they never poll the same subscriptions at
-  once or race each other's "seen" bookkeeping.
+  once or race each other's "seen" bookkeeping. The «Показать текущие» button fetches live too, so
+  it is refused while a run is in progress — but it never holds the slot itself: it only reads,
+  and any user can tap it, so holding it would let one tap cancel the day's run for everyone.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
@@ -37,7 +43,8 @@ start; more frequent once throttling/dedupe land).
 - Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the
   seen set survive restarts; seen is pruned to a bounded window per subscription;
   per-user limit on **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
-- Deployment: **single replica** (long-polling bot + in-memory pending prompts; see k8s NOTE);
+- Deployment: **single replica** (long-polling bot + in-memory pending prompts and polling slot —
+  a second replica would double-deliver, see k8s NOTE);
   production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
   the process so the orchestrator restarts it.
 - Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
@@ -64,7 +71,10 @@ Everything below this section describes the target design.
    optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.
-6. Persist only what was actually delivered (on failure, retry next run — no loss, no duplicates).
+6. Persist only what was actually delivered (on failure, retry next run). The guarantee is
+   **no loss**, not exactly-once: if recording the seen set fails after a successful send, or the
+   pod dies between the two, those listings are re-sent next run. Duplicates are the deliberate
+   choice over silence (see `src/modules/telegram/telegram.deliver.ts`).
 
 **Two "seen" levels:** the delta is per source (normalized URL, dedupe); delivery
 is per subscription (a new subscriber gets a baseline, not a flood).

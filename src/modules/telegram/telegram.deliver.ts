@@ -1,6 +1,6 @@
+import { wait } from '@/common/wait';
 import type { Listing } from '@/modules/sources/source-adapter';
 
-import { wait } from './pacing';
 import type { DigestBatch } from './telegram.format';
 import { newListingsBatches } from './telegram.format';
 
@@ -8,10 +8,13 @@ import { newListingsBatches } from './telegram.format';
 // auto-retry plugin would survive a 429 anyway, but waiting is cheaper than being rate-limited.
 export const SEND_DELAY_MS = 1000;
 
-/** What actually reached the user, plus the failure that stopped the rest (if any). */
+/** What actually reached the user, plus whatever went wrong around it. */
 export interface DeliveryResult {
   delivered: Listing[];
+  /** The send failure that stopped the rest, if any. */
   error?: unknown;
+  /** Recording what arrived failed — the items resurface next run. */
+  markSeenError?: unknown;
 }
 
 /**
@@ -38,4 +41,34 @@ export async function deliverDigest(
     delivered.push(...batch.listings);
   }
   return { delivered };
+}
+
+/**
+ * Deliver a digest and record what arrived — the send-then-markSeen step shared by the daily
+ * run and /check.
+ *
+ * markSeen is isolated on purpose: the messages already reached the user, so failing to record
+ * them is not a delivery failure — those items just resurface next run. Both failures are
+ * returned rather than thrown, because only the caller knows what each one means for it.
+ */
+export async function deliverAndMark({
+  listings,
+  send,
+  markSeen,
+}: {
+  listings: Listing[];
+  send: (text: string) => Promise<unknown>;
+  markSeen: (delivered: Listing[]) => Promise<void>;
+}): Promise<DeliveryResult> {
+  const result = await deliverDigest(listings, send);
+
+  // Persist whatever reached the user, even if a later message failed — otherwise the whole
+  // digest would be re-sent next run.
+  if (result.delivered.length === 0) return result;
+  try {
+    await markSeen(result.delivered);
+  } catch (markSeenError) {
+    return { ...result, markSeenError };
+  }
+  return result;
 }

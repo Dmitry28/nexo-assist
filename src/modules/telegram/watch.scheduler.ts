@@ -13,12 +13,13 @@ import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.serv
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
-import { deliverDigest } from './deliver';
-import { pace } from './pacing';
 import type { ReportOp } from './report';
 import { reportUserFacing } from './report';
+import { SourceTally } from './source-tally';
+import { deliverAndMark } from './telegram.deliver';
 import { deadSubscriptionNotice } from './telegram.format';
 import { TelegramService } from './telegram.service';
+import { pace } from './watch.pacing';
 import { WatchStatus } from './watch.status';
 
 export const JOB_NAME = 'daily-watch';
@@ -26,15 +27,8 @@ export const JOB_NAME = 'daily-watch';
 // Consecutive failed polls before a subscription is treated as dead: warn the user, auto-pause.
 export const MAX_CONSECUTIVE_FAILURES = 5;
 
-// Min polls of a source in one run before "all failed" is treated as a source-wide outage
-// (below this, a single bad URL would raise a false alarm).
-const SOURCE_FAILURE_MIN_POLLS = 3;
-
 // Outcome of processing one subscription — drives the source tally and the 403 pause.
 type ProcessResult = 'ok' | 'blocked' | 'poll-failed';
-
-// Per-source poll counters for the source-outage alert.
-type SourceStats = { attempts: number; failures: number };
 
 /** A Telegram 403 means delivery is impossible (blocked / deactivated) — pause the user. */
 function isBotBlocked(err: unknown): boolean {
@@ -94,6 +88,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.status.finishPolling();
     }
+    // TODO [L]: markRun sits outside the try/finally, so a thrown pollAll leaves /stats showing an
+    // old timestamp as «последний прогон» with no failure signal. The value is "last SUCCESSFUL
+    // run" — rename it and surface the failed run.
     this.status.markRun(new Date());
   }
 
@@ -102,7 +99,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Users who blocked us this run — skip their remaining subs to avoid re-hitting 403.
     const blockedUsers = new Set<string>();
     // Per-source poll tally — used to alert the admin if a whole source is failing.
-    const sourceStats = new Map<string, SourceStats>();
+    const tally = new SourceTally();
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
@@ -115,45 +112,27 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
         this.report({ err, sub, op: 'process' });
+        // TODO [L]: this `continue` skips tally.record, so a throwing subscription never counts
+        // toward `attempts` and can push a source below SOURCE_FAILURE_MIN_POLLS, suppressing the
+        // outage alert — the same distortion the recordFailure guard below exists to prevent.
         continue;
       }
-      this.tallySource({
-        stats: sourceStats,
-        source: sub.source,
-        failed: result === 'poll-failed',
-      });
+      tally.record({ source: sub.source, failed: result === 'poll-failed' });
       if (result === 'blocked') {
         blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
         await this.pauseUser(sub.userId);
       }
     }
     await this.recordTotals();
-    await this.alertFailedSources(sourceStats);
-  }
-
-  private tallySource({
-    stats,
-    source,
-    failed,
-  }: {
-    stats: Map<string, SourceStats>;
-    source: Subscription['source'];
-    failed: boolean;
-  }): void {
-    const tally = stats.get(source) ?? { attempts: 0, failures: 0 };
-    tally.attempts += 1;
-    if (failed) tally.failures += 1;
-    stats.set(source, tally);
+    await this.alertFailedSources(tally);
   }
 
   /** Alert the admin about any source whose polls all failed this run (likely a broken adapter). */
-  private async alertFailedSources(stats: Map<string, SourceStats>): Promise<void> {
-    for (const [source, { attempts, failures }] of stats) {
-      if (attempts >= SOURCE_FAILURE_MIN_POLLS && failures === attempts) {
-        await this.notifyAdmin(
-          `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${attempts}) — возможно, сломан адаптер.`,
-        );
-      }
+  private async alertFailedSources(tally: SourceTally): Promise<void> {
+    for (const { source, attempts } of tally.failedSources()) {
+      await this.notifyAdmin(
+        `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${attempts}) — возможно, сломан адаптер.`,
+      );
     }
   }
 
@@ -175,7 +154,12 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       ]);
       this.metrics.setTotals({ users, activeSubscriptions: active });
     } catch (err) {
+      // Swallowed so the run still finishes, so it must be reported: without it the
+      // user/subscription gauges freeze at their last value and Grafana shows a flat healthy
+      // line forever.
+      // NOTE: bare captureException on purpose — run-wide metrics belong to no single user.
       this.logger.warn({ err }, 'Failed to record totals');
+      Sentry.captureException(err);
     }
   }
 
@@ -209,25 +193,32 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   /** Send the fresh digest. Returns true if the user blocked us; other send failures are
    *  logged and retried next run (markSeen only after a successful send). */
   private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
-    const { delivered, error } = await deliverDigest(listings, (text) =>
-      this.telegram.notify(sub.user.telegramId, text),
-    );
+    const { delivered, error, markSeenError } = await deliverAndMark({
+      listings,
+      send: (text) => this.telegram.notify(sub.user.telegramId, text),
+      markSeen: (items) => this.watch.markSeen(sub, items),
+    });
 
-    // Persist whatever reached the user, even if a later message failed — otherwise the whole
-    // digest would be re-sent next run. markSeen is isolated: the messages already arrived, so
-    // a bookkeeping failure is neither a delivery failure nor a 403; those items just resurface.
-    if (delivered.length > 0) {
-      this.metrics.recordDelivery(sub.source);
-      try {
-        await this.watch.markSeen(sub, delivered);
-      } catch (err) {
-        this.logger.error({ err }, `markSeen failed after delivery for subscription ${sub.id}`);
-        this.report({ err, sub, op: 'mark-seen', details: { resending: delivered.length } });
-      }
+    if (markSeenError) {
+      this.logger.error(
+        { err: markSeenError },
+        `markSeen failed after delivery for subscription ${sub.id}`,
+      );
+      this.report({
+        err: markSeenError,
+        sub,
+        op: 'mark-seen',
+        details: { resending: delivered.length },
+      });
     }
+    if (delivered.length > 0) this.metrics.recordDelivery(sub.source);
 
     if (!error) return false;
+    // A 403 is an expected state (the user blocked us) handled by pausing them, not a defect —
+    // reporting every blocked user would flood Sentry with noise.
     if (isBotBlocked(error)) return true;
+    // A send that failed part-way must not pass silently: the user sees a digest numbered
+    // "(1/5)" and would wait for four messages that never come.
     this.logger.error({ err: error }, `Delivery failed for subscription ${sub.id}`);
     this.report({ err: error, sub, op: 'deliver', details: { deliveredBefore: delivered.length } });
     return false;
@@ -255,6 +246,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Count a failed poll; at MAX_CONSECUTIVE_FAILURES pause the dead sub and warn the user. */
+  // TODO [M]: purely per-subscription — it never consults the run's source tally, so a broken
+  // adapter auto-pauses EVERY subscription of that source and tells each user «Проверьте ссылку»,
+  // which is factually wrong, with manual ▶️ recovery per user. alertFailedSources sees the
+  // outage but only after the pausing, and is advisory only. Skip the pause on a source outage.
   private async recordFailure(sub: Subscription): Promise<void> {
     await this.subscriptions.bumpFailures(sub.id);
     if (sub.consecutiveFailures + 1 < MAX_CONSECUTIVE_FAILURES) return;
@@ -264,6 +259,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Paused dead subscription ${sub.id} after ${MAX_CONSECUTIVE_FAILURES} failures`,
     );
+    // TODO [L]: the notice and the admin alert fan out one message per subscription, so a user at
+    // the 50-subscription cap gets 50 near-identical notices in one run and the admin gets 50 too,
+    // likely tripping Telegram's per-chat rate limit. Aggregate them per user and per run.
     await this.telegram
       .notify(sub.user.telegramId, deadSubscriptionNotice({ source: sub.source, url: sub.url }))
       .catch((err: unknown) => this.logger.warn({ err }, `Dead-link notice failed for ${sub.id}`));

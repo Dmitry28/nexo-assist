@@ -19,8 +19,11 @@ export const MAX_LINE_CHARS = 500;
  * Cut `text` down to at most `max` chars, ellipsis included. Drops a trailing lone surrogate so
  * a cut landing inside an emoji doesn't leave half of it behind (listing titles carry emoji).
  */
-const truncate = (text: string, max: number): string =>
-  `${text.slice(0, Math.max(0, max - 1)).replace(/[\uD800-\uDBFF]$/, '')}…`;
+const truncate = (text: string, max: number): string => {
+  // A non-positive budget has no room even for the ellipsis — returning '…' would exceed `max`.
+  if (max <= 0) return '';
+  return `${text.slice(0, Math.max(0, max - 1)).replace(/[\uD800-\uDBFF]$/, '')}…`;
+};
 
 function price(listing: Listing): string {
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
@@ -29,8 +32,9 @@ function price(listing: Listing): string {
 }
 
 function formatOne(listing: Listing): string {
-  // Truncate the TITLE, never the link: the item is marked seen once delivered, so a listing
-  // that arrives without its link is lost for good — the whole point of the message is gone.
+  // Truncate the TITLE first and keep the link whole: the item is marked seen once delivered, so
+  // a listing that arrives without its link is lost for good. Only when trimming the title still
+  // can't fit the line does the backstop below cut the whole line, link included.
   const tail = `\n${price(listing)}\n${listing.link}`;
   const titleBudget = MAX_LINE_CHARS - tail.length;
   const title =
@@ -60,6 +64,9 @@ function takeChunk(listings: Listing[], budget: number): Listing[] {
 }
 
 /** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
+// TODO [L]: the budget subtracts only `header.length` and ignores the "…и ещё N" footer, which
+// newListingsBatches reserves HEADER_TAIL_RESERVE_CHARS for. Safe only thanks to the 596-char
+// slack under Telegram's 4096; reserve the footer too before MAX_MESSAGE_BUDGET_CHARS is raised.
 function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
   const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length);
   const more = listings.length - shown.length;
@@ -120,6 +127,11 @@ export function newListingsBatches(fresh: Listing[]): DigestBatch[] {
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
   `⚠️ Поиск на ${source} перестал отвечать — я поставил его на паузу.\n` +
   `Проверьте ссылку и пришлите её снова, если она рабочая.\n${url}`;
+
+// NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
+// Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
+export const PROMPT =
+  'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
 
 /**
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:

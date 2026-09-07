@@ -2,10 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
-import { makeListing as listing } from '@/__tests__/helpers/listing';
-import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
-import { AppEnv } from '@/config/env.validation';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -16,9 +13,12 @@ import {
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 
+import type { CheckHandlers } from '../check.handlers';
 import { HELP_MESSAGE } from '../telegram.format';
 import { TelegramHandlers } from '../telegram.handlers';
 import { WatchStatus } from '../watch.status';
+
+import { makeCtx } from './fixtures/bot-ctx';
 
 type Handler = (ctx: Context) => Promise<void> | void;
 
@@ -39,18 +39,6 @@ class FakeBot {
   }
 }
 
-const makeCtx = (over: { text?: string; userId?: number; match?: RegExpMatchArray | string }) => {
-  const ctx = {
-    message: over.text !== undefined ? { text: over.text } : undefined,
-    from: over.userId !== undefined ? { id: over.userId } : undefined,
-    match: over.match,
-    reply: jest.fn().mockResolvedValue(undefined),
-    editMessageText: jest.fn().mockResolvedValue(undefined),
-    answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
-  };
-  return ctx as unknown as Context & typeof ctx;
-};
-
 const sub = (over: Partial<Subscription> = {}): Subscription =>
   makeSubscription({ url: 'u1', ...over });
 
@@ -67,8 +55,9 @@ describe('TelegramHandlers', () => {
     countActive: jest.Mock;
     countPaused: jest.Mock;
   };
-  let watch: { baseline: jest.Mock; poll: jest.Mock; current: jest.Mock; markSeen: jest.Mock };
-  // Real WatchStatus — dependency-free, and /check's polling slot is part of what is tested.
+  let watch: { baseline: jest.Mock };
+  let check: { onCheck: jest.Mock; onShowCurrent: jest.Mock };
+  // Real WatchStatus — dependency-free, and /stats reports its last run.
   let status: WatchStatus;
 
   const buildHandlers = (config = makeAppConfig()) => {
@@ -78,6 +67,7 @@ describe('TelegramHandlers', () => {
       watch as unknown as WatchService,
       new SourceRegistry([new KufarAdapter()]),
       status,
+      check as unknown as CheckHandlers,
     );
     const fakeBot = new FakeBot();
     handlers.register(fakeBot as unknown as Bot);
@@ -97,16 +87,18 @@ describe('TelegramHandlers', () => {
       countActive: jest.fn().mockResolvedValue(0),
       countPaused: jest.fn().mockResolvedValue(0),
     };
-    watch = {
-      baseline: jest.fn().mockResolvedValue(1),
-      poll: jest.fn(),
-      current: jest.fn().mockResolvedValue([]),
-      markSeen: jest.fn().mockResolvedValue(undefined),
+    watch = { baseline: jest.fn().mockResolvedValue(1) };
+    check = {
+      onCheck: jest.fn().mockResolvedValue(undefined),
+      onShowCurrent: jest.fn().mockResolvedValue(undefined),
     };
     bot = buildHandlers();
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
 
   // NOTE: 'anonymous' rather than `undefined` — a default parameter fires on an explicit
   // `undefined`, so that could not express "a sender-less update" at a call site.
@@ -230,12 +222,50 @@ describe('TelegramHandlers', () => {
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('устарела'));
   });
 
+  it('cancel answers the callback before editing — a failed edit must not keep it spinning', async () => {
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
+    const ctx = await pressButton(`cancel:${nonce}`);
+
+    expect(ctx.answerCallbackQuery.mock.invocationCallOrder[0]).toBeLessThan(
+      ctx.editMessageText.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('cancel still edits the message when a stale callback answer throws', async () => {
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
+    const data = `cancel:${nonce}`;
+    const entry = bot.callbacks.find((c) => c.pattern.test(data))!;
+    const ctx = makeCtx({ userId: 1, match: data.match(entry.pattern) ?? undefined });
+    // Answering first must not cost the user the confirmation: a callback older than ~15s throws.
+    ctx.answerCallbackQuery.mockRejectedValue(new Error('query is too old'));
+
+    await entry.fn(ctx);
+
+    expect(ctx.editMessageText).toHaveBeenCalledWith('Отменено.');
+  });
+
   it('/help replies with the help text', async () => {
     const ctx = makeCtx({ userId: 1 });
 
     await buildHandlers().commands.get('help')!(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(HELP_MESSAGE, expect.anything());
+  });
+
+  // Routing lives here alone: the on-demand poll owns the behaviour (CheckHandlers), this
+  // module owns which update reaches it.
+  it('/check is routed to CheckHandlers', async () => {
+    const ctx = makeCtx({ userId: 1 });
+
+    await bot.commands.get('check')!(ctx);
+
+    expect(check.onCheck).toHaveBeenCalledWith(ctx);
+  });
+
+  it('a show: tap reaches CheckHandlers with the tapped subscription id', async () => {
+    const ctx = await pressButton('show:sub-1', 1);
+
+    expect(check.onShowCurrent).toHaveBeenCalledWith(ctx, 'sub-1');
   });
 
   it('lists subscriptions with remove buttons and removes for the owner', async () => {
@@ -317,158 +347,6 @@ describe('TelegramHandlers', () => {
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith();
     expect(subscriptions.remove).not.toHaveBeenCalled();
     expect(subscriptions.resume).not.toHaveBeenCalled();
-  });
-
-  it('/check baselines a pending subscription instead of flooding it as new', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
-    watch.poll.mockResolvedValue({ kind: 'baselined', count: 2 });
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('объявлений сейчас: 2'),
-      expect.anything(),
-    );
-    expect(watch.markSeen).not.toHaveBeenCalled();
-  });
-
-  it('/check replies with the digest and marks the delivered items seen', async () => {
-    const s = sub({ url: 'u1' });
-    subscriptions.listByUser.mockResolvedValue([s]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1), listing(2)] });
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('🆕 Новых объявлений: 2'),
-      expect.anything(),
-    );
-    expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
-  });
-
-  it('/check keeps the delivered digest when markSeen fails — no contradictory error', async () => {
-    const s = sub({ url: 'u1' });
-    subscriptions.listByUser.mockResolvedValue([s]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
-    watch.markSeen.mockRejectedValue(new Error('db down'));
-    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('🆕 Новых объявлений: 1'),
-      expect.anything(),
-    );
-    expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
-    expect(ctx.reply).not.toHaveBeenCalledWith('Ничего нового.');
-    // Silent to the user, but it must not be silent to us: the items stay unmarked and re-send.
-    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
-    expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'check');
-    expect(sentryCapture()).toHaveBeenCalled();
-  });
-
-  it('/check reports a failing subscription without a contradictory "Ничего нового."', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
-    watch.poll.mockRejectedValue(new Error('outage'));
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
-    expect(ctx.reply).not.toHaveBeenCalledWith('Ничего нового.');
-  });
-
-  it('/check answers the owner in production — the only live check without waiting for the cron', async () => {
-    const prodBot = buildHandlers(
-      makeAppConfig({ appEnv: AppEnv.Production, adminTelegramId: 99 }),
-    );
-    subscriptions.listByUser.mockResolvedValue([]);
-
-    const ctx = makeCtx({ userId: 99 });
-    await prodBot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Пока нет ни одной подписки'));
-  });
-
-  it('/check stays silent for a non-owner in production', async () => {
-    const prodBot = buildHandlers(
-      makeAppConfig({ appEnv: AppEnv.Production, adminTelegramId: 99 }),
-    );
-
-    const ctx = makeCtx({ userId: 1 });
-    await prodBot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).not.toHaveBeenCalled();
-    expect(subscriptions.listByUser).not.toHaveBeenCalled();
-  });
-
-  it('/check announces the batch and polls every subscription in it', async () => {
-    // Zero delays: the paced loop would otherwise really sleep between subscriptions.
-    const fast = buildHandlers(makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }));
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 's1' }), sub({ id: 's2' })]);
-    watch.poll.mockResolvedValue({ kind: 'nothing' });
-
-    const ctx = makeCtx({ userId: 1 });
-    await fast.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Проверяю подписок: 2'));
-    expect(watch.poll).toHaveBeenCalledTimes(2);
-  });
-
-  it('/check skips paused subscriptions — the daily run does not poll them either', async () => {
-    const fast = buildHandlers(makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }));
-    subscriptions.listByUser.mockResolvedValue([
-      sub({ id: 'paused', pausedAt: new Date() }),
-      sub({ id: 'active' }),
-    ]);
-    watch.poll.mockResolvedValue({ kind: 'nothing' });
-
-    await fast.commands.get('check')!(makeCtx({ userId: 1 }));
-
-    expect(watch.poll).toHaveBeenCalledTimes(1);
-    expect(watch.poll).toHaveBeenCalledWith(expect.objectContaining({ id: 'active' }));
-  });
-
-  it('/check says so when every subscription is paused', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 's1', pausedAt: new Date() })]);
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('на паузе'));
-    expect(watch.poll).not.toHaveBeenCalled();
-  });
-
-  it('/check refuses to start while the daily run is polling', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
-    status.tryStartPolling(); // the scheduler holds the slot
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('check')!(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('уже идёт'));
-    expect(watch.poll).not.toHaveBeenCalled();
-  });
-
-  it('/check releases the polling slot even when a subscription fails', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
-    watch.poll.mockRejectedValue(new Error('outage'));
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-
-    await bot.commands.get('check')!(makeCtx({ userId: 1 }));
-
-    expect(status.tryStartPolling()).toBe(true); // free again
-  });
-
-  it('show-current denies a subscription that is not yours', async () => {
-    subscriptions.listByUser.mockResolvedValue([]); // user 999 owns nothing
-    const ctx = await pressButton('show:sub-1', 999);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Подписка не найдена.');
-    expect(watch.current).not.toHaveBeenCalled();
   });
 
   it('/stats replies to the admin with counts', async () => {
