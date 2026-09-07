@@ -25,7 +25,9 @@ start; more frequent once throttling/dedupe land).
   one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
   it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
   ▶️ clears the pause and the failure streak and leaves the seen set alone — what appeared during
-  the pause was never delivered, so it was never marked seen and it all arrives on the next run;
+  the pause was never delivered, so it was never marked seen and it starts arriving on the next
+  run, under the same ceiling and page window as any other backlog (so a long pause loses its
+  oldest listings);
   re-sending the URL revives the subscription and then re-baselines it, which marks that backlog
   seen and drops it. The two paths should share one semantic — PRODUCT_PLAN.md,
   «Технический бэклог», findings of 2026-09-07.
@@ -79,7 +81,7 @@ Everything below this section describes the target design.
 6. Persist only what was actually delivered (on failure, retry next run). The guarantee is
    **no loss**, not exactly-once: if recording the seen set fails after a successful send, or the
    pod dies between the two, those listings are re-sent next run. Duplicates are the deliberate
-   choice over silence (see `src/modules/telegram/telegram.deliver.ts`).
+   choice over silence (see `src/modules/telegram/bot/telegram.deliver.ts`).
 
 **Two "seen" levels:** the delta is per source (normalized URL, dedupe); delivery
 is per subscription (a new subscriber gets a baseline, not a flood).
