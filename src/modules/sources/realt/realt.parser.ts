@@ -1,4 +1,4 @@
-import { asRecord, parseNextData } from '../scraping/next-data';
+import { asArray, asRecord, asText, parseNextData } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
@@ -50,7 +50,11 @@ export function extractPage(html: string): RealtPage {
   const pageProps = asRecord(props?.pageProps);
   if (!pageProps) throw new Error('realt: pageProps missing — page layout changed?');
   return {
-    objects: (pageProps.objects as RawRealtObject[] | undefined) ?? [],
+    // Array-checked: an `objects` of another shape would otherwise reach `.map` in the adapter
+    // and throw "map is not a function" — a crash that names nothing useful.
+    objects: asArray<RawRealtObject>(pageProps.objects) ?? [],
+    // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
+    // reads two numbers off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
 }
@@ -61,26 +65,20 @@ export function extractPage(html: string): RealtPage {
  */
 export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
   // NOTE: title is often empty on realt — fall back to town + street, then a generic label.
-  const place = [str(obj.townName), str(obj.streetName)].filter(
-    (s): s is string => s !== undefined,
-  );
-  const title = str(obj.title) ?? (place.length > 0 ? place.join(', ') : UNTITLED_LISTING);
+  const place = [asText(obj.townName), asText(obj.streetName)].filter((s) => s !== undefined);
+  const title = asText(obj.title) ?? (place.length > 0 ? place.join(', ') : UNTITLED_LISTING);
 
   return {
     externalId: String(obj.code),
     link: `https://realt.by/${linkPath}/object/${obj.code}/`,
     title,
-    description: str(obj.headline) ?? str(obj.description),
+    description: asText(obj.headline) ?? asText(obj.description),
     priceByn: toPrice(obj.priceRates?.[CURRENCY_BYN]),
     priceUsd: toPrice(obj.priceRates?.[CURRENCY_USD]),
-    address: str(obj.address),
+    address: asText(obj.address),
     listTime: obj.updatedAt,
     images: obj.images ?? [],
   };
-}
-
-function str(value: string | null | undefined): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function toPrice(value: number | undefined): number | undefined {

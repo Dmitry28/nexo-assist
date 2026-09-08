@@ -10,6 +10,24 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
+/**
+ * Narrow an untyped `__NEXT_DATA__` branch to an array of `T`, or undefined. The element type is
+ * the caller's promise, not a check — only the array-ness is verified, which is what keeps a
+ * layout change from reaching `.map`/`.find` as "x is not a function".
+ */
+export function asArray<T>(value: unknown): T[] | undefined {
+  return Array.isArray(value) ? (value as T[]) : undefined;
+}
+
+/**
+ * Narrow an untyped `__NEXT_DATA__` branch to usable text, or undefined. Trimmed, and blank
+ * counts as absent: sources spell "no value" as a missing key, null, '' and '   ' alike, and a
+ * `Listing` field carrying whitespace is a blank line in the digest.
+ */
+export function asText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
 const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 
 /**

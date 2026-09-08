@@ -1,4 +1,4 @@
-import { asRecord, parseNextData } from '../scraping/next-data';
+import { asArray, asRecord, asText, parseNextData } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
@@ -17,7 +17,13 @@ interface RawKufarAd {
   price_usd?: string;
   list_time: string;
   images?: Array<{ path: string }>;
-  account_parameters?: Array<{ p: string; v: unknown }>;
+  account_parameters?: RawAccountParam[];
+}
+
+/** One entry of an ad's `account_parameters` block — a key/value pair, value untyped. */
+interface RawAccountParam {
+  p: string;
+  v: unknown;
 }
 
 const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/list_thumbs_2x';
@@ -47,12 +53,11 @@ export function extractPage(html: string): KufarPage {
   // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
   const initialState = asRecord(pageProps?.initialState ?? props?.initialState);
   const listing = asRecord(initialState?.listing);
-  const ads = listing?.ads as RawKufarAd[] | undefined;
-  if (!Array.isArray(ads)) throw new Error('kufar: listing.ads missing — page layout changed?');
-  // Array-checked like `ads`: a `pagination` of another shape would otherwise throw
-  // "find is not a function" instead of naming the page as the thing that changed.
-  const rawPagination = listing?.pagination;
-  const pagination = Array.isArray(rawPagination) ? (rawPagination as RawPagination[]) : [];
+  const ads = asArray<RawKufarAd>(listing?.ads);
+  if (!ads) throw new Error('kufar: listing.ads missing — page layout changed?');
+  // No pagination block, or one of another shape, simply means no next page — unlike `ads`,
+  // whose absence is the signal that the page is not a search result at all.
+  const pagination = asArray<RawPagination>(listing?.pagination) ?? [];
   const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
   return { ads, nextCursor };
 }
@@ -64,23 +69,25 @@ export function mapAd(ad: RawKufarAd): Listing {
     link: ad.ad_link ?? `https://re.kufar.by/vi/${ad.ad_id}`,
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
-    title: ad.subject?.trim() || UNTITLED_LISTING,
-    description: ad.body_short?.trim() || undefined,
+    title: asText(ad.subject) ?? UNTITLED_LISTING,
+    description: asText(ad.body_short),
     priceByn: toPrice(ad.price_byn),
     priceUsd: toPrice(ad.price_usd),
-    address: getAddress(ad),
+    address: asText(accountParam(ad, 'address')),
     listTime: ad.list_time,
     images: (ad.images ?? []).map((image) => `${IMAGE_CDN_BASE}/${image.path}`),
   };
 }
 
 // NOTE: Kufar stores prices as integers in 1/100 of the currency unit (1385000 → 13850 BYN).
+// The positivity check comes AFTER the conversion: a raw value under 50 rounds to 0, and a
+// `priceByn` of 0 is not a price — the digest would print "0 BYN" rather than "цена не указана".
 function toPrice(raw: string | undefined): number | undefined {
-  const value = raw ? parseInt(raw, 10) : 0;
-  return value > 0 ? Math.round(value / 100) : undefined;
+  const value = Math.round(parseInt(raw ?? '', 10) / 100);
+  return value > 0 ? value : undefined;
 }
 
-function getAddress(ad: RawKufarAd): string | undefined {
-  const value = ad.account_parameters?.find((p) => p.p === 'address')?.v;
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+/** One of the ad's `account_parameters` by key — the block holding address, seller and so on. */
+function accountParam(ad: RawKufarAd, key: string): unknown {
+  return asArray<RawAccountParam>(ad.account_parameters)?.find((p) => p.p === key)?.v;
 }

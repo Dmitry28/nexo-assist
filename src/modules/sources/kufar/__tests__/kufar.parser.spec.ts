@@ -97,6 +97,13 @@ describe('mapAd', () => {
     expect(listing.images).toEqual([]);
   });
 
+  it('omits a price that rounds down to zero rather than showing "0 BYN"', () => {
+    // Kufar's units are 1/100, so anything under 50 is not a price the user should see.
+    const listing = mapAd({ ad_id: 1, price_byn: '30', list_time: '2026-01-01T00:00:00Z' });
+
+    expect(listing.priceByn).toBeUndefined();
+  });
+
   it.each([
     ['absent', undefined],
     ['blank', '   '],
