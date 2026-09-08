@@ -15,7 +15,12 @@ import { SEND_DELAY_MS } from '@/modules/telegram/bot/telegram.deliver';
 import { DIGEST_LIMIT } from '@/modules/telegram/bot/telegram.format';
 import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
-import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
+import {
+  JOB_NAME,
+  MAX_CONSECUTIVE_FAILURES,
+  MAX_REPRIEVE_FAILURES,
+  WatchScheduler,
+} from '../watch.scheduler';
 import { WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
@@ -382,6 +387,124 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // A broken adapter fails every poll of its source. Pausing on that tells each subscriber
+  // «Проверьте ссылку» about a link that is fine, and leaves every one of them to press ▶️.
+  it('does not retire subscriptions when the source itself is down', async () => {
+    const { subscriptions, watch, telegram, metrics, scheduler } = build({ adminTelegramId: 99 });
+    // Enough polls for the outage verdict, and every one of them one short of the cap.
+    const out = MAX_CONSECUTIVE_FAILURES - 1;
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, out), sub(2, 2, out), sub(3, 3, out)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    // The streak still grows, so a link that really is dead is retired once the source answers.
+    expect(subscriptions.bumpFailures).toHaveBeenCalledTimes(3);
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    expect(metrics.recordPause).not.toHaveBeenCalled();
+    // Only the owner hears about it — he is the one who can fix an adapter.
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  it('still retires a dead link when the same source answers other polls', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    // 3 polls of one source: only sub 1 fails, so the source is not down — its link is.
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 2),
+      sub(3, 3),
+    ]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1'
+        ? Promise.reject(new Error('dead link'))
+        : Promise.resolve({ kind: 'nothing' as const }),
+    );
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).toHaveBeenCalledWith('1');
+    expect(telegram.notify).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('поставил его на паузу'),
+    );
+  });
+
+  it('keeps retiring the rest when one dead-link pause write fails', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    const out = MAX_CONSECUTIVE_FAILURES - 1;
+    // Two dead links on different sources, so neither source counts as down.
+    subscriptions.listActive.mockResolvedValue([
+      { ...sub(1, 1, out), source: 'kufar' as const },
+      { ...sub(2, 2, out), source: 'realt' as const },
+    ]);
+    watch.poll.mockRejectedValue(new Error('dead link'));
+    subscriptions.pause.mockRejectedValueOnce(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).toHaveBeenCalledTimes(2); // the second one still happened
+  });
+
+  // A source whose every subscription is dead fails every poll, so it reads as a broken adapter
+  // and can never "answer again" — without a ceiling the reprieve would shelter those links for
+  // good and no user would ever be told their search is dead.
+  it('retires a dead link anyway once the reprieve has run long enough', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    const out = MAX_REPRIEVE_FAILURES - 1;
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, out), sub(2, 2, out), sub(3, 3, out)]);
+    watch.poll.mockRejectedValue(new Error('every link of this source is dead'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).toHaveBeenCalledTimes(3);
+    expect(telegram.notify).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('поставил его на паузу'),
+    );
+  });
+
+  // The 403 path already paused every one of that user's subscriptions. Pausing again would
+  // double-count the metric and send a notice straight into another 403.
+  it('does not pause a dead link again for a user who just blocked the bot', async () => {
+    const { subscriptions, watch, telegram, metrics, scheduler } = build();
+    // Same user, in this order: sub 1 fails its poll into the cap, then sub 2 delivers into a
+    // 403. Reversed, blockedUsers would skip sub 1 before it was ever polled.
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 1),
+    ]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1'
+        ? Promise.reject(new Error('dead link'))
+        : Promise.resolve({ kind: 'fresh' as const, listings: [listing(1)] }),
+    );
+    telegram.notify.mockRejectedValue(
+      new GrammyError(
+        'Forbidden',
+        { ok: false, error_code: 403, description: 'blocked' },
+        'sendMessage',
+        {},
+      ),
+    );
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    expect(metrics.recordPause).not.toHaveBeenCalledWith('dead');
   });
 
   it('sends no admin alert when ADMIN_TELEGRAM_ID is unset', async () => {

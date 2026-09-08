@@ -2,13 +2,21 @@ import type { SourceId } from '@/modules/sources/source-adapter';
 
 // Min polls of a source in one run before "all failed" is treated as a source-wide outage
 // (below this, a single bad URL would raise a false alarm).
-// TODO [M]: a source with fewer subscriptions than this threshold can never raise the outage
-// alert, yet its subscriptions are still auto-paused — an alerting hole exactly where a new
-// source starts. Scale the threshold to the source's subscription count instead of a flat 3.
+// TODO [M]: a source polled fewer times than this can never be found down, so its subscriptions
+// get neither the outage alert nor the pause reprieve that verdict now buys them
+// (watch.scheduler.ts § pauseDead) — a hole exactly where a new source starts, and one that now
+// costs users their subscriptions, not just an alert. Scale the threshold to the source's
+// subscription count instead of a flat 3.
 export const SOURCE_FAILURE_MIN_POLLS = 3;
 
 // Per-source poll counters for the source-outage alert.
 type SourceStats = { attempts: number; failures: number };
+
+/** A source found down this run: every poll of it failed, over enough polls to mean something. */
+export interface SourceOutage {
+  source: SourceId;
+  attempts: number;
+}
 
 /**
  * Per-run accumulator of poll outcomes per source, and the source-outage rule over them.
@@ -25,8 +33,8 @@ export class SourceTally {
   }
 
   /** Sources whose polls ALL failed this run, with enough polls to rule out one bad URL. */
-  failedSources(): Array<{ source: SourceId; attempts: number }> {
-    const failed: Array<{ source: SourceId; attempts: number }> = [];
+  failedSources(): SourceOutage[] {
+    const failed: SourceOutage[] = [];
     for (const [source, { attempts, failures }] of this.stats) {
       if (attempts >= SOURCE_FAILURE_MIN_POLLS && failures === attempts) {
         failed.push({ source, attempts });
