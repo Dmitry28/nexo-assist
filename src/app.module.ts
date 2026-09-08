@@ -9,6 +9,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { stdSerializers, stdTimeFunctions } from 'pino';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { isMachineRequest } from './common/machine-request';
 import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
@@ -35,6 +36,8 @@ import { TelegramModule } from './modules/telegram/telegram.module';
       inject: [configuration.KEY],
       useFactory: (appConfig: AppConfig) => {
         const { isProduction, isTest } = appConfig;
+        // The versioned API root, as the probes and the scrape address it.
+        const base = `/${appConfig.apiPrefix}/v${appConfig.apiVersion}`;
         return {
           // NOTE: override nestjs-pino's default `*` route — Express 5 needs a named
           // wildcard, otherwise Nest logs a LegacyRouteConverter warning at boot.
@@ -54,9 +57,17 @@ import { TelegramModule } from './modules/telegram/telegram.module';
                     target: 'pino-pretty',
                     options: { translateTime: 'SYS:standard', ignore: 'pid,hostname' },
                   },
-            // Don't log request/response bodies by default — they may contain PII.
+            // Credentials travel in headers; pino-http logs headers but not bodies, so these
+            // two are the whole exposure. (Bodies stay unlogged because that is the default —
+            // nothing here would stop them.)
             redact: ['req.headers.authorization', 'req.headers.cookie'],
-            autoLogging: true,
+            // Log real traffic only. Liveness, readiness and the metrics scrape are polled every
+            // few seconds forever: left on, they are thousands of identical lines a day, and the
+            // one line that matters is buried in them. A failing probe still shows up — as the
+            // restart it causes, and in the /health response the orchestrator acts on.
+            autoLogging: {
+              ignore: (req) => isMachineRequest({ path: (req.url ?? '').split('?')[0], base }),
+            },
           },
         };
       },

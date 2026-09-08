@@ -62,8 +62,13 @@ jobs:
       - name: Validate k8s manifests
         run: kubectl kustomize k8s/ > /dev/null
 
+      # --runInBand: the worker pool segfaults roughly once in seven runs, and the failure mode is
+      # the dangerous one — the killed worker's suite simply does not execute, while the summary
+      # still reads "N passed". A green CI could therefore mean a whole spec file never ran. One
+      # process removes the pool; the suite takes ~3s, so there is nothing to buy back here.
+      # (The underlying cause is still unknown — PRODUCT_PLAN.md § Технический бэклог.)
       - name: Unit tests
-        run: npm run test:cov
+        run: npm run test:cov -- --runInBand
 
       - name: Build
         run: npm run build

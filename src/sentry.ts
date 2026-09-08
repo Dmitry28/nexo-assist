@@ -15,6 +15,11 @@
  * Without a DSN nothing is initialised and every `Sentry.*` call is a no-op. Errors only —
  * tracing stays off (`tracesSampleRate: 0`), so the free tier is spent on what needs acting on.
  *
+ * NOTE: the default integrations are load-bearing. Two of them install global
+ * `uncaughtException`/`unhandledRejection` handlers, and main.ts relies on exactly that —
+ * its own handlers log and flush but no longer capture, so turning `defaultIntegrations` off
+ * here would silently stop every crash from being reported.
+ *
  * NOTE: the Sentry SDK sets up OpenTelemetry itself, so do NOT enable SENTRY_DSN and
  * OTEL_EXPORTER_OTLP_ENDPOINT (src/tracing.ts) at the same time — two SDKs would fight over the
  * same instrumentation. A warning is logged if both are set.

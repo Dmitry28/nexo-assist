@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // `**/*spec.ts` alone missed the helpers and fixtures beside them, so dist shipped a grammY
+  // Context double and two files whose top level calls `jest.mock` — test scaffolding inside the
+  // production image. Exclude the folder, not just the spec suffix.
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "**/__tests__/**"]
 }

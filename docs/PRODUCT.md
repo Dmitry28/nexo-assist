@@ -139,8 +139,9 @@ interface SourceAdapter {
 diff → notify), the bot, and the DB schema know nothing about specific sites.
 `fetch` returns `Listing`s with a stable `externalId` — the diff/dedup key.
 
-Deferred until needed (kept out of the contract for now): `normalizeUrl` (URL
-dedupe — Phase 3), `capabilities: EventKind[]` (with removed/price events).
+Deferred until needed (kept out of the contract for now): `capabilities: EventKind[]`
+(with removed/price events). URL dedupe shipped instead as `normalizeUrl` in `common/url.ts`,
+source-agnostic and backed by a unique index — not as part of the adapter contract.
 Parsing is an adapter-internal detail; message formatting lives in the telegram
 layer, not the adapter.
 

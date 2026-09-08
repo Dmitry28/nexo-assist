@@ -10,9 +10,9 @@ health checks, and a full lint/format/test pipeline. Product spec:
 
 Send the bot a search link from **kufar.by** or **realt.by** with your filters already applied;
 it offers a "Следить" button and, from then on, sends the listings that appeared since the
-last check, once a day, in a capped digest (batching is the next step). Delivery rules and what
-the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its beta audience
-does.
+last check, once a day, as a capped digest split across as many messages as it takes. Delivery
+rules and what the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its
+beta audience does.
 
 | Command  | What it does                                                                |
 | -------- | --------------------------------------------------------------------------- |
@@ -65,7 +65,9 @@ environment, and Telegram delivers updates to a single long-polling consumer per
 production token must never be used locally. Left unset, the app runs with the bot disabled.
 
 - API base URL: `http://localhost:3000/api/v1`
-- Swagger UI: `http://localhost:3000/api/docs` (non-production only)
+- Swagger UI: `http://localhost:3000/api/docs` (non-production only) — **currently renders
+  blank**: helmet's default CSP blocks the inline script `@nestjs/swagger` serves. Whether to
+  scope a CSP exception or drop Swagger is an open decision (marker in `src/main.ts`).
 - Liveness: `http://localhost:3000/api/v1/health/live`
 - Readiness: `http://localhost:3000/api/v1/health/ready`
 - Metrics (Prometheus): `http://localhost:3000/api/v1/metrics`
@@ -107,6 +109,7 @@ production token must never be used locally. Left unset, the app runs with the b
 src/
 ├── main.ts                  # Bootstrap: logger, Swagger, shutdown hooks, fatal handlers
 ├── app.setup.ts             # configureApp(): helmet, CORS, prefix, versioning (shared with e2e)
+├── sentry.ts                # Error reporting init (imported first, before tracing)
 ├── tracing.ts               # OpenTelemetry init (imported first; opt-in via env)
 ├── app.module.ts            # Root module: config, logger, throttler, metrics, global filter
 ├── config/
@@ -114,8 +117,9 @@ src/
 │   └── env.validation.ts    # Env schema — app refuses to boot if invalid
 ├── common/                  # Cross-cutting building blocks
 │   ├── filters/             # Global exception filter (consistent error JSON)
-│   └── url.ts               # URL helpers (extract, host pinning, query params)
-├── health/                  # Liveness + readiness probes (Terminus)
+│   └── url.ts, wait.ts, …   # Generic single-concern helpers
+├── database/                # Migration data-source + generated migrations
+├── health/                  # Liveness + readiness probes (Terminus) + the watchdog heartbeat
 ├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
     ├── sources/             # Source plugins: SourceAdapter registry + kufar/realt scrapers

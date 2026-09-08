@@ -4,11 +4,17 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Inject,
   Logger,
 } from '@nestjs/common';
 import { SpanStatusCode, trace } from '@opentelemetry/api';
 import * as Sentry from '@sentry/nestjs';
 import type { Request, Response } from 'express';
+
+import type { AppConfig } from '@/config/configuration';
+import configuration from '@/config/configuration';
+
+import { isMachineRequest } from '../machine-request';
 
 interface ErrorResponseBody {
   statusCode: number;
@@ -32,6 +38,12 @@ function isMessage(value: unknown): value is string | string[] {
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
+  /** The versioned API root, as the probes and the scrape address it. */
+  private readonly base: string;
+
+  constructor(@Inject(configuration.KEY) appConfig: AppConfig) {
+    this.base = `/${appConfig.apiPrefix}/v${appConfig.apiVersion}`;
+  }
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -66,8 +78,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
         `${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
-      // A 5xx is a bug we must hear about — logs alone are not read.
-      Sentry.captureException(exception);
+      // A 5xx is a bug we must hear about — logs alone are not read. Except from the probes:
+      // a readiness check answers 503 while the database is unreachable, and the orchestrator
+      // asks again every few seconds, so one blip becomes hundreds of Sentry events for a
+      // condition the probe itself already reports (the pod leaves the Service, and the
+      // watchdog covers the app dying outright). The log line above stays — during an outage
+      // it says which check failed, and it never leaves the pod.
+      if (!isMachineRequest({ path: request.url.split('?')[0], base: this.base })) {
+        Sentry.captureException(exception);
+      }
     }
 
     const body: ErrorResponseBody = {
