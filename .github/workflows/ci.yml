@@ -57,6 +57,11 @@ jobs:
       - name: Dead code check
         run: npm run check:dead-code
 
+      # Lives with the other static checks, not with the image build: it needs no Docker and
+      # would otherwise run once per build-image matrix leg.
+      - name: Validate k8s manifests
+        run: kubectl kustomize k8s/ > /dev/null
+
       - name: Unit tests
         run: npm run test:cov
 
@@ -69,28 +74,111 @@ jobs:
       - name: E2E tests
         run: npm run test:e2e
 
-  docker-and-k8s:
-    runs-on: ubuntu-latest
-    needs: build-and-test # never publish an image from a commit that failed lint/typecheck/tests
+  # One leg per architecture, each on a runner of that architecture, both in parallel with
+  # build-and-test. The app node is Hetzner CX23 (amd64), so amd64 is what actually deploys;
+  # arm64 is kept so the image is not tied to one host architecture (an ARM box or an
+  # Apple-silicon laptop runs it too).
+  #
+  # Why native runners and not one QEMU-emulated job: emulating arm64 on an x86 runner made
+  # `npm run build` take 136s against 31s native — a ~2min tax on every run. `ubuntu-24.04-arm`
+  # is free for public repos, so each leg builds on real silicon instead.
+  #
+  # Each leg pushes an untagged, digest-only image; publish-image then joins them under the
+  # real tags. Nothing is pushed on pull requests — there the build only proves the Dockerfile
+  # still works.
+  #
+  # `name:` is set explicitly so the status-check context stays `build-image (amd64)` rather
+  # than GitHub's default of every matrix value joined together. Both contexts are required by
+  # branch protection on dev and main — renaming this job means updating those too.
+  build-image:
+    name: build-image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write # push the image to GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate k8s manifests
-        run: kubectl kustomize k8s/ > /dev/null
+      - name: Image name
+        id: img
+        # GHCR rejects uppercase, and the owner is `Dmitry28` — so lowercase it.
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      # QEMU + buildx: the app node is Hetzner CX23 (amd64), so amd64 is what actually
-      # deploys; arm64 is kept so the image is not tied to one host architecture (an ARM box
-      # or an Apple-silicon laptop runs it too). The arm64 half is emulated, hence slower —
-      # drop it, not amd64, if that ever stops being worth the minutes.
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # Push only on branch pushes (dev/main); PRs just build to validate the Dockerfile.
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          # `cacheonly` on a PR: build everything, publish nothing.
+          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', steps.img.outputs.name) }}
+          # Per-arch scope — one shared scope would have the two legs evict each other.
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        # The filename is the digest; the file itself is empty. publish-image only needs the names.
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Join the two per-arch images into one multi-arch tag. Depends on build-and-test as well as
+  # the builds: the slow part (the two image builds) has already run in parallel with the tests
+  # by this point, so waiting here costs almost nothing and keeps a red commit's image — and
+  # especially the `latest` tag — out of the registry.
+  publish-image:
+    needs: [build-and-test, build-image]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -101,7 +189,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }} # metadata-action lowercases the name
+          images: ${{ steps.img.outputs.name }}
           # `latest` follows production, i.e. `main` — not the default branch, which is `dev`
           # (where we integrate and test locally before promoting), so no {{is_default_branch}}.
           tags: |
@@ -109,23 +197,28 @@ jobs:
             type=ref,event=branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: runtime
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ steps.img.outputs.name }}
+        # One `imagetools create` call: every tag from metadata-action pointing at both digests.
+        run: |
+          tags=()
+          while IFS= read -r tag; do tags+=(-t "$tag"); done \
+            < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+
+      # Proves the tag really carries both architectures, not just the last one pushed.
+      - name: Inspect
+        run: docker buildx imagetools inspect "${{ steps.img.outputs.name }}:${{ steps.meta.outputs.version }}"
 
   # Deploy the commit that was just built. Only on a push to `main` — production is promoted
   # from `dev` by merging it here (never from a PR — a fork must not be able to reach the
   # cluster) — and only after tests AND the image are green.
   deploy:
-    needs: [build-and-test, docker-and-k8s]
+    needs: [build-and-test, publish-image]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # One deploy at a time; a newer commit supersedes an older one still waiting.
