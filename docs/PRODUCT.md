@@ -40,7 +40,8 @@ start; more frequent once throttling/dedupe land).
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
   the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
   so a longer loop would freeze the bot for everyone), and shares one polling slot with the
-  daily run: whichever starts second is refused, so they never poll the same subscriptions at
+  daily run: `/check` is refused when the run holds it, and the run is **skipped for the day**
+  when `/check` holds it (the owner is told) — so they never poll the same subscriptions at
   once or race each other's "seen" bookkeeping.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
@@ -105,7 +106,9 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   app dying outright.
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
   alert below would go nowhere silently) is notified on every auto-pause
-  (403 / dead link) and when a whole source fails all its polls in a run.
+  (403 / dead link) and when a whole source fails all its polls in a run — the latter only once
+  that source was polled at least three times, so a source with fewer subscriptions than that
+  is auto-paused without an outage alert (PRODUCT_PLAN.md § Технический бэклог).
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture
