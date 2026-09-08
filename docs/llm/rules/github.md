@@ -31,6 +31,11 @@
 - Message format → [../commands/git/rules/changes-message-format-rules.md](../commands/git/rules/changes-message-format-rules.md).
 - Generate a commit with `/git-commit`, a PR description with `/pr-description`.
 - Correcting a PR or issue comment → **edit the existing one**, never post a second.
+- **Stage every file you edited before committing, then check the result with `git show`.**
+  The pre-commit hook backs up and restores the working tree around lint-staged, and an edit made
+  to an _unstaged_ file between `git add` and `git commit` was observed to be lost in that restore
+  (2026-09-08, a doc comment in `pending-links.ts`). The commit reported success, so nothing
+  flagged it — only re-reading the committed diff did.
 
 ## Calling the API
 

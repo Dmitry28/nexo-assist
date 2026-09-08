@@ -21,7 +21,10 @@ start; more frequent once throttling/dedupe land).
   (~490+ chars) forces the whole line to be clamped, link included.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
   language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
-- Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
+- Buttons: Следить / Отмена / Показать текущие / list / remove / resume. An open «Следить»
+  prompt stays tappable for 24 hours (and only until a restart — it lives in memory); after that
+  the button answers «Кнопка устарела» and the link is pasted again. The number of open prompts
+  is capped **per user**, so no one can expire anyone else's. `/list` is capped to fit
   one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
   it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
   ▶️ clears the pause and the failure streak and leaves the seen set alone — what appeared during
@@ -101,14 +104,22 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 - **Dead link:** if a search keeps failing to poll (errors, not empty results) for
   several runs in a row → tell the user to refresh it and pause that subscription.
   A paused subscription is revived by re-sending its link or by ▶️ in `/list`.
+  **Except when the whole source failed that run:** a broken adapter fails every poll of its
+  source, so «Проверьте ссылку» would be false for all of them and each user would have to press
+  ▶️ by hand. Then nothing is paused — the owner gets the outage alert below and the failure
+  streak keeps counting, so a dead link is retired on the first run that source answers for
+  somebody else. That reprieve has a ceiling (15 failed polls in a row), because a source whose
+  _every_ subscription is dead also fails every poll and would otherwise shelter those links for
+  good — it can never answer again, having no live link left to answer with.
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
   when the pings stop, the watchdog alerts the owner. It covers what no in-app report can — the
   app dying outright.
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
   alert below would go nowhere silently) is notified on every auto-pause
   (403 / dead link) and when a whole source fails all its polls in a run — the latter only once
-  that source was polled at least three times, so a source with fewer subscriptions than that
-  is auto-paused without an outage alert (PRODUCT_PLAN.md § Технический бэклог).
+  that source was polled at least three times. Below that the outage is not recognized at all, so
+  those subscriptions get neither the alert nor the pause reprieve above
+  (PRODUCT_PLAN.md § Технический бэклог).
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture

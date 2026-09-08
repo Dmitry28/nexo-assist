@@ -7,7 +7,7 @@ import { GrammyError } from 'grammy';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
-import type { Listing } from '@/modules/sources/source-adapter';
+import type { Listing, SourceId } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
@@ -19,6 +19,7 @@ import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
 
 import { SourceTally } from './source-tally';
+import type { SourceOutage } from './source-tally';
 import { pace } from './watch.pacing';
 import { WatchStatus } from './watch.status';
 
@@ -27,8 +28,16 @@ export const JOB_NAME = 'daily-watch';
 // Consecutive failed polls before a subscription is treated as dead: warn the user, auto-pause.
 export const MAX_CONSECUTIVE_FAILURES = 5;
 
-// Outcome of processing one subscription — drives the source tally and the 403 pause.
-type ProcessResult = 'ok' | 'blocked' | 'poll-failed';
+// Ceiling on the source-outage reprieve (see pauseDead). A source whose every subscription is
+// dead looks exactly like a broken adapter — every poll of it fails — so the reprieve on its own
+// would shelter those links for good: such a source can never answer again, because no live link
+// is left to answer with. This gives the owner roughly ten more daily runs to fix an adapter
+// before the subscription is retired anyway.
+export const MAX_REPRIEVE_FAILURES = MAX_CONSECUTIVE_FAILURES * 3;
+
+// Outcome of processing one subscription — drives the source tally, the 403 pause and the
+// deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out).
+type ProcessResult = { state: 'ok' | 'blocked' } | { state: 'poll-failed'; dead: boolean };
 
 /** A Telegram 403 means delivery is impossible (blocked / deactivated) — pause the user. */
 function isBotBlocked(err: unknown): boolean {
@@ -100,6 +109,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     const blockedUsers = new Set<string>();
     // Per-source poll tally — used to alert the admin if a whole source is failing.
     const tally = new SourceTally();
+    // Subscriptions whose failure streak ran out this run. Paused only after the loop: whether
+    // the source itself is down is not known until every poll is in (see pauseDead).
+    const dead: Subscription[] = [];
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
@@ -118,19 +130,23 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         tally.record({ source: sub.source, failed: false });
         continue;
       }
-      tally.record({ source: sub.source, failed: result === 'poll-failed' });
-      if (result === 'blocked') {
+      tally.record({ source: sub.source, failed: result.state === 'poll-failed' });
+      if (result.state === 'poll-failed' && result.dead) dead.push(sub);
+      if (result.state === 'blocked') {
         blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
         await this.pauseUser(sub.userId);
       }
     }
+    const outages = tally.failedSources();
+    await this.alertFailedSources(outages);
+    await this.pauseDead(dead, new Set(outages.map(({ source }) => source)), blockedUsers);
+    // Last on purpose: the gauges must count the subscriptions this run just paused as paused.
     await this.recordTotals();
-    await this.alertFailedSources(tally);
   }
 
   /** Alert the admin about any source whose polls all failed this run (likely a broken adapter). */
-  private async alertFailedSources(tally: SourceTally): Promise<void> {
-    for (const { source, attempts } of tally.failedSources()) {
+  private async alertFailedSources(outages: SourceOutage[]): Promise<void> {
+    for (const { source, attempts } of outages) {
       await this.notifyAdmin(
         `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${attempts}) — возможно, сломан адаптер.`,
       );
@@ -178,17 +194,20 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordPollError(sub.source);
       // Guard the bookkeeping so a DB hiccup can't hide a poll failure from the source
       // tally — otherwise a broken adapter + failing write would suppress the outage alert.
-      await this.recordFailure(sub).catch((e: unknown) => {
+      const dead = await this.recordFailure(sub).catch((e: unknown) => {
         this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`);
         this.report({ err: e, sub, op: 'record-failure' });
+        // The bump never stuck, so the streak is still one short — pausing off a stale count
+        // would retire the subscription a run early.
+        return false;
       });
-      return 'poll-failed';
+      return { state: 'poll-failed', dead };
     }
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
     if (sub.consecutiveFailures > 0) await this.subscriptions.resetFailures(sub.id);
     // A pending baseline was just seeded silently — deliver only fresh listings.
-    if (outcome.kind !== 'fresh') return 'ok';
-    return (await this.deliverFresh(sub, outcome.listings)) ? 'blocked' : 'ok';
+    if (outcome.kind !== 'fresh') return { state: 'ok' };
+    return { state: (await this.deliverFresh(sub, outcome.listings)) ? 'blocked' : 'ok' };
   }
 
   /** Send the fresh digest. Returns true if the user blocked us; other send failures are
@@ -246,14 +265,51 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /** Count a failed poll; at MAX_CONSECUTIVE_FAILURES pause the dead sub and warn the user. */
-  // TODO [M]: purely per-subscription — it never consults the run's source tally, so a broken
-  // adapter auto-pauses EVERY subscription of that source and tells each user «Проверьте ссылку»,
-  // which is factually wrong, with manual ▶️ recovery per user. alertFailedSources sees the
-  // outage but only after the pausing, and is advisory only. Skip the pause on a source outage.
-  private async recordFailure(sub: Subscription): Promise<void> {
+  /** Count a failed poll. Returns true when this failure ran the streak out — the pause itself
+   *  waits for the run's source verdict (see pauseDead). */
+  private async recordFailure(sub: Subscription): Promise<boolean> {
     await this.subscriptions.bumpFailures(sub.id);
-    if (sub.consecutiveFailures + 1 < MAX_CONSECUTIVE_FAILURES) return;
+    return sub.consecutiveFailures + 1 >= MAX_CONSECUTIVE_FAILURES;
+  }
+
+  /**
+   * Retire the subscriptions whose failure streak ran out — unless their whole source failed
+   * this run.
+   *
+   * A broken adapter fails every poll of its source, and pausing on that would tell each of its
+   * subscribers «Проверьте ссылку» — false, since the link is fine — and leave every one of them
+   * to press ▶️ by hand. Only the owner can fix an adapter, and the outage alert already reaches
+   * him. The streak keeps counting, so a dead link is retired on the first run that source answers
+   * for somebody — and, past MAX_REPRIEVE_FAILURES, even if it never does.
+   *
+   * NOTE: the source verdict needs SOURCE_FAILURE_MIN_POLLS polls, so a source with fewer
+   * subscriptions than that is still mass-paused (source-tally.ts carries that marker).
+   */
+  private async pauseDead(
+    dead: Subscription[],
+    outages: Set<SourceId>,
+    blockedUsers: Set<string>,
+  ): Promise<void> {
+    for (const sub of dead) {
+      // Already paused wholesale by the 403 path, and undeliverable anyway — pausing again would
+      // double-count the metric, overwrite that pause and earn a second 403 for the notice.
+      if (blockedUsers.has(sub.userId)) continue;
+      if (outages.has(sub.source) && sub.consecutiveFailures + 1 < MAX_REPRIEVE_FAILURES) {
+        this.logger.warn(
+          `Kept subscription ${sub.id} — source ${sub.source} is down, not the link`,
+        );
+        continue;
+      }
+      // Isolated per subscription: one failing write must not strand the remaining pauses.
+      await this.pauseDeadSubscription(sub).catch((err: unknown) => {
+        this.logger.error({ err }, `Failed to retire dead subscription ${sub.id}`);
+        this.report({ err, sub, op: 'pause' });
+      });
+    }
+  }
+
+  /** Pause one dead subscription and tell the user (and the owner) why. */
+  private async pauseDeadSubscription(sub: Subscription): Promise<void> {
     // Pause first — only tell the user it's paused if the write actually stuck.
     await this.subscriptions.pause(sub.id);
     this.metrics.recordPause('dead');
