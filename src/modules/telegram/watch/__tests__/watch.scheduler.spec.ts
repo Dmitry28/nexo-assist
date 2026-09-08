@@ -154,6 +154,9 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(watch.markSeen).not.toHaveBeenCalled();
+    // The 403 is in the MESSAGE, not the type — a plain Error is an ordinary send failure, and
+    // deciding off the text would pause a user Telegram never said had blocked us.
+    expect(subscriptions.pauseAllForUser).not.toHaveBeenCalled();
   });
 
   it('counts a delivery, logs distinctly and reports when markSeen fails afterward', async () => {
@@ -529,6 +532,23 @@ describe('WatchScheduler.runDaily', () => {
       1,
       expect.stringContaining('поставил его на паузу'),
     );
+  });
+
+  // Without the guard around recordFailure, a failing bump escapes processSubscription into the
+  // run's isolation catch, which counts the attempt as a SUCCESS — so a broken adapter plus a
+  // sick DB silences the one alert that says the source is down.
+  it('still alerts on a source outage when the failure bookkeeping itself fails', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2), sub(3, 3)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    subscriptions.bumpFailures.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+    // And nothing is retired off a streak that never actually incremented.
+    expect(subscriptions.pause).not.toHaveBeenCalled();
   });
 
   it('does not raise a source alert below the min-polls threshold', async () => {
