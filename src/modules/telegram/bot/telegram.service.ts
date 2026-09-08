@@ -20,6 +20,7 @@ import { TelegramHandlers } from './telegram.handlers';
 export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(TelegramService.name);
   private bot?: Bot;
+  private shuttingDown = false;
 
   constructor(
     @Inject(configuration.KEY) private readonly appConfig: AppConfig,
@@ -29,6 +30,9 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   onModuleInit(): void {
     // NOTE: skip under tests — bot.start() would open a long-polling network loop.
     if (this.appConfig.isTest) return;
+    // Reset in case a shutdown already ran in this process: otherwise a genuinely dead polling
+    // loop would be swallowed below and the pod would linger looking healthy.
+    this.shuttingDown = false;
 
     const token = this.appConfig.telegramBotToken;
     if (!token) {
@@ -61,11 +65,15 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     void bot
       .start({ onStart: (me) => this.logger.log(`Bot @${me.username} started`) })
       .catch((err: unknown) => {
+        // A shutdown aborts start()'s setup, so grammY rejects here on the way out. Exiting on
+        // that would kill the rest of the shutdown (the TypeORM close, an in-flight markSeen)
+        // and report a crash exit for an orderly stop.
+        if (this.shuttingDown) {
+          this.logger.log('Bot polling stopped by shutdown');
+          return;
+        }
         // The bot is this app's sole job — a dead polling loop must not linger as a
         // healthy-looking process (probes see nothing). Exit; the orchestrator restarts us.
-        // TODO [M]: a shutdown racing an in-flight start() makes grammY's setup reject (stop()
-        // aborts it), so this exits DURING onApplicationShutdown — killing the TypeORM close and
-        // any in-flight markSeen, and reporting a crash exit. Guard it with an isShuttingDown flag.
         this.logger.fatal({ err }, 'Bot polling stopped — exiting');
         // A deliberate exit reports nothing on its own: main.ts's fatal handlers are bound to
         // uncaughtException/unhandledRejection, which process.exit fires neither of. Without
@@ -76,11 +84,19 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   }
 
   // TODO [L]: bot.stop() issues one more getUpdates with no abort signal, so an unreachable
-  // Telegram API hangs shutdown until SIGKILL; and `this.bot` is never cleared, so a still-running
-  // daily run keeps calling notify() into a torn-down transport instead of the "Bot is disabled"
-  // throw. Stop with a timeout/abort and clear the field.
+  // Telegram API hangs shutdown until Kubernetes' grace period runs out and SIGKILLs us. Stop
+  // with a timeout/abort.
   async onApplicationShutdown(): Promise<void> {
-    await this.bot?.stop();
+    this.shuttingDown = true;
+    const bot = this.bot;
+    // Cleared before the stop, so a run still in flight gets notify()'s throw instead of sending
+    // into a transport being torn down — a throw leaves the listings unsent and unmarked, and
+    // they arrive next run.
+    this.bot = undefined;
+    // That last getUpdates can also reject outright, and an onApplicationShutdown that rejects
+    // makes Nest abandon the rest of the shutdown — the TypeORM close, an in-flight markSeen.
+    // Failing to say goodbye to Telegram is not worth that.
+    await bot?.stop().catch((err: unknown) => this.logger.warn({ err }, 'Bot stop failed'));
   }
 
   /**
@@ -88,7 +104,15 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
    * would let callers mark undelivered listings as seen and drop them for good.
    */
   async notify(chatId: number, text: string): Promise<void> {
-    if (!this.bot) throw new Error('Bot is disabled — cannot deliver messages');
+    // Two different causes, told apart on purpose: one is a misconfigured deployment, the other
+    // is an orderly stop, and they read identically in Sentry otherwise.
+    if (!this.bot) {
+      throw new Error(
+        this.shuttingDown
+          ? 'Bot is shutting down — cannot deliver messages'
+          : 'Bot is disabled — cannot deliver messages',
+      );
+    }
     await this.bot.api.sendMessage(chatId, text, { link_preview_options: NO_LINK_PREVIEW });
   }
 }
