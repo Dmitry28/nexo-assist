@@ -60,7 +60,8 @@ start; more frequent once throttling/dedupe land).
   the process so the orchestrator restarts it.
 - Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
 
-Everything below this section describes the target design.
+Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
+design; «Volume and limits» describes what is **already shipped** (limits, pausing, alerts).
 
 ## User flow
 
