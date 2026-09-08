@@ -1,4 +1,4 @@
-import { CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 
 import { Subscription } from './subscription.entity';
 
@@ -15,7 +15,13 @@ export class SeenListing {
   @PrimaryColumn({ type: 'varchar' })
   externalId: string;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  /**
+   * Last time this listing was seen inside the source's page window — refreshed on every poll
+   * that still finds it (SubscriptionsService.getSeen), because the prune keeps the newest N.
+   * Hence a plain column with a DB default, not @CreateDateColumn: it is not a creation
+   * timestamp, and declaring it as one invites an ORM that refuses to update it.
+   */
+  @Column({ type: 'timestamptz', default: () => 'now()' })
   seenAt: Date;
 
   // NOTE: FK only for the cascade — deleting a subscription drops its seen rows.
