@@ -161,7 +161,9 @@ export class CheckHandlers {
         ? (await this.subscriptions.listByUser(userId)).find((s) => s.id === id)
         : undefined;
     if (!sub) {
-      await ctx.answerCallbackQuery('Подписка не найдена.');
+      // Guarded like the refusal below: a removed subscription is the canonical stale tap, so
+      // this answer is the one most likely to be rejected as too old.
+      await ctx.answerCallbackQuery('Подписка не найдена.').catch(() => undefined);
       return;
     }
 

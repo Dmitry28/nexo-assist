@@ -36,7 +36,7 @@ start; more frequent once throttling/dedupe land).
   holding the slot would let one tap cancel the day's run for everyone. The residual race is
   documented and accepted: a tap that lands just before a run starts still polls concurrently.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
-  `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
+  `/stats` reports users / active / paused / last successful run; `/check` polls now instead of waiting
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
   the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
   so a longer loop would freeze the bot for everyone), and shares one polling slot with the

@@ -2,6 +2,9 @@ import * as Sentry from '@sentry/nestjs';
 
 import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 
+/** How long to wait for a report to reach Sentry before a deliberate exit gives up on it. */
+export const SENTRY_FLUSH_MS = 2000;
+
 /** Where it broke — a Sentry tag to filter by. 'daily' is the scheduled run, not a user action. */
 export type UserAction = 'subscribe' | 'check' | 'show-current' | 'bot-update' | 'daily';
 

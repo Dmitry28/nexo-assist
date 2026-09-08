@@ -1,10 +1,11 @@
 import { autoRetry } from '@grammyjs/auto-retry';
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { Bot } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import { reportUserFacing } from '@/modules/telegram/report';
+import { SENTRY_FLUSH_MS, reportUserFacing } from '@/modules/telegram/report';
 
 import { BOT_COMMANDS, NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
@@ -65,11 +66,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         // TODO [M]: a shutdown racing an in-flight start() makes grammY's setup reject (stop()
         // aborts it), so this exits DURING onApplicationShutdown — killing the TypeORM close and
         // any in-flight markSeen, and reporting a crash exit. Guard it with an isShuttingDown flag.
-        // TODO [M]: logger.fatal + process.exit(1) bypasses main.ts's reportAndExit (bound only to
-        // uncaughtException/unhandledRejection), so the one failure that kills the product
-        // produces no Sentry event and no flush. Report and flush before exiting.
         this.logger.fatal({ err }, 'Bot polling stopped — exiting');
-        process.exit(1);
+        // A deliberate exit reports nothing on its own: main.ts's fatal handlers are bound to
+        // uncaughtException/unhandledRejection, which process.exit fires neither of. Without
+        // this, the one failure that kills the whole product leaves no trace outside the pod.
+        Sentry.captureException(err);
+        void Sentry.flush(SENTRY_FLUSH_MS).finally(() => process.exit(1));
       });
   }
 

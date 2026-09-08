@@ -174,5 +174,5 @@ export const formatStats = (stats: {
     `👥 пользователей: ${stats.users}`,
     `📋 активных подписок: ${stats.active}`,
     `⏸ на паузе: ${stats.paused}`,
-    `🕒 последний прогон: ${stats.lastRunAt ? stats.lastRunAt.toISOString() : 'не было'}`,
+    `🕒 последний успешный прогон: ${stats.lastRunAt ? stats.lastRunAt.toISOString() : 'не было'}`,
   ].join('\n');
