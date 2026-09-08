@@ -68,10 +68,11 @@ export class TelegramHandlers {
     bot.on('message:text', (ctx) => this.onText(ctx));
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery(/^cancel:(.+)$/, (ctx) => this.onCancel(ctx));
-    // TODO [L]: remove/resume pass the tapped id straight to a scoped query, so it reaches a
-    // Postgres `uuid` column and raises 22P02 — one Sentry issue per malformed tap via bot.catch.
-    // Match the uuid shape instead, so a malformed tap simply doesn't match. (`show:` is safe —
-    // onShowCurrent filters an already-loaded list in JS and just answers «Подписка не найдена.».)
+    // TODO [L]: all three of remove/resume/show pass the tapped id straight to a scoped query,
+    // so it reaches a Postgres `uuid` column and raises 22P02 — one Sentry issue per malformed
+    // tap via bot.catch. Match the uuid shape instead, so a malformed tap simply doesn't match.
+    // (`show:` used to be exempt, filtering an already-loaded list in JS; PR #108 replaced that
+    // with SubscriptionsService.findOwned to close an IDOR, which put it on the same footing.)
     bot.callbackQuery(/^remove:(.+)$/, (ctx) => this.onRemove(ctx));
     bot.callbackQuery(/^resume:(.+)$/, (ctx) => this.onResume(ctx));
     bot.callbackQuery(/^show:(.+)$/, (ctx) => this.check.onShowCurrent(ctx, this.matchParam(ctx)));

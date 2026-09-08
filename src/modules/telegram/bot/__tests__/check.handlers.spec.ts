@@ -197,6 +197,23 @@ describe('CheckHandlers', () => {
     expect(watch.poll).toHaveBeenCalledTimes(2);
   });
 
+  // grammY handles updates sequentially, so the paced loop blocks every other user while it
+  // runs. Without the cap a user at the subscription limit would freeze the bot for minutes.
+  it('/check polls at most five subscriptions and says the check was capped', async () => {
+    const fast = buildHandlers(makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }));
+    subscriptions.listByUser.mockResolvedValue(
+      Array.from({ length: 7 }, (_, i) => sub({ id: `s${i}` })),
+    );
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    const ctx = makeCtx({ userId: 1 });
+    await fast.onCheck(ctx);
+
+    expect(watch.poll).toHaveBeenCalledTimes(5);
+    // Said out loud, or a capped check reads as a full one and the rest looks quiet.
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Проверяю подписок: 5 из 7'));
+  });
+
   it('/check skips paused subscriptions — the daily run does not poll them either', async () => {
     const fast = buildHandlers(makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0 }));
     subscriptions.listByUser.mockResolvedValue([
@@ -324,5 +341,12 @@ describe('CheckHandlers', () => {
     await expect(handlers.onShowCurrent(ctx, 'sub-1')).resolves.toBeUndefined(); // never bot.catch
 
     expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'show-current');
+    // Tagged like the cron's poll failures: an `op:poll` filter that skipped this path would
+    // quietly show only the scheduled run, and the context says which search broke.
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'poll');
+    expect(sentryScope().setContext).toHaveBeenCalledWith(
+      'subscription',
+      expect.objectContaining({ id: 'sub-1', source: 'kufar' }),
+    );
   });
 });
