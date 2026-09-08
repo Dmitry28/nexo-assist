@@ -67,3 +67,7 @@ approval. Merging a feature branch into `dev` deploys nothing, but still needs i
 the `dev → main` promotion needs a separate one again, after local testing.
 Report the CI result, then ask. Force-pushing your own unmerged branch is fine (that is how a
 mistake stays out of `dev`'s history); force-pushing `dev` or `main` is not.
+
+NOTE: `.claude/settings.json` prompts only on `git push` and `gh pr merge` — `git commit` is
+allowed without a prompt on purpose (the prompts were noise). Commit approval is therefore a
+rule you follow, not a gate the harness enforces: still show the diff and wait.
