@@ -7,7 +7,9 @@ module.exports = {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
   collectCoverageFrom: ['**/*.(t|j)s'],
-  coveragePathIgnorePatterns: ['\\.module\\.ts$', 'main\\.ts$', '\\.dto\\.ts$'],
+  // `__tests__/`: jest excludes the spec files themselves, but not the helpers and fixtures
+  // beside them — they were reported at 100% and flattered the overall figure.
+  coveragePathIgnorePatterns: ['__tests__/', '\\.module\\.ts$', 'main\\.ts$', '\\.dto\\.ts$'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   // Global stubs: no unit spec may hit the network or send a Sentry event (see each file).
