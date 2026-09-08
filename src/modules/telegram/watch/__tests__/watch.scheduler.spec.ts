@@ -472,6 +472,13 @@ describe('WatchScheduler.runDaily', () => {
       1,
       expect.stringContaining('поставил его на паузу'),
     );
+    // The owner's alert must say how many polls actually failed. Quoting
+    // MAX_CONSECUTIVE_FAILURES would report 5 for a link the reprieve carried to 15 — exactly
+    // the case he opened the alert to understand.
+    expect(telegram.notify).toHaveBeenCalledWith(
+      99,
+      expect.stringContaining(`неудачных опросов подряд: ${MAX_REPRIEVE_FAILURES}`),
+    );
   });
 
   // The 403 path already paused every one of that user's subscriptions. Pausing again would

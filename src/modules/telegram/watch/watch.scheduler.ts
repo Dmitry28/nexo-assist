@@ -311,12 +311,15 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
 
   /** Pause one dead subscription and tell the user (and the owner) why. */
   private async pauseDeadSubscription(sub: Subscription): Promise<void> {
+    // The streak as of this run: the row was loaded before the bump, so the DB is one ahead.
+    // NOT MAX_CONSECUTIVE_FAILURES — a subscription held back by the source-outage reprieve is
+    // retired at up to MAX_REPRIEVE_FAILURES, and quoting the threshold would report 5 for a
+    // link that failed 15 times, in exactly the case the owner is trying to diagnose.
+    const failures = sub.consecutiveFailures + 1;
     // Pause first — only tell the user it's paused if the write actually stuck.
     await this.subscriptions.pause(sub.id);
     this.metrics.recordPause('dead');
-    this.logger.log(
-      `Paused dead subscription ${sub.id} after ${MAX_CONSECUTIVE_FAILURES} failures`,
-    );
+    this.logger.log(`Paused dead subscription ${sub.id} after ${failures} failures`);
     // TODO [L]: the notice and the admin alert fan out one message per subscription, so a user at
     // the 50-subscription cap gets 50 near-identical notices in one run and the admin gets 50 too,
     // likely tripping Telegram's per-chat rate limit. Aggregate them per user and per run.
@@ -324,7 +327,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       .notify(sub.user.telegramId, deadSubscriptionNotice({ source: sub.source, url: sub.url }))
       .catch((err: unknown) => this.logger.warn({ err }, `Dead-link notice failed for ${sub.id}`));
     await this.notifyAdmin(
-      `⏸ Подписка «${sub.source}» на паузе — неудачных опросов подряд: ${MAX_CONSECUTIVE_FAILURES}.\n${sub.url}`,
+      `⏸ Подписка «${sub.source}» на паузе — неудачных опросов подряд: ${failures}.\n${sub.url}`,
     );
   }
 
