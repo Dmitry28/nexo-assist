@@ -656,7 +656,7 @@ cat /etc/rancher/k3s/k3s.yaml        # это kubeconfig; server = https://127.0
 
 # Подготовка хоста к CD: пользователь deploy, доступ к кластеру, чекаут репозитория,
 # скрипт деплоя, CD-ключ (печатается путь), отключение входа по паролю + fail2ban.
-curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/dev/deploy/setup-server.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/main/deploy/setup-server.sh | bash
 ```
 
 Скрипт печатает **путь** к приватному CD-ключу (его содержимое → `CD_SSH_KEY`) и **значение**
