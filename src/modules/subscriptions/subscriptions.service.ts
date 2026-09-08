@@ -57,8 +57,9 @@ export class SubscriptionsService {
     // A revive reactivates a paused sub, so it's capped the same as a fresh add.
     await this.assertUnderActiveCap(user.id);
     if (existing) return this.revive(existing); // paused (checked above) → reactivate
+    let created: Subscription;
     try {
-      return await this.subs.save(
+      created = await this.subs.save(
         this.subs.create({ userId: user.id, source: input.source, url: input.url, normalizedUrl }),
       );
     } catch (err) {
@@ -71,10 +72,20 @@ export class SubscriptionsService {
       }
       throw err;
     }
+    return this.reload(created.id);
   }
 
   has(id: string): Promise<boolean> {
     return this.subs.existsBy({ id });
+  }
+
+  /**
+   * The user's own subscription, or null when it is not theirs or is gone. Every id that
+   * reaches us in `callback_data` is user-controlled, so this scoped lookup — not a lookup
+   * by id — is the ownership boundary for all of them.
+   */
+  findOwned(id: string, telegramUserId: number): Promise<Subscription | null> {
+    return this.subs.findOneBy({ id, user: { telegramId: telegramUserId } });
   }
 
   listByUser(telegramUserId: number): Promise<Subscription[]> {
@@ -115,9 +126,13 @@ export class SubscriptionsService {
     return result.affected ?? 0;
   }
 
-  /** Pause a single subscription — used when its URL looks dead (see consecutiveFailures). */
+  /**
+   * Pause a single subscription — used when its URL looks dead (see consecutiveFailures).
+   * Touches an active row only, exactly like pauseAllForUser: pausing twice must not move the
+   * timestamp of the first pause (the 403 path may have paused this row earlier in the same run).
+   */
   async pause(id: string): Promise<void> {
-    await this.subs.update({ id }, { pausedAt: new Date() });
+    await this.subs.update({ id, pausedAt: IsNull() }, { pausedAt: new Date() });
   }
 
   /**
@@ -132,7 +147,16 @@ export class SubscriptionsService {
   /** Re-activate a paused subscription (user re-sent its URL): clear pause + failure streak. */
   private async revive(sub: Subscription): Promise<Subscription> {
     await this.subs.update({ id: sub.id }, { pausedAt: null, consecutiveFailures: 0 });
-    return this.subs.findOneByOrFail({ id: sub.id });
+    return this.reload(sub.id);
+  }
+
+  /**
+   * Re-read a row after a write — every Subscription this service returns comes through here.
+   * Neither `save` nor `update` populates the eager `user` relation, so returning their result
+   * would hand back a `user` of undefined while the type promises otherwise.
+   */
+  private reload(id: string): Promise<Subscription> {
+    return this.subs.findOneByOrFail({ id });
   }
 
   /**
@@ -142,7 +166,7 @@ export class SubscriptionsService {
    * False when it isn't theirs or is gone; throws SubscriptionLimitError at the active cap.
    */
   async resume(id: string, telegramUserId: number): Promise<boolean> {
-    const sub = await this.subs.findOneBy({ id, user: { telegramId: telegramUserId } });
+    const sub = await this.findOwned(id, telegramUserId);
     if (!sub) return false;
     if (!sub.pausedAt) return true; // already active — nothing to do
     await this.assertUnderActiveCap(sub.userId);
@@ -162,8 +186,7 @@ export class SubscriptionsService {
 
   /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */
   async remove(id: string, telegramUserId: number): Promise<boolean> {
-    const owned = await this.subs.existsBy({ id, user: { telegramId: telegramUserId } });
-    if (!owned) return false;
+    if (!(await this.findOwned(id, telegramUserId))) return false;
     await this.subs.delete({ id });
     return true;
   }
@@ -174,15 +197,19 @@ export class SubscriptionsService {
     return this.users.findOneByOrFail({ telegramId: profile.telegramId });
   }
 
-  // NOTE: "seen" = listing ids already delivered for a subscription; the diff skips them.
-  // Query only the run's candidate ids, not the whole set — the table is window-pruned (3.4).
+  /**
+   * Which of this run's candidate ids were already delivered ("seen" — the diff skips them).
+   * Only the candidates are queried, never the whole set: the table is window-pruned (3.4).
+   *
+   * WRITES, despite the name: it also refreshes `seenAt` on the rows it found, which keeps the
+   * prune's "keep the newest N" aligned with the page window — without it a listing bumped back
+   * into the window could lose its seen row and be re-delivered as "new". One call, because
+   * both halves must cover exactly the same ids.
+   */
   async getSeen(subscriptionId: string, candidates: string[]): Promise<ReadonlySet<string>> {
     if (candidates.length === 0) return new Set();
     const rows = await this.seen.findBy({ subscriptionId, externalId: In(candidates) });
     if (rows.length > 0) {
-      // NOTE: refresh seenAt for ids still in the page window, so the prune's "keep
-      // newest N" tracks window membership — otherwise a listing bumped back into the
-      // window could have its old seen row pruned and be re-delivered as "new".
       await this.seen.update(
         { subscriptionId, externalId: In(rows.map((r) => r.externalId)) },
         { seenAt: new Date() },

@@ -23,7 +23,7 @@ const sub = (over: Partial<Subscription> = {}): Subscription =>
 // Collaborators are mocked — these tests cover the on-demand poll (the polling slot, pacing,
 // what the user is told), not persistence (the DB layer is covered by the integration e2e).
 describe('CheckHandlers', () => {
-  let subscriptions: { listByUser: jest.Mock };
+  let subscriptions: { listByUser: jest.Mock; findOwned: jest.Mock };
   let watch: { poll: jest.Mock; current: jest.Mock; markSeen: jest.Mock };
   // Real WatchStatus — dependency-free, and /check's polling slot is part of what is tested.
   let status: WatchStatus;
@@ -39,7 +39,10 @@ describe('CheckHandlers', () => {
 
   beforeEach(() => {
     status = new WatchStatus();
-    subscriptions = { listByUser: jest.fn().mockResolvedValue([]) };
+    subscriptions = {
+      listByUser: jest.fn().mockResolvedValue([]),
+      findOwned: jest.fn().mockResolvedValue(null),
+    };
     watch = {
       poll: jest.fn(),
       current: jest.fn().mockResolvedValue([]),
@@ -240,14 +243,17 @@ describe('CheckHandlers', () => {
   });
 
   it('show-current denies a subscription that is not yours', async () => {
-    subscriptions.listByUser.mockResolvedValue([]); // user 999 owns nothing
+    subscriptions.findOwned.mockResolvedValue(null); // user 999 does not own sub-1
     const ctx = await tapShow('sub-1', 999);
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Подписка не найдена.');
     expect(watch.current).not.toHaveBeenCalled();
+    // The id comes from callback_data, so the sender must be part of the lookup — a stubbed
+    // null would pass even if this looked the subscription up by id alone.
+    expect(subscriptions.findOwned).toHaveBeenCalledWith('sub-1', 999);
   });
 
   it('show-current refuses while a poll is in progress — it hits the source like /check', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 'sub-1' })]);
+    subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1' }));
     status.tryStartPolling(); // the scheduler holds the slot
 
     const ctx = await tapShow('sub-1');
@@ -261,7 +267,7 @@ describe('CheckHandlers', () => {
   });
 
   it('show-current ignores a stale callback answer — the fetch still runs', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 'sub-1' })]);
+    subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1' }));
     const ctx = makeCtx({ userId: 1 });
     // Telegram invalidates a callback after ~15s, but the button stays tappable forever.
     ctx.answerCallbackQuery.mockRejectedValue(new Error('query is too old'));
@@ -274,7 +280,7 @@ describe('CheckHandlers', () => {
   });
 
   it('show-current never claims the slot — a tap must not cost everyone the daily run', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 'sub-1' })]);
+    subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1' }));
     // Hold the fetch open so the assertion lands while the button is mid-work.
     let finishFetch = (): void => undefined;
     watch.current.mockReturnValue(
@@ -296,7 +302,7 @@ describe('CheckHandlers', () => {
   });
 
   it('show-current replies with the listings it fetched', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 'sub-1' })]);
+    subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1' }));
     watch.current.mockResolvedValue([listing(1), listing(2)]);
 
     const ctx = await tapShow('sub-1');
@@ -308,7 +314,7 @@ describe('CheckHandlers', () => {
   });
 
   it('show-current reports a failed fetch and does not escalate a failed apology', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 'sub-1' })]);
+    subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1' }));
     watch.current.mockRejectedValue(new Error('outage'));
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const ctx = makeCtx({ userId: 1 });

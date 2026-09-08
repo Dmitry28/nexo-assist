@@ -129,6 +129,20 @@ describe('SubscriptionsService.add', () => {
     expect(subs.update).not.toHaveBeenCalled();
   });
 
+  it('returns a reloaded subscription, so the eagerly-joined user is actually there', async () => {
+    const { subs, service } = build();
+    // What TypeORM's save() really hands back: the row it wrote, with no eager relation loaded.
+    subs.save.mockResolvedValue({ id: 'sub-9' } as Subscription);
+    subs.findOneByOrFail.mockResolvedValue(active({ id: 'sub-9' }));
+
+    const created = await service.add(addInput);
+
+    // `user` is typed as always present, so returning save()'s entity would hand callers
+    // `undefined` here — and only on this branch, never on the revive one.
+    expect(created.user.telegramId).toBe(1);
+    expect(subs.findOneByOrFail).toHaveBeenCalledWith({ id: 'sub-9' });
+  });
+
   it('revives a paused subscription and clears its failure streak', async () => {
     const { subs, service } = build();
     subs.findOneBy.mockResolvedValue(paused());
@@ -176,18 +190,36 @@ describe('SubscriptionsService.resume', () => {
 describe('SubscriptionsService.remove', () => {
   it('scopes the delete to the caller, so nobody can remove a stranger’s subscription', async () => {
     const { subs, service } = build();
-    subs.existsBy.mockResolvedValue(false);
+    subs.findOneBy.mockResolvedValue(null);
 
     await expect(service.remove('sub-1', 999)).resolves.toBe(false);
-    expect(subs.existsBy).toHaveBeenCalledWith({ id: 'sub-1', user: { telegramId: 999 } });
+    // The ownership filter is the security boundary — a stubbed null would pass even if
+    // `remove` looked the subscription up by id alone.
+    expect(subs.findOneBy).toHaveBeenCalledWith({ id: 'sub-1', user: { telegramId: 999 } });
     expect(subs.delete).not.toHaveBeenCalled();
   });
 
   it('deletes only after ownership is confirmed', async () => {
     const { subs, service } = build();
+    subs.findOneBy.mockResolvedValue(active());
 
     await expect(service.remove('sub-1', 42)).resolves.toBe(true);
     expect(subs.delete).toHaveBeenCalledWith({ id: 'sub-1' });
+  });
+});
+
+describe('SubscriptionsService.pause', () => {
+  it('pauses an active row only, so a second pause cannot move the first timestamp', async () => {
+    const { subs, service } = build();
+
+    await service.pause('sub-1');
+
+    // Without the IsNull() filter this overwrites the pause the 403 path may have written
+    // earlier in the same run — the timestamp is what /list shows the user.
+    expect(subs.update).toHaveBeenCalledWith(
+      { id: 'sub-1', pausedAt: IsNull() },
+      { pausedAt: expect.any(Date) },
+    );
   });
 });
 

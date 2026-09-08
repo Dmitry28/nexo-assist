@@ -291,8 +291,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     blockedUsers: Set<string>,
   ): Promise<void> {
     for (const sub of dead) {
-      // Already paused wholesale by the 403 path, and undeliverable anyway — pausing again would
-      // double-count the metric, overwrite that pause and earn a second 403 for the notice.
+      // Already paused wholesale by the 403 path, and undeliverable anyway — pausing again
+      // would double-count the metric and earn a second 403 for the notice. (The pause write
+      // itself is idempotent; this guard is about the metric and the message.)
       if (blockedUsers.has(sub.userId)) continue;
       if (outages.has(sub.source) && sub.consecutiveFailures + 1 < MAX_REPRIEVE_FAILURES) {
         this.logger.warn(
