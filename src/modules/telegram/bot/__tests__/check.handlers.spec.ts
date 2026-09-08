@@ -324,5 +324,12 @@ describe('CheckHandlers', () => {
     await expect(handlers.onShowCurrent(ctx, 'sub-1')).resolves.toBeUndefined(); // never bot.catch
 
     expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'show-current');
+    // Tagged like the cron's poll failures: an `op:poll` filter that skipped this path would
+    // quietly show only the scheduled run, and the context says which search broke.
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'poll');
+    expect(sentryScope().setContext).toHaveBeenCalledWith(
+      'subscription',
+      expect.objectContaining({ id: 'sub-1', source: 'kufar' }),
+    );
   });
 });

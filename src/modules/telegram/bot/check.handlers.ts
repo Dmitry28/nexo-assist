@@ -7,7 +7,7 @@ import type { Listing } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
-import type { ReportOp } from '@/modules/telegram/report';
+import type { ReportOp, UserAction } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
 import { pace } from '@/modules/telegram/watch/watch.pacing';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
@@ -183,7 +183,10 @@ export class CheckHandlers {
       listings = await this.watch.current(sub);
     } catch (err) {
       this.logger.warn({ err }, `Show-current failed for ${sub.url}`);
-      reportUserFacing(err, { userId: ctx.from?.id, action: 'show-current', url: sub.url });
+      // Tagged like every other path that touches a source: without `op` a Sentry filter on
+      // `op:poll` silently shows only the cron's failures, and without `details` there is no
+      // way to tell which subscription or source broke.
+      this.reportCheck({ err, ctx, sub, op: 'poll', action: 'show-current' });
       // The channel may be the thing that broke — a failed apology must not escalate to bot.catch.
       await ctx
         .reply('Не получилось загрузить объявления — попробуйте позже.')
@@ -193,23 +196,26 @@ export class CheckHandlers {
     await ctx.reply(formatCurrentListings(listings), { link_preview_options: NO_LINK_PREVIEW });
   }
 
-  /** Report a /check failure — same who/where for every operation, as WatchScheduler does. */
+  /** Report an on-demand failure — same who/where for every operation, as WatchScheduler does. */
   private reportCheck({
     err,
     ctx,
     sub,
     op,
     details,
+    action = 'check',
   }: {
     err: unknown;
     ctx: Context;
     sub: Subscription;
     op?: ReportOp;
     details?: Record<string, string | number>;
+    /** Which surface it came from — /check unless the «Показать текущие» button says otherwise. */
+    action?: UserAction;
   }): void {
     reportUserFacing(err, {
       userId: ctx.from?.id,
-      action: 'check',
+      action,
       url: sub.url,
       op,
       details: { id: sub.id, source: sub.source, ...details },
