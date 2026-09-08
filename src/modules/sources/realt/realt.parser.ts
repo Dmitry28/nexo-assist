@@ -1,4 +1,5 @@
 import { asRecord, parseNextData } from '../scraping/next-data';
+import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
@@ -63,7 +64,7 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
   const place = [str(obj.townName), str(obj.streetName)].filter(
     (s): s is string => s !== undefined,
   );
-  const title = str(obj.title) ?? (place.length > 0 ? place.join(', ') : 'Объявление');
+  const title = str(obj.title) ?? (place.length > 0 ? place.join(', ') : UNTITLED_LISTING);
 
   return {
     externalId: String(obj.code),

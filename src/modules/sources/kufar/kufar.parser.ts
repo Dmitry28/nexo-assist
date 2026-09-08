@@ -1,11 +1,17 @@
 import { asRecord, parseNextData } from '../scraping/next-data';
+import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
-/** Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read. */
+/**
+ * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
+ * NOTE: every field here is a promise about untyped JSON, not a guarantee — the blob is cast,
+ * not validated (extractPage only checks that `ads` is an array). So `subject`, which the
+ * digest dereferences, is read defensively in mapAd.
+ */
 interface RawKufarAd {
   ad_id: number;
   ad_link?: string;
-  subject: string;
+  subject?: string;
   body_short?: string;
   price_byn?: string;
   price_usd?: string;
@@ -43,7 +49,10 @@ export function extractPage(html: string): KufarPage {
   const listing = asRecord(initialState?.listing);
   const ads = listing?.ads as RawKufarAd[] | undefined;
   if (!Array.isArray(ads)) throw new Error('kufar: listing.ads missing — page layout changed?');
-  const pagination = (listing?.pagination as RawPagination[] | undefined) ?? [];
+  // Array-checked like `ads`: a `pagination` of another shape would otherwise throw
+  // "find is not a function" instead of naming the page as the thing that changed.
+  const rawPagination = listing?.pagination;
+  const pagination = Array.isArray(rawPagination) ? (rawPagination as RawPagination[]) : [];
   const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
   return { ads, nextCursor };
 }
@@ -53,7 +62,9 @@ export function mapAd(ad: RawKufarAd): Listing {
   return {
     externalId: String(ad.ad_id),
     link: ad.ad_link ?? `https://re.kufar.by/vi/${ad.ad_id}`,
-    title: ad.subject,
+    // A titleless ad must degrade to a label, not take the whole digest down with it: the
+    // formatter reads `.length` off this (realt.parser.ts falls back the same way).
+    title: ad.subject?.trim() || UNTITLED_LISTING,
     description: ad.body_short?.trim() || undefined,
     priceByn: toPrice(ad.price_byn),
     priceUsd: toPrice(ad.price_usd),
