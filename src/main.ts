@@ -32,13 +32,19 @@ async function bootstrap(): Promise<void> {
 
   // Last-resort safety nets. Node's default behaviour leaves the process in an unknown
   // state — log via pino, then exit so the orchestrator (k8s / docker) can restart us.
+  //
   // NOTE: pass the text as `msg` inside the object — nestjs-pino treats a trailing string
   // arg as the log *context*, not the message, so a positional message would be lost here.
-  // NOTE: report BEFORE exiting and wait for the send — process.exit() would otherwise kill the
-  // in-flight request and the crash we most want to hear about would never arrive.
+  //
+  // NOTE: no captureException here. Sentry's own uncaughtException/unhandledRejection
+  // integrations are on by default and already report the error — capturing again filed every
+  // crash twice, which doubles the event count the whole reporting doctrine reads as "how often
+  // does this happen". Those integrations also cover the window before this point (module init),
+  // which is why they are the ones to keep. This handler still has to exist: seeing a listener
+  // here is what makes Sentry defer the exit to us, and only we know to flush first — a bare
+  // process.exit() kills the in-flight send and loses the crash we most want to hear about.
   const reportAndExit = (err: unknown, msg: string): void => {
     logger.fatal({ err, msg });
-    Sentry.captureException(err);
     void Sentry.flush(SENTRY_FLUSH_MS).finally(() => process.exit(1));
   };
   process.on('uncaughtException', (error) => reportAndExit(error, 'uncaughtException — exiting'));
@@ -79,5 +85,10 @@ async function bootstrap(): Promise<void> {
 bootstrap().catch((error: unknown) => {
   // Bootstrap failed before pino was wired — console is the only logger left.
   console.error(error);
-  process.exit(1);
+  // A boot failure is caught here, so it is neither an uncaught exception nor an unhandled
+  // rejection: Sentry's global handlers never see it. Without this, a pod that cannot start —
+  // a bad DATABASE_URL, a failed migration — crash-loops in silence, and the owner learns
+  // about it by not hearing anything. Sentry is live by now (src/sentry.ts runs on import).
+  Sentry.captureException(error);
+  void Sentry.flush(SENTRY_FLUSH_MS).finally(() => process.exit(1));
 });
