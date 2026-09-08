@@ -1,4 +1,4 @@
-import { asRecord, parseNextData } from '../next-data';
+import { asArray, asRecord, asText, parseNextData } from '../next-data';
 
 const wrap = (json: string): string =>
   `<html><script id="__NEXT_DATA__" type="application/json">${json}</script></html>`;
@@ -19,6 +19,42 @@ describe('asRecord', () => {
     ['undefined', undefined],
   ])('rejects %s', (_label, value) => {
     expect(asRecord(value)).toBeUndefined();
+  });
+});
+
+describe('asArray', () => {
+  it('passes an array through unchanged', () => {
+    const value = [{ p: 'address' }];
+    expect(asArray(value)).toBe(value);
+  });
+
+  // Same job as asRecord, one level over: only the array-ness is checked, so a layout change
+  // stops here instead of reaching `.map`/`.find` as "x is not a function".
+  it.each([
+    ['an object', {}],
+    ['null', null],
+    ['a string', 'ads'],
+    ['undefined', undefined],
+  ])('rejects %s', (_label, value) => {
+    expect(asArray(value)).toBeUndefined();
+  });
+});
+
+describe('asText', () => {
+  it('trims usable text', () => {
+    expect(asText('  Минск  ')).toBe('Минск');
+  });
+
+  // A source spells "no value" four ways; a Listing field holding whitespace is a blank line
+  // in the digest, so all four must read as absent.
+  it.each([
+    ['blank', '   '],
+    ['empty', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['a number', 42],
+  ])('treats %s as absent', (_label, value) => {
+    expect(asText(value)).toBeUndefined();
   });
 });
 

@@ -27,6 +27,17 @@ describe('extractPage', () => {
     expect(() => extractPage(noPageProps)).toThrow('pageProps');
   });
 
+  it('treats an objects block of another shape as empty, not as a crash in the adapter', () => {
+    // The blob is cast, not validated: a non-array used to reach `.map` in the adapter and
+    // throw "map is not a function" — a crash that names nothing useful.
+    const oddObjects =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { objects: {} } } }) +
+      '</script>';
+
+    expect(extractPage(oddObjects).objects).toEqual([]);
+  });
+
   it('treats pageProps without an objects array as empty — realt renders some zero-result pages so', () => {
     const noObjects =
       '<script id="__NEXT_DATA__" type="application/json">' +

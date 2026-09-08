@@ -1,5 +1,12 @@
 export type SourceId = 'kufar' | 'realt';
 
+/**
+ * Shown when a source gives no usable title. Part of the contract, not of one parser: `title` is
+ * required, so every adapter needs the same answer to "the site sent none" — and the digest
+ * dereferences it (telegram.format.ts), so an absent title is a crash, not a blank line.
+ */
+export const UNTITLED_LISTING = 'Объявление';
+
 /** A normalized listing — the shared shape every adapter produces. */
 export interface Listing {
   /** Stable per-source id — the diff/dedup key. */

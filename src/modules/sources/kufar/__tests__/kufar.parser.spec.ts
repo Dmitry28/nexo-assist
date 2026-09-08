@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { UNTITLED_LISTING } from '@/modules/sources/source-adapter';
+
 import { extractPage, mapAd } from '../kufar.parser';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/kufar-search.html'), 'utf8');
@@ -47,6 +49,19 @@ describe('extractPage', () => {
     expect(() => extractPage(broken)).toThrow('__NEXT_DATA__');
   });
 
+  it('treats a pagination block of another shape as "no next page"', () => {
+    // The blob is cast, not validated: an object where an array is expected used to throw
+    // "find is not a function" — a crash that names nothing useful.
+    const oddPagination =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({
+        props: { pageProps: { initialState: { listing: { ads: [], pagination: {} } } } },
+      }) +
+      '</script>';
+
+    expect(extractPage(oddPagination)).toEqual({ ads: [], nextCursor: null });
+  });
+
   it('throws when the listing state is missing — a layout change must not read as empty', () => {
     const noAds =
       '<script id="__NEXT_DATA__" type="application/json">' +
@@ -80,5 +95,23 @@ describe('mapAd', () => {
 
     expect(listing.priceByn).toBeUndefined();
     expect(listing.images).toEqual([]);
+  });
+
+  it('omits a price that rounds down to zero rather than showing "0 BYN"', () => {
+    // Kufar's units are 1/100, so anything under 50 is not a price the user should see.
+    const listing = mapAd({ ad_id: 1, price_byn: '30', list_time: '2026-01-01T00:00:00Z' });
+
+    expect(listing.priceByn).toBeUndefined();
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['blank', '   '],
+  ])('labels an ad whose subject is %s instead of returning no title', (_label, subject) => {
+    // formatOne reads `.length` off the title, so an absent one takes down the whole
+    // delivery — and the subscription then looks dead. A label degrades; undefined crashes.
+    const listing = mapAd({ ad_id: 1, subject, list_time: '2026-01-01T00:00:00Z' });
+
+    expect(listing.title).toBe(UNTITLED_LISTING);
   });
 });
