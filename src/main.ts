@@ -53,6 +53,13 @@ async function bootstrap(): Promise<void> {
   );
 
   // Swagger / OpenAPI (disabled in production).
+  // TODO [L]: this page does not work. helmet()'s default CSP sends `script-src 'self'` and
+  // `script-src-attr 'none'`, and @nestjs/swagger serves its config as an INLINE <script> — so
+  // the browser blocks it and /docs renders blank wherever it is enabled (verified against
+  // helmet's emitted header and the template in @nestjs/swagger, not live). Decide which way
+  // out: scope a CSP exception to this route, or drop Swagger — this app exposes two health
+  // endpoints and a metrics endpoint, and `addBearerAuth` documents auth that does not exist.
+  // PRODUCT_PLAN.md § Технический бэклог carries the choice.
   if (!appConfig.isProduction) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('nexo-assist API')
