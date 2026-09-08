@@ -12,9 +12,7 @@ import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
 import type { AppConfig } from './config/configuration';
 import configuration from './config/configuration';
-
-// How long to wait for a crash report to reach Sentry before exiting anyway.
-const SENTRY_FLUSH_MS = 2000;
+import { SENTRY_FLUSH_MS } from './modules/telegram/report';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });

@@ -136,7 +136,9 @@ export class SubscriptionsService {
   }
 
   /**
-   * Un-pause the user's subscription — the /list button, same effect as re-sending its URL.
+   * Un-pause the user's subscription — the /list ▶️ button. NOT the same as re-sending its URL:
+   * this leaves the seen set alone, so the pause backlog still gets delivered, while re-sending
+   * goes through the subscribe handler and re-baselines, dropping it (see PRODUCT.md § Status now).
    * False when it isn't theirs or is gone; throws SubscriptionLimitError at the active cap.
    */
   async resume(id: string, telegramUserId: number): Promise<boolean> {

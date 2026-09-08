@@ -14,12 +14,13 @@ import {
   SubscriptionsService,
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
+import { reportUserFacing } from '@/modules/telegram/report';
+import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { isAdmin } from './admin';
 import { CheckHandlers } from './check.handlers';
 import type { PendingLink } from './pending-links';
 import { PendingLinks } from './pending-links';
-import { reportUserFacing } from './report';
 import {
   HELP_MESSAGE,
   MAX_MESSAGE_BUDGET_CHARS,
@@ -27,7 +28,6 @@ import {
   PROMPT,
   formatStats,
 } from './telegram.format';
-import { WatchStatus } from './watch.status';
 
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
 // /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected

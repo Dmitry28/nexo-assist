@@ -25,7 +25,9 @@ start; more frequent once throttling/dedupe land).
   one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
   it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
   ▶️ clears the pause and the failure streak and leaves the seen set alone — what appeared during
-  the pause was never delivered, so it was never marked seen and it all arrives on the next run;
+  the pause was never delivered, so it was never marked seen and it starts arriving on the next
+  run, under the same ceiling and page window as any other backlog (so a long pause loses its
+  oldest listings);
   re-sending the URL revives the subscription and then re-baselines it, which marks that backlog
   seen and drops it. The two paths should share one semantic — PRODUCT_PLAN.md,
   «Технический бэклог», findings of 2026-09-07.
@@ -34,11 +36,12 @@ start; more frequent once throttling/dedupe land).
   holding the slot would let one tap cancel the day's run for everyone. The residual race is
   documented and accepted: a tap that lands just before a run starts still polls concurrently.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
-  `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
+  `/stats` reports users / active / paused / last successful run; `/check` polls now instead of waiting
   for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
   the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
   so a longer loop would freeze the bot for everyone), and shares one polling slot with the
-  daily run: whichever starts second is refused, so they never poll the same subscriptions at
+  daily run: `/check` is refused when the run holds it, and the run is **skipped for the day**
+  when `/check` holds it (the owner is told) — so they never poll the same subscriptions at
   once or race each other's "seen" bookkeeping.
 - Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
 - Baseline on subscribe; seen marked **only after successful delivery**.
@@ -79,7 +82,7 @@ Everything below this section describes the target design.
 6. Persist only what was actually delivered (on failure, retry next run). The guarantee is
    **no loss**, not exactly-once: if recording the seen set fails after a successful send, or the
    pod dies between the two, those listings are re-sent next run. Duplicates are the deliberate
-   choice over silence (see `src/modules/telegram/telegram.deliver.ts`).
+   choice over silence (see `src/modules/telegram/bot/telegram.deliver.ts`).
 
 **Two "seen" levels:** the delta is per source (normalized URL, dedupe); delivery
 is per subscription (a new subscriber gets a baseline, not a flood).
@@ -103,7 +106,9 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   app dying outright.
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
   alert below would go nowhere silently) is notified on every auto-pause
-  (403 / dead link) and when a whole source fails all its polls in a run.
+  (403 / dead link) and when a whole source fails all its polls in a run — the latter only once
+  that source was polled at least three times, so a source with fewer subscriptions than that
+  is auto-paused without an outage alert (PRODUCT_PLAN.md § Технический бэклог).
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture

@@ -12,13 +12,13 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
+import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
+import { deadSubscriptionNotice } from '@/modules/telegram/bot/telegram.format';
+import { TelegramService } from '@/modules/telegram/bot/telegram.service';
+import type { ReportOp } from '@/modules/telegram/report';
+import { reportUserFacing } from '@/modules/telegram/report';
 
-import type { ReportOp } from './report';
-import { reportUserFacing } from './report';
 import { SourceTally } from './source-tally';
-import { deliverAndMark } from './telegram.deliver';
-import { deadSubscriptionNotice } from './telegram.format';
-import { TelegramService } from './telegram.service';
 import { pace } from './watch.pacing';
 import { WatchStatus } from './watch.status';
 
@@ -88,9 +88,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.status.finishPolling();
     }
-    // TODO [L]: markRun sits outside the try/finally, so a thrown pollAll leaves /stats showing an
-    // old timestamp as «последний прогон» with no failure signal. The value is "last SUCCESSFUL
-    // run" — rename it and surface the failed run.
+    // NOTE: outside the try/finally on purpose — this records the last *successful* run, which
+    // is what /stats now says.
+    // TODO [L]: a failed run is still invisible in /stats; surface it alongside this timestamp.
     this.status.markRun(new Date());
   }
 
@@ -112,9 +112,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
         this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
         this.report({ err, sub, op: 'process' });
-        // TODO [L]: this `continue` skips tally.record, so a throwing subscription never counts
-        // toward `attempts` and can push a source below SOURCE_FAILURE_MIN_POLLS, suppressing the
-        // outage alert — the same distortion the recordFailure guard below exists to prevent.
+        // Still count the attempt, or a throw here could push the source below
+        // SOURCE_FAILURE_MIN_POLLS and suppress its outage alert. Not a poll failure: everything
+        // that throws past processSubscription does so after the fetch already succeeded.
+        tally.record({ source: sub.source, failed: false });
         continue;
       }
       tally.record({ source: sub.source, failed: result === 'poll-failed' });

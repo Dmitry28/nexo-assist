@@ -11,10 +11,10 @@ import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
+import { SEND_DELAY_MS } from '@/modules/telegram/bot/telegram.deliver';
+import { DIGEST_LIMIT } from '@/modules/telegram/bot/telegram.format';
+import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
-import { SEND_DELAY_MS } from '../telegram.deliver';
-import { DIGEST_LIMIT } from '../telegram.format';
-import type { TelegramService } from '../telegram.service';
 import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
 import { WatchStatus } from '../watch.status';
 
@@ -362,6 +362,26 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // A subscription that polled fine but threw in its bookkeeping must still count as an attempt.
+  // Without that, the tally sees "3 polls, 3 failed" and cries outage — while the source in fact
+  // answered the fourth poll.
+  it('does not cry outage when a source answered a poll that later threw', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1), sub(2), sub(3), sub(4, 4, 1)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '4'
+        ? Promise.resolve({ kind: 'nothing' as const })
+        : Promise.reject(new Error('adapter broke')),
+    );
+    // sub 4 carries a streak, so the successful path resets it — and that write fails.
+    subscriptions.resetFailures.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
   });
 
   it('sends no admin alert when ADMIN_TELEGRAM_ID is unset', async () => {
