@@ -152,14 +152,13 @@ export class CheckHandlers {
     }
   }
 
-  // TODO [L]: loads all of the user's subscriptions to find one by id, while remove/resume use a
-  // scoped ownership query — a findOwned(id, telegramId) in SubscriptionsService would be right.
   async onShowCurrent(ctx: Context, id: string | undefined): Promise<void> {
     const userId = ctx.from?.id;
+    // Scoped to the sender: the id arrives in callback_data, so it is the caller's to forge.
     const sub =
       userId !== undefined && id !== undefined
-        ? (await this.subscriptions.listByUser(userId)).find((s) => s.id === id)
-        : undefined;
+        ? await this.subscriptions.findOwned(id, userId)
+        : null;
     if (!sub) {
       // Guarded like the refusal below: a removed subscription is the canonical stale tap, so
       // this answer is the one most likely to be rejected as too old.

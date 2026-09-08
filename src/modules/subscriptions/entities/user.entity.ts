@@ -20,17 +20,19 @@ export class User {
   })
   telegramId: number;
 
+  // `| null`, not `?`: Telegram omits these, but Postgres hands back null — `?` would promise
+  // undefined and quietly diverge from what a loaded row actually holds.
   @Column({ type: 'varchar', nullable: true })
-  username?: string;
+  username: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  firstName?: string;
+  firstName: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  lastName?: string;
+  lastName: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  language?: string;
+  language: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

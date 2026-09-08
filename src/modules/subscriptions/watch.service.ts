@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from './entities/subscription.entity';
-import { SubscriptionsService } from './subscriptions.service';
+import { MAX_SEEN_PER_SUBSCRIPTION, SubscriptionsService } from './subscriptions.service';
 
 /** Result of one `poll` pass — what the caller should tell the user, if anything. */
 export type PollOutcome =
@@ -19,6 +19,8 @@ export type PollOutcome =
  */
 @Injectable()
 export class WatchService {
+  private readonly logger = new Logger(WatchService.name);
+
   constructor(
     private readonly subscriptions: SubscriptionsService,
     private readonly registry: SourceRegistry,
@@ -49,7 +51,7 @@ export class WatchService {
    * fetch fails. Resolves to the number of listings seeded.
    */
   async baseline(sub: Subscription): Promise<number> {
-    const listings = await this.adapter(sub).fetch(sub.url);
+    const listings = await this.fetchListings(sub);
     // NOTE: seed + mark-baselined in one transaction (seedBaseline). A later-page fetch
     // failure yields a partial list (paginate keeps what it collected), so a partial
     // baseline is still marked done — missed items surface as "new" later, bounded by the
@@ -66,7 +68,7 @@ export class WatchService {
    * (getSeen only refreshes `seenAt` on already-delivered ids for the prune window).
    */
   async check(sub: Subscription): Promise<Listing[]> {
-    const listings = await this.adapter(sub).fetch(sub.url);
+    const listings = await this.fetchListings(sub);
     const seen = await this.subscriptions.getSeen(
       sub.id,
       listings.map((l) => l.externalId),
@@ -76,7 +78,7 @@ export class WatchService {
 
   /** Current listings for a subscription, read-only (does not touch the seen set). */
   current(sub: Subscription): Promise<Listing[]> {
-    return this.adapter(sub).fetch(sub.url);
+    return this.fetchListings(sub);
   }
 
   /** Mark listings as delivered so they are not sent again — call after a successful send. */
@@ -85,6 +87,25 @@ export class WatchService {
       sub.id,
       listings.map((l) => l.externalId),
     );
+  }
+
+  /**
+   * Fetch a subscription's current listings — the single door to a source, and so the only
+   * place that can notice the seen-set cap being outgrown. That cap is safe only while one
+   * fetch returns fewer ids than it stores (page window ≈ 150 against 300). An adapter with
+   * bigger pages breaks it silently: ids still on the page get pruned and re-delivered as
+   * "new" every run. Warn at half the cap — exactly where the assumption sits today.
+   */
+  private async fetchListings(sub: Subscription): Promise<Listing[]> {
+    const listings = await this.adapter(sub).fetch(sub.url);
+    if (listings.length > MAX_SEEN_PER_SUBSCRIPTION / 2) {
+      this.logger.warn(
+        `${sub.source} returned ${listings.length} listings for one search — over half of ` +
+          `MAX_SEEN_PER_SUBSCRIPTION (${MAX_SEEN_PER_SUBSCRIPTION}). Raise the cap before the ` +
+          `page window reaches it, or pruned listings start coming back as new.`,
+      );
+    }
+    return listings;
   }
 
   private adapter(sub: Subscription): SourceAdapter {

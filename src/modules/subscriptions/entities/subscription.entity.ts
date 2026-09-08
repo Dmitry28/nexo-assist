@@ -27,6 +27,8 @@ export class Subscription {
   @JoinColumn({ name: 'userId' })
   user: User;
 
+  // NOTE: a plain varchar — the union is a compile-time promise the DB cannot enforce. An
+  // unknown value here resolves to no adapter and throws loudly (watch.service.ts § adapter).
   @Column({ type: 'varchar' })
   source: SourceId;
 
@@ -40,9 +42,9 @@ export class Subscription {
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  /** When the seen set was seeded. Unset = baseline still pending (e.g. it failed on subscribe). */
+  /** When the seen set was seeded. null = baseline still pending (e.g. it failed on subscribe). */
   @Column({ type: 'timestamptz', nullable: true })
-  baselinedAt?: Date;
+  baselinedAt: Date | null;
 
   /** When the subscription was paused. null = active; set = skipped by the scheduler
    * (e.g. auto-paused after the user blocked the bot). Cleared when the user re-adds it. */
