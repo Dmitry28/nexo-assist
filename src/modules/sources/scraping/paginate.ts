@@ -46,6 +46,11 @@ export async function paginate({
       parsed = parsePage(await fetchHtml({ url, host, useProxy }), page);
     } catch (err) {
       if (page === 1) throw err;
+      // TODO [M]: a later-page failure is invisible outside the logs — and `parsePage` runs in
+      // this same try, so a layout change (or a bug of ours) that breaks only page 2+ leaves
+      // page 1 working, the run green, and every search silently capped at one page. A warn
+      // cannot say that; reporting it needs a caller-supplied context, since `reportUserFacing`
+      // lives in modules/telegram and its tags are the bot's, not the scraper's.
       logger.warn(
         { err },
         `Page ${page} failed for ${firstUrl} — returning ${byId.size} collected`,

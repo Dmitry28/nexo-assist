@@ -120,6 +120,9 @@ export async function fetchHtml({
       throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
     }
     // Bail before buffering the body when the server declares an oversized response.
+    // NOTE: only a DECLARED oversize is pre-empted — without Content-Length the body below is
+    // buffered whole before the length check sees it, so the cap bounds what we keep, not what
+    // we read. Enough for kufar/realt; a hostile source would need a streaming cap instead.
     const contentLength = Number(res.headers.get('content-length'));
     if (contentLength > MAX_HTML_LENGTH) {
       throw new SourceUnavailableError(`Content-Length ${contentLength} exceeds limit for ${url}`);
