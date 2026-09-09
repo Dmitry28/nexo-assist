@@ -12,52 +12,36 @@ start; more frequent once throttling/dedupe land).
 
 ## Status now (implemented)
 
-- Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
-- Events: **new only**; a text digest split across as many messages as it takes (up to 100
-  listings per delivery, one message a second), no photos yet. Anything beyond that ceiling is
-  announced, not dropped, and arrives over the following runs — bounded by the page window, so a
-  backlog past roughly 150 listings does fall out of it (PRODUCT_PLAN.md, findings of 2026-09-07).
-  An over-long title is truncated first, so price and link survive; only a pathological link
-  (~490+ chars) forces the whole line to be clamped, link included.
-- Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
-  language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
-- Buttons: Следить / Отмена / Показать текущие / list / remove / resume. An open «Следить»
-  prompt stays tappable for 24 hours (and only until a restart — it lives in memory); after that
-  the button answers «Кнопка устарела» and the link is pasted again. The number of open prompts
-  is capped **per user**, so no one can expire anyone else's. `/list` is capped to fit
-  one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
-  it, respecting the active-subscription limit. ▶️ and re-sending the URL are **not** the same:
-  ▶️ clears the pause and the failure streak and leaves the seen set alone — what appeared during
-  the pause was never delivered, so it was never marked seen and it starts arriving on the next
-  run, under the same ceiling and page window as any other backlog (so a long pause loses its
-  oldest listings);
-  re-sending the URL revives the subscription and then re-baselines it, which marks that backlog
-  seen and drops it. The two paths should share one semantic — PRODUCT_PLAN.md,
-  «Технический бэклог», findings of 2026-09-07.
-  The «Показать текущие» button fetches live, so it stays off the sources while a run is in
-  progress — but it only peeks at the polling slot, never holds it: any user can tap it, and
-  holding the slot would let one tap cancel the day's run for everyone. The residual race is
-  documented and accepted: a tap that lands just before a run starts still polls concurrently.
+- Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first,
+  up to 5 pages (~150 listings) — a pasted sort or page number is overridden.
+- Events: **new only** — a text digest, no photos yet. Up to 100 listings per delivery, split
+  across as many messages as it takes, paced one per second. The remainder is announced, not
+  dropped, and arrives over the following runs — but a backlog larger than the page window falls
+  out of it (PRODUCT_PLAN.md, «Технический бэклог»).
+- Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Logs and code stay
+  English; per-profile language is Phase 7.
+- Buttons: Следить / Отмена / Показать текущие, and in `/list` ❌ remove / ▶️ resume. A «Следить»
+  prompt stays tappable for 24 hours and only until the next restart; after that the button
+  answers «Кнопка устарела» and the link is pasted again. `/list` shows as much as fits one
+  message, announces the rest, and marks paused subscriptions with ⏸.
+- ▶️ and re-sending the URL are **not** the same: ▶️ only lifts the pause, so everything that
+  appeared during it still arrives; re-sending re-baselines the subscription and drops that
+  backlog. The two need one semantic — PRODUCT_PLAN.md, «Технический бэклог».
+- «Показать текущие» fetches live, so it stays off the sources while a run is in progress.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
-  `/stats` reports users / active / paused / last successful run; `/check` polls now instead of waiting
-  for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
-  the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
-  so a longer loop would freeze the bot for everyone), and shares one polling slot with the
-  daily run: `/check` is refused when the run holds it, and the run is **skipped for the day**
-  when `/check` holds it (the owner is told) — so they never poll the same subscriptions at
-  once or race each other's "seen" bookkeeping.
-- Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
+  `/stats` reports users / active / paused / last successful run; `/check` polls now instead of
+  waiting for the cron (its first 5 active subscriptions; outside production anyone may use it).
+  `/check` and the daily run share one polling slot, so they never poll at once: `/check` is
+  refused while a run holds it, and the day's run is **skipped** when `/check` does (owner told).
 - Baseline on subscribe; seen marked **only after successful delivery**.
-- Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
-  raises an error — it is never mistaken for an empty search. Scraper redirects are
-  pinned to the source's host.
-- Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the
-  seen set survive restarts; seen is pruned to a bounded window per subscription;
-  per-user limit on **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
-- Deployment: **single replica** (long-polling bot + in-memory pending prompts and polling slot —
-  a second replica would double-deliver, see k8s NOTE);
-  production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
-  the process so the orchestrator restarts it.
+- Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change) raises an
+  error — never mistaken for an empty search. Redirects are pinned to the source's host.
+- Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the seen set
+  survive restarts; seen is pruned to a bounded window per subscription; per-user limit on
+  **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
+- Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
+  refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
+  orchestrator restarts it.
 - Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
 
 Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
@@ -93,33 +77,22 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 
 ## Volume and limits
 
-- **First subscription:** take a baseline of recent listings, send nothing.
-- **Many new at once:** the digest goes out as several messages (overall cap 100 listings per
-  delivery), not one message per item and not a silent "N more" drop. Messages are paced one per
-  second, and only what actually reached the user is marked seen — a failure mid-way re-sends the
-  rest, never the part that arrived.
-- **Telegram limits:** messages to one chat are paced one per second, and subscriptions are
-  polled with a gap — enough at beta volume. A global fan-out queue (Telegram's ~30 msg/s ceiling)
-  is not built and is not needed until the user count makes it reachable. If a user blocked the
-  bot (403) → pause their subscriptions.
-- **Dead link:** if a search keeps failing to poll (errors, not empty results) for
-  several runs in a row → tell the user to refresh it and pause that subscription.
-  A paused subscription is revived by re-sending its link or by ▶️ in `/list`.
-  **Except when the whole source failed that run:** a broken adapter fails every poll of its
-  source, so «Проверьте ссылку» would be false for all of them and each user would have to press
-  ▶️ by hand. Then nothing is paused — the owner gets the outage alert below and the failure
-  streak keeps counting, so a dead link is retired on the first run that source answers for
-  somebody else. That reprieve has a ceiling (15 failed polls in a row), because a source whose
-  _every_ subscription is dead also fails every poll and would otherwise shelter those links for
-  good — it can never answer again, having no live link left to answer with.
+- **Telegram limits:** messages to one chat are paced one per second and subscriptions are polled
+  with a gap — enough at beta volume. A global fan-out queue (Telegram's ~30 msg/s ceiling) is not
+  built and isn't needed until the user count makes it reachable. A user who blocked the bot (403)
+  gets their subscriptions paused.
+- **Dead link:** a search that keeps failing to poll (errors, not empty results) for five runs in
+  a row is paused, and the user is asked to check the link. **Unless the whole source failed that
+  run** — a broken adapter fails every poll, so «Проверьте ссылку» would be false for everyone;
+  then nothing is paused, the owner gets the outage alert, and the streak keeps counting until the
+  source answers for somebody (or hits the 15-failure ceiling, since a source whose every
+  subscription is dead can never answer again).
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
-  when the pings stop, the watchdog alerts the owner. It covers what no in-app report can — the
-  app dying outright.
-- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
-  alert below would go nowhere silently) is notified on every auto-pause
-  (403 / dead link) and when a whole source fails all its polls in a run — the latter only once
-  that source was polled at least three times. Below that the outage is not recognized at all, so
-  those subscriptions get neither the alert nor the pause reprieve above
+  when the pings stop, the watchdog alerts the owner (setup — DEPLOY.md §4.3b).
+- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — otherwise every alert
+  would go nowhere silently) is told about each auto-pause (403 / dead link) and about a source
+  that failed all its polls in a run. That verdict needs at least three polls, so a source with
+  fewer subscriptions is neither reported nor given the reprieve above
   (PRODUCT_PLAN.md § Технический бэклог).
 - **Source with no subscribers:** stop scraping it and purge its data.
 
