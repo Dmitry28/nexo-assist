@@ -9,8 +9,10 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    // TS 6 wants rootDir stated explicitly (TS5011). This config spans src/ and test/, so its
-    // root is the repo root; the emitting build uses tsconfig.build.json, where it is ./src.
+    // Required, not decorative: ts-jest compiles every spec through this config, and TS 6 fails
+    // with TS5011 unless rootDir is explicit. Removing it turns all 29 suites red — verified.
+    // The repo root is the right value here (this config spans src/ and test/); the emitting
+    // build uses tsconfig.build.json, where it is ./src, so dist/ stays flat.
     "rootDir": "./",
     "incremental": true,
     "skipLibCheck": true,
