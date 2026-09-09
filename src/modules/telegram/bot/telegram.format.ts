@@ -63,6 +63,15 @@ function takeChunk(listings: Listing[], budget: number): Listing[] {
   return shown;
 }
 
+/**
+ * One message: header, blank line, the formatted items, an optional footer. Both digest builders
+ * assemble the same shape, and the separator is load-bearing — takeChunk measures the budget with
+ * `'\n\n'.length` between items, so a change here has to be a change there.
+ */
+function compose(header: string, listings: Listing[], footer = ''): string {
+  return `${header}\n\n${listings.map(formatOne).join('\n\n')}${footer}`;
+}
+
 /** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
 // TODO [L]: the budget subtracts only `header.length` and ignores the "…и ещё N" footer, which
 // newListingsBatches reserves HEADER_TAIL_RESERVE_CHARS for. Safe only thanks to the 596-char
@@ -71,7 +80,7 @@ function digest(listings: Listing[], header: string): { text: string; shown: Lis
   const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length);
   const more = listings.length - shown.length;
   const footer = more > 0 ? `\n\n…и ещё ${more}` : '';
-  return { text: `${header}\n\n${shown.map(formatOne).join('\n\n')}${footer}`, shown };
+  return { text: compose(header, shown, footer), shown };
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
@@ -119,7 +128,7 @@ export function newListingsBatches(fresh: Listing[]): DigestBatch[] {
       later > 0 && i === chunks.length - 1
         ? `\n\n…и ещё ${later} — пришлю в следующую проверку`
         : '';
-    return { text: `${header}\n\n${listings.map(formatOne).join('\n\n')}${tail}`, listings };
+    return { text: compose(header, listings, tail), listings };
   });
 }
 
