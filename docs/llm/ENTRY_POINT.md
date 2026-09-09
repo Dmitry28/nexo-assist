@@ -57,6 +57,7 @@ What isn't visible from the tree:
 - Reviewing a PR or changes → `/logic-review` **and** `/review-code` (the skills, launched together), not a manual pass. **Both only report** — they never edit; applying a finding is a normal change you show for review.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep docs current:** update **every** doc a change affects, in the same change — see the Project Docs table above for which is which: [PRODUCT.md](../PRODUCT.md) (behavior), [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap/decisions), [PRODUCT_TECH.md](../PRODUCT_TECH.md) (infra/runtime reality), [DEPLOY.md](../DEPLOY.md) (deploy steps + lessons), [README.md](../../README.md) (scripts, setup, commands, stack), and the relevant `docs/llm/` rule when a convention changes.
+- **One topic — one home.** The owning doc (per the table above) carries the reasoning; every other doc gets the fact and a link, never a second explanation — re-explaining is how docs drift apart.
 
 ## Reference Repos (local)
 
