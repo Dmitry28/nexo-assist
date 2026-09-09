@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // TS 6 requires rootDir whenever it cannot infer one unambiguously (TS5011). The base config
+    // also covers test/, so this belongs here, in the src-only build.
+    "rootDir": "./src"
+  },
   // `**/*spec.ts` alone missed the helpers and fixtures beside them, so dist shipped a grammY
   // Context double and two files whose top level calls `jest.mock` — test scaffolding inside the
   // production image. Exclude the folder, not just the spec suffix.
