@@ -39,6 +39,15 @@ export const MAX_REPRIEVE_FAILURES = MAX_CONSECUTIVE_FAILURES * 3;
 // deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out).
 type ProcessResult = { state: 'ok' | 'blocked' } | { state: 'poll-failed'; dead: boolean };
 
+/**
+ * The failure streak as of this run. Subscription rows are loaded before the bump, so the row in
+ * hand is always one behind the database — every threshold in this file is compared against this,
+ * never against `sub.consecutiveFailures` itself.
+ */
+function streakThisRun(sub: Subscription): number {
+  return sub.consecutiveFailures + 1;
+}
+
 /** A Telegram 403 means delivery is impossible (blocked / deactivated) — pause the user. */
 function isBotBlocked(err: unknown): boolean {
   return err instanceof GrammyError && err.error_code === 403;
@@ -269,7 +278,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
    *  waits for the run's source verdict (see pauseDead). */
   private async recordFailure(sub: Subscription): Promise<boolean> {
     await this.subscriptions.bumpFailures(sub.id);
-    return sub.consecutiveFailures + 1 >= MAX_CONSECUTIVE_FAILURES;
+    return streakThisRun(sub) >= MAX_CONSECUTIVE_FAILURES;
   }
 
   /**
@@ -295,7 +304,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       // would double-count the metric and earn a second 403 for the notice. (The pause write
       // itself is idempotent; this guard is about the metric and the message.)
       if (blockedUsers.has(sub.userId)) continue;
-      if (outages.has(sub.source) && sub.consecutiveFailures + 1 < MAX_REPRIEVE_FAILURES) {
+      if (outages.has(sub.source) && streakThisRun(sub) < MAX_REPRIEVE_FAILURES) {
         this.logger.warn(
           `Kept subscription ${sub.id} — source ${sub.source} is down, not the link`,
         );
@@ -311,11 +320,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
 
   /** Pause one dead subscription and tell the user (and the owner) why. */
   private async pauseDeadSubscription(sub: Subscription): Promise<void> {
-    // The streak as of this run: the row was loaded before the bump, so the DB is one ahead.
     // NOT MAX_CONSECUTIVE_FAILURES — a subscription held back by the source-outage reprieve is
     // retired at up to MAX_REPRIEVE_FAILURES, and quoting the threshold would report 5 for a
     // link that failed 15 times, in exactly the case the owner is trying to diagnose.
-    const failures = sub.consecutiveFailures + 1;
+    const failures = streakThisRun(sub);
     // Pause first — only tell the user it's paused if the write actually stuck.
     await this.subscriptions.pause(sub.id);
     this.metrics.recordPause('dead');
