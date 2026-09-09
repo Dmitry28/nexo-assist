@@ -14,7 +14,12 @@ const EXEMPT_PREFIXES = ['file:', 'workspace:', 'npm:'];
 const SECTIONS = ['dependencies', 'devDependencies'];
 
 // NOTE: Packages intentionally pinned due to known breaking changes in newer versions
-const PINNED_ALLOWLIST = new Set([]);
+const PINNED_ALLOWLIST = new Set([
+  // typescript: typescript-eslint peers `<6.1.0` and ts-jest `<7`, so 6.0.x is the only release
+  // the toolchain accepts. A caret here would let `npm update` walk into 6.1 and silently
+  // degrade linting. Unpin once both declare support (see PRODUCT_PLAN.md, tech backlog).
+  'typescript',
+]);
 
 const shouldFix = process.argv.includes('--fix');
 const pkgPath = path.resolve(__dirname, '..', '..', 'package.json');
