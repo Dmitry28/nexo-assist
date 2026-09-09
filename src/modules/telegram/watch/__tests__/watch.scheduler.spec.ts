@@ -547,7 +547,28 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
-    // And nothing is retired off a streak that never actually incremented.
+  });
+
+  // The guard's return VALUE, which the test above cannot see: there the whole source is down,
+  // so the outage reprieve suppresses the pause either way. Here the source answers for the
+  // other two, so the verdict rests on the streak alone — and the streak never incremented.
+  it('does not retire a subscription off a streak the failed write never incremented', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 2),
+      sub(3, 3),
+    ]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1'
+        ? Promise.reject(new Error('dead link'))
+        : Promise.resolve({ kind: 'nothing' as const }),
+    );
+    subscriptions.bumpFailures.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
     expect(subscriptions.pause).not.toHaveBeenCalled();
   });
 

@@ -73,15 +73,19 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.port);
 
-  // Echo the effective (validated) config — mask secrets so they never hit logs
-  // (the bot token and the DB URL, which carries credentials).
-  const { telegramBotToken, databaseUrl, ...safeConfig } = appConfig;
+  // Echo the effective (validated) config, masking what must not reach a log line: the bot
+  // token, the DB URL (it carries credentials), and the owner's telegram id — not a credential,
+  // but env.validation.ts keeps it in the Secret rather than the ConfigMap precisely because it
+  // identifies a person, and this very line is why SCRAPE_PROXY_URL and HEARTBEAT_URL are kept
+  // out of AppConfig altogether.
+  const { telegramBotToken, databaseUrl, adminTelegramId, ...safeConfig } = appConfig;
   logger.log(
     {
       config: {
         ...safeConfig,
         telegramBotToken: telegramBotToken ? '[set]' : undefined,
         databaseUrl: databaseUrl ? '[set]' : undefined,
+        adminTelegramId: adminTelegramId ? '[set]' : undefined,
       },
     },
     'Bootstrap',
