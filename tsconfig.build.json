@@ -1,5 +1,20 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // TS 6 requires rootDir whenever it cannot infer one unambiguously (TS5011). The base config
+    // also covers test/, so this belongs here, in the src-only build.
+    "rootDir": "./src",
+    // Keep the incremental build-info inside outDir. It has to be stated explicitly: with an
+    // explicit rootDir, TS puts the file next to this config instead of in dist/, and then
+    // `deleteOutDir` (nest-cli.json) wipes dist/ while the build-info survives — so tsc trusts a
+    // cache describing files it just deleted and emits nothing, silently, exit code 0. Inside
+    // dist/ the two are deleted together and the state stays consistent.
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo",
+    // jest globals belong to the base config, which spans test/. The production emit must not
+    // depend on a test-only @types package — and a stray describe/jest.mock in src/ should fail
+    // the build here, which is the same intent as the exclude list below.
+    "types": ["node"]
+  },
   // `**/*spec.ts` alone missed the helpers and fixtures beside them, so dist shipped a grammY
   // Context double and two files whose top level calls `jest.mock` — test scaffolding inside the
   // production image. Exclude the folder, not just the spec suffix.

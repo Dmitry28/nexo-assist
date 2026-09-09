@@ -28,7 +28,7 @@ to deliver notifications; ask the owner to have them deleted.
 | Concern       | Choice                                              |
 | ------------- | --------------------------------------------------- |
 | Framework     | NestJS 11 (Express)                                 |
-| Language      | TypeScript 5 (strict)                               |
+| Language      | TypeScript 6 (strict)                               |
 | Config        | `@nestjs/config` + `class-validator` env validation |
 | Logging       | `nestjs-pino` (pretty in dev, JSON in prod)         |
 | Validation    | `class-validator` / `class-transformer`             |
