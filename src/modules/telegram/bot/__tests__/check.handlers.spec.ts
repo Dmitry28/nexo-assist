@@ -12,8 +12,7 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { CheckHandlers } from '../check.handlers';
-import { SEND_DELAY_MS } from '../telegram.deliver';
-import { DIGEST_LIMIT } from '../telegram.format';
+import { SEND_DELAY_MS } from '../send-card';
 
 import { makeCtx } from './fixtures/bot-ctx';
 
@@ -76,17 +75,21 @@ describe('CheckHandlers', () => {
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('/check replies with the digest and marks the delivered items seen', async () => {
+  it('/check replies with a card per listing and marks the delivered items seen', async () => {
+    jest.useFakeTimers();
     const s = sub({ url: 'u1' });
     subscriptions.listByUser.mockResolvedValue([s]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1), listing(2)] });
 
     const ctx = makeCtx({ userId: 1 });
-    await handlers.onCheck(ctx);
+    const run = handlers.onCheck(ctx);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 2);
+    await run;
 
+    // No photos on these listings, so each card is a message of its own.
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('🆕 Новых объявлений: 2'),
-      expect.anything(),
+      expect.stringContaining('🆕 1/2'),
+      expect.objectContaining({ parse_mode: 'HTML' }),
     );
     expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
   });
@@ -102,8 +105,8 @@ describe('CheckHandlers', () => {
     await handlers.onCheck(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('🆕 Новых объявлений: 1'),
-      expect.anything(),
+      expect.stringContaining('🏠'),
+      expect.objectContaining({ parse_mode: 'HTML' }),
     );
     expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
     expect(ctx.reply).not.toHaveBeenCalledWith('Ничего нового.');
@@ -140,28 +143,28 @@ describe('CheckHandlers', () => {
     expect(watch.markSeen).not.toHaveBeenCalled(); // nothing arrived — retry next run
   });
 
-  it('/check tells the user the rest is coming when only part of the digest went out', async () => {
+  it('/check tells the user the rest is coming when only part of it went out', async () => {
     jest.useFakeTimers();
     const s = sub({ url: 'u1' });
     subscriptions.listByUser.mockResolvedValue([s]);
     watch.poll.mockResolvedValue({
       kind: 'fresh',
-      listings: Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1)),
+      listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
     const ctx = makeCtx({ userId: 1 });
-    // First message of the digest arrives, the second does not.
+    // The first card arrives, the second does not.
     ctx.reply.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('telegram 500'));
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     const run = handlers.onCheck(ctx);
-    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
     await run;
 
     expect(ctx.reply).toHaveBeenCalledWith(
       'Часть объявлений не отправилась — пришлю в следующую проверку.',
     );
     // What did arrive is recorded, so the next run sends the remainder and not a duplicate.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT);
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(1);
   });
 
   it('/check answers the owner in production — the only live check without waiting for the cron', async () => {

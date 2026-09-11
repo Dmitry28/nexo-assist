@@ -11,6 +11,9 @@ export const makeCtx = (over: {
     from: over.userId !== undefined ? { id: over.userId } : undefined,
     match: over.match,
     reply: jest.fn().mockResolvedValue(undefined),
+    replyWithPhoto: jest.fn().mockResolvedValue(undefined),
+    replyWithMediaGroup: jest.fn().mockResolvedValue(undefined),
+    replyWithLocation: jest.fn().mockResolvedValue(undefined),
     editMessageText: jest.fn().mockResolvedValue(undefined),
     answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
   };

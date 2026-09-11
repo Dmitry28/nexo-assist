@@ -1,5 +1,6 @@
 import type { BotCommand } from 'grammy/types';
 
+import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
 
 /** Reusable "no link preview" message option. */
@@ -8,7 +9,7 @@ export const NO_LINK_PREVIEW = { is_disabled: true } as const;
 // Shared char budget with headroom under Telegram's 4096-char message limit (an
 // oversized send throws — and would then be rebuilt oversized and fail on every retry).
 export const MAX_MESSAGE_BUDGET_CHARS = 3500;
-// Items per message, for readability; MAX_LISTINGS_PER_DELIVERY caps the whole delivery.
+// Items per digest message, for readability; CARDS_PER_DELIVERY decides what is a card at all.
 export const DIGEST_LIMIT = 10;
 // Clamp a pathological listing — one huge line (long title OR link) must not eat the char
 // budget, which would produce an item-less digest that delivers nothing and repeats forever.
@@ -18,16 +19,22 @@ export const MAX_LINE_CHARS = 500;
 /**
  * Cut `text` down to at most `max` chars, ellipsis included. Drops a trailing lone surrogate so
  * a cut landing inside an emoji doesn't leave half of it behind (listing titles carry emoji).
+ *
+ * `dropTrailing` removes one more thing the cut may have landed inside — the card passes it the
+ * shape of a half-written HTML entity (listing-card.ts), which would break the whole message.
  */
-const truncate = (text: string, max: number): string => {
+export const truncate = (text: string, max: number, dropTrailing?: RegExp): string => {
   // A non-positive budget has no room even for the ellipsis — returning '…' would exceed `max`.
   if (max <= 0) return '';
-  return `${text.slice(0, Math.max(0, max - 1)).replace(/[\uD800-\uDBFF]$/, '')}…`;
+  const cut = text.slice(0, Math.max(0, max - 1)).replace(/[\uD800-\uDBFF]$/, '');
+  return `${dropTrailing === undefined ? cut : cut.replace(dropTrailing, '')}…`;
 };
 
+// One currency keeps the compact line short; the grouping matches the cards in the same delivery
+// (listing-card.ts formatPrice), which otherwise print the same number two ways.
 function price(listing: Listing): string {
-  if (listing.priceUsd !== undefined) return `$${listing.priceUsd}`;
-  if (listing.priceByn !== undefined) return `${listing.priceByn} BYN`;
+  if (listing.priceUsd !== undefined) return `$${listing.priceUsd.toLocaleString(LOCALE)}`;
+  if (listing.priceByn !== undefined) return `${listing.priceByn.toLocaleString(LOCALE)} BYN`;
   return 'цена не указана';
 }
 
@@ -74,8 +81,8 @@ function compose(header: string, listings: Listing[], footer = ''): string {
 
 /** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
 // TODO [L]: the budget subtracts only `header.length` and ignores the "…и ещё N" footer, which
-// newListingsBatches reserves HEADER_TAIL_RESERVE_CHARS for. Safe only thanks to the 596-char
-// slack under Telegram's 4096; reserve the footer too before MAX_MESSAGE_BUDGET_CHARS is raised.
+// tailBatches reserves HEADER_RESERVE_CHARS for. Safe only thanks to the 596-char slack under
+// Telegram's 4096; reserve the footer too before MAX_MESSAGE_BUDGET_CHARS is raised.
 function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
   const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length);
   const more = listings.length - shown.length;
@@ -88,13 +95,18 @@ export const formatCurrentListings = (listings: Listing[]): string =>
     ? 'Сейчас объявлений нет.'
     : digest(listings, `📋 Объявлений сейчас: ${listings.length}`).text;
 
-// Ceiling on one delivery. Beyond it the rest waits for the next run: a hundred listings is
-// already more than anyone reads at once, and it bounds the burst we send into one chat.
-export const MAX_LISTINGS_PER_DELIVERY = 100;
+/**
+ * How many listings of one delivery go out as full cards, the rest as a digest.
+ *
+ * Thirty cards is around half a minute of paced sending to one chat; a hundred would be minutes
+ * and would start tripping Telegram's per-chat limit, and a run walks subscriptions one after
+ * another while holding the polling slot.
+ */
+export const CARDS_PER_DELIVERY = 30;
 
-// Room the header ("🆕 Новых объявлений: 103 (10/10)") and the deferred-tail line need, since
-// both are added after the listings are chunked.
-const HEADER_TAIL_RESERVE_CHARS = 120;
+// Room the header ("🆕 Ещё объявлений: 103 (10/10)") needs, since it is added after the
+// listings are chunked.
+const HEADER_RESERVE_CHARS = 120;
 
 /** One message of a batched digest and the listings it carries. */
 export interface DigestBatch {
@@ -103,32 +115,32 @@ export interface DigestBatch {
 }
 
 /**
- * Split fresh listings into messages instead of cutting at the first cap: everything up to
- * MAX_LISTINGS_PER_DELIVERY is sent, the remainder is announced rather than dropped silently.
+ * The listings past the card limit, as compact digest messages.
+ *
+ * Everything found in the run goes out in the run: the cards carry the first
+ * CARDS_PER_DELIVERY and this carries the rest, so nothing is deferred to "the next check" —
+ * a promise the page window could not keep, since a deferred tail can age out of it and be
+ * lost (PRODUCT_PLAN.md § Технический бэклог).
+ *
  * Callers must markSeen only the batches that were actually sent.
  */
-export function newListingsBatches(fresh: Listing[]): DigestBatch[] {
-  const sending = fresh.slice(0, MAX_LISTINGS_PER_DELIVERY);
-  const later = fresh.length - sending.length;
-
+export function tailBatches(listings: Listing[]): DigestBatch[] {
   const chunks: Listing[][] = [];
-  let rest = sending;
+  let rest = listings;
   while (rest.length > 0) {
-    // Reserve room for the header and the tail, which are added after chunking — otherwise the
-    // measured string is not the string sent, and an oversized message fails on every retry.
-    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_TAIL_RESERVE_CHARS);
+    // Reserve room for the header, which is added after chunking — otherwise the measured
+    // string is not the string sent, and an oversized message fails on every retry.
+    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS);
     chunks.push(chunk);
     rest = rest.slice(chunk.length);
   }
 
-  return chunks.map((listings, i) => {
+  return chunks.map((chunk, i) => {
     const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
-    const header = `🆕 Новых объявлений: ${fresh.length}${part}`;
-    const tail =
-      later > 0 && i === chunks.length - 1
-        ? `\n\n…и ещё ${later} — пришлю в следующую проверку`
-        : '';
-    return { text: compose(header, listings, tail), listings };
+    return {
+      text: compose(`🆕 Ещё объявлений: ${listings.length}${part}`, chunk),
+      listings: chunk,
+    };
   });
 }
 
@@ -160,7 +172,8 @@ export const HELP_MESSAGE = [
   '',
   'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
     '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +
-    `проверки — до ${MAX_LISTINGS_PER_DELIVERY} за раз, несколькими сообщениями.`,
+    `проверки: карточкой с фото на каждое объявление, а если их больше ${CARDS_PER_DELIVERY} — ` +
+    'остальные компактным списком.',
   '',
   'Команды:',
   ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),

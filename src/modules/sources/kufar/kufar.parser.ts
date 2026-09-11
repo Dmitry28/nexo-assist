@@ -1,6 +1,14 @@
-import { asArray, asRecord, asText, parseNextData } from '../scraping/next-data';
+import { detail, listingDetails } from '../listing-details';
+import {
+  asArray,
+  asNumber,
+  asPositiveNumber,
+  asRecord,
+  asText,
+  parseNextData,
+} from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
-import type { Listing } from '../source-adapter';
+import type { Coordinates, Listing } from '../source-adapter';
 
 /**
  * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
@@ -17,16 +25,26 @@ interface RawKufarAd {
   price_usd?: string;
   list_time: string;
   images?: Array<{ path: string }>;
-  account_parameters?: RawAccountParam[];
+  ad_parameters?: RawParam[];
+  account_parameters?: RawParam[];
 }
 
-/** One entry of an ad's `account_parameters` block — a key/value pair, value untyped. */
-interface RawAccountParam {
+/**
+ * One entry of an ad's parameter blocks. `v` is the raw value — for a dictionary field an
+ * internal code ("house_type_1") — and `vl` the label kufar itself shows, which is the one a
+ * card can print.
+ */
+interface RawParam {
   p: string;
   v: unknown;
+  vl?: unknown;
 }
 
-const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/list_thumbs_2x';
+// The gallery variant, not the list thumbnail the prototype used: measured on a live ad, the
+// same image is 920×690 (82 KB) here against 667×500 (47 KB) there — and a card shows it full
+// width. Both paths answer 302 to a shard host (rms → rms8); Telegram follows that itself,
+// see send-card.ts.
+const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/gallery';
 
 interface RawPagination {
   label: string;
@@ -70,12 +88,23 @@ export function mapAd(ad: RawKufarAd): Listing {
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
-    description: asText(ad.body_short),
+    description: preview(ad.body_short),
     priceByn: toPrice(ad.price_byn),
     priceUsd: toPrice(ad.price_usd),
-    address: asText(accountParam(ad, 'address')),
+    address: asText(param(ad.account_parameters, 'address')),
     listTime: ad.list_time,
     images: (ad.images ?? []).map((image) => `${IMAGE_CDN_BASE}/${image.path}`),
+    coordinates: toCoordinates(param(ad.ad_parameters, 'coordinates')),
+    seller: asText(param(ad.account_parameters, 'name')),
+    // Order is the card's reading order — what identifies the object first, extras last.
+    details: listingDetails(
+      detail('Тип', propertyType(ad)),
+      detail('Площадь', asPositiveNumber(param(ad.ad_parameters, 'size')), 'м²'),
+      detail('Участок', asPositiveNumber(param(ad.ad_parameters, 'size_area')), 'сот.'),
+      detail('Комнат', asPositiveNumber(param(ad.ad_parameters, 'rooms'))),
+      detail('Год постройки', asPositiveNumber(param(ad.ad_parameters, 'year_built'))),
+      ...facilities(ad),
+    ),
   };
 }
 
@@ -87,7 +116,70 @@ function toPrice(raw: string | undefined): number | undefined {
   return value > 0 ? value : undefined;
 }
 
-/** One of the ad's `account_parameters` by key — the block holding address, seller and so on. */
-function accountParam(ad: RawKufarAd, key: string): unknown {
-  return asArray<RawAccountParam>(ad.account_parameters)?.find((p) => p.p === key)?.v;
+/** One parameter by key, taking its raw value (`v`) or its display label (`vl`). */
+function param(params: RawParam[] | undefined, key: string, field: 'v' | 'vl' = 'v'): unknown {
+  return asArray<RawParam>(params)?.find((p) => p.p === key)?.[field];
+}
+
+// The object type lives under a different key per category. Verified live on two searches: a
+// house ad carries only `house_type_for_sell`, a plot ad none of them. An ad setting two is
+// unproven, so the order matters — the most specific key wins.
+function propertyType(ad: RawKufarAd): string | undefined {
+  return (
+    asText(param(ad.ad_parameters, 'house_type_for_sell', 'vl')) ??
+    asText(param(ad.ad_parameters, 'land_type', 'vl')) ??
+    asText(param(ad.ad_parameters, 'garage_type', 'vl')) ??
+    // A parking space has no garage_type — this is what names it ("Машиноместо").
+    asText(param(ad.ad_parameters, 'garage_parking_type', 'vl'))
+  );
+}
+
+// kufar's own cut for a listing preview, measured on a live page: every long `body_short` is
+// exactly this many characters, and it cuts mid-word with nothing to show for it.
+const BODY_SHORT_CHARS = 150;
+
+/** The listing preview, marked as cut when kufar cut it — otherwise it just stops mid-word. */
+function preview(raw: string | undefined): string | undefined {
+  const text = asText(raw);
+  return text !== undefined && text.length >= BODY_SHORT_CHARS ? `${text}…` : text;
+}
+
+// One line per parameter, each under its own label. Lumping them together produced «Удобства:
+// Центральное» — true of the heating, unreadable as a fact.
+const FACILITY_LABELS: Array<[key: string, label: string]> = [
+  ['re_heating', 'Отопление'],
+  ['re_water', 'Вода'],
+  ['re_hot_water', 'Горячая вода'],
+  ['re_sewage', 'Канализация'],
+  ['re_property_rights', 'Права'],
+  ['re_outbuildings', 'Постройки'],
+  // A garage's amenities really are one list ("Свет, Охрана"), so they keep a shared label.
+  ['garage_improvements', 'Удобства'],
+];
+
+function facilities(ad: RawKufarAd): Array<ReturnType<typeof detail>> {
+  return FACILITY_LABELS.map(([key, label]) => {
+    const value = param(ad.ad_parameters, key, 'vl');
+    // A label can be a single string or a list (a garage has several) — both become one line.
+    const labels = (asArray<unknown>(value) ?? [value]).map(asText).filter((l) => l !== undefined);
+    return detail(label, labels.join(', '));
+  });
+}
+
+/**
+ * Kufar's `coordinates` parameter, stored as `[longitude, latitude]` — longitude FIRST, the
+ * reverse of the usual order (verified live: a Grodno ad reads `[23.85, 53.68]`). The order is
+ * pinned by a spec, not by this check: for Belarus both figures are in range either way, so a
+ * swap would pass here and only show up as a pin in the wrong country.
+ *
+ * What the check does catch: malformed values, and `[0, 0]` — a zeroed pair is not a location
+ * off the African coast, it is a field nobody filled.
+ */
+function toCoordinates(value: unknown): Coordinates | undefined {
+  const pair = asArray<unknown>(value);
+  const lon = asNumber(pair?.[0]);
+  const lat = asNumber(pair?.[1]);
+  if (lon === undefined || lat === undefined) return undefined;
+  if (lat === 0 && lon === 0) return undefined;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : undefined;
 }

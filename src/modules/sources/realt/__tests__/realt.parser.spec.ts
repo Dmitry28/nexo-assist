@@ -9,9 +9,9 @@ describe('extractPage', () => {
   it('reads objects and the pagination block', () => {
     const { objects, pagination } = extractPage(fixture);
 
-    expect(objects).toHaveLength(2);
+    expect(objects).toHaveLength(3);
     expect(objects[0].code).toBe(4152736);
-    expect(pagination?.totalCount).toBe(2);
+    expect(pagination?.totalCount).toBe(3);
   });
 
   it('throws when __NEXT_DATA__ is absent — a bot-wall must not read as an empty search', () => {
@@ -67,5 +67,47 @@ describe('mapObject', () => {
     const [obj] = extractPage(fixture).objects;
 
     expect(mapObject(obj, 'sale-plots').title).toBe('Кировск, Старосельская ул.');
+  });
+
+  it('keeps fractional sotki unrounded — 9.84 is the plot, 10 is not', () => {
+    const [plot] = extractPage(fixture).objects;
+
+    expect(mapObject(plot, 'sale-plots').details).toEqual([
+      { label: 'Участок', value: '9.84 сот.' },
+    ]);
+  });
+
+  it('fills the building fields a house has, in card order', () => {
+    const house = extractPage(fixture).objects[2];
+
+    const listing = mapObject(house, 'sale-cottages');
+
+    expect(listing.seller).toBe('Агентство');
+    expect(listing.details).toEqual([
+      { label: 'Площадь', value: '70.1 м²' },
+      { label: 'Жилая', value: '45 м²' },
+      { label: 'Участок', value: '8 сот.' },
+      { label: 'Год постройки', value: '1979' },
+    ]);
+    // realt publishes no coordinates, so its cards get no map pin.
+    expect(listing.coordinates).toBeUndefined();
+  });
+
+  it('leaves the seller absent when the object carries no contact', () => {
+    const noContact = extractPage(fixture).objects[1];
+
+    expect(mapObject(noContact, 'sale-plots').seller).toBeUndefined();
+  });
+
+  it('drops the levels line when it just repeats the storeys', () => {
+    const base = { code: 1, updatedAt: '2026-01-01T00:00:00+03:00', storeys: 2 };
+
+    expect(mapObject({ ...base, levels: 2 }, 'sale-cottages').details).toEqual([
+      { label: 'Этажей', value: '2' },
+    ]);
+    expect(mapObject({ ...base, levels: 1 }, 'sale-cottages').details).toEqual([
+      { label: 'Этажей', value: '2' },
+      { label: 'Уровней', value: '1' },
+    ]);
   });
 });

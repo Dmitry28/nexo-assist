@@ -2,10 +2,10 @@
 <html>
   <body>
     <!--
-      A trimmed real kufar search page. Seller names are redacted: the repo is public, and
-      nothing reads that parameter (kufar.parser.ts picks `p === "address"` only). The entry
-      itself stays, so the fixture still proves the address is found among several params.
-      Keep it that way when refreshing this file from a live page.
+      A trimmed real kufar search page. Seller names are redacted to "Продавец": the repo is
+      public, and the parser does read that parameter (it fills `Listing.seller`), so a real
+      name would be published here. Keep the redaction when refreshing this file from a live
+      page — the fixture only needs to prove the field is found among several params.
     -->
     <script id="__NEXT_DATA__" type="application/json">
       {
@@ -26,6 +26,16 @@
                       { "path": "adim1/ab2e0c37-703d-4580-a1a8-ebf7228caaa3.jpg" },
                       { "path": "adim1/4d5c35bd-f7a9-4d67-89af-852ab40343cf.jpg" }
                     ],
+                    "ad_parameters": [
+                      { "p": "coordinates", "v": [27.5321, 53.8795], "vl": "" },
+                      { "p": "size", "v": "18", "vl": "18 м²" },
+                      { "p": "garage_type", "v": "garage_type_2", "vl": "Металлический" },
+                      {
+                        "p": "garage_improvements",
+                        "v": ["light", "security"],
+                        "vl": ["Свет", "Охрана"]
+                      }
+                    ],
                     "account_parameters": [
                       { "p": "address", "v": "Гурского ул, 28, Минск", "vl": "" },
                       { "p": "name", "v": "Продавец", "vl": "" }
@@ -42,6 +52,10 @@
                     "images": [
                       { "path": "adim1/06d051df-e2b8-4211-9875-0a30b5546b9e.jpg" },
                       { "path": "adim1/c95d971e-f770-4c49-8692-60c7a9bdf0ca.jpg" }
+                    ],
+                    "ad_parameters": [
+                      { "p": "size", "v": "15", "vl": "15 м²" },
+                      { "p": "garage_parking_type", "v": "parking_type_1", "vl": "Машиноместо" }
                     ],
                     "account_parameters": [
                       { "p": "address", "v": "Жуковского ул, 14, Минск", "vl": "" },

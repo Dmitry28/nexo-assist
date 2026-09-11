@@ -1,4 +1,4 @@
-import { asArray, asRecord, asText, parseNextData } from '../next-data';
+import { asArray, asNumber, asPositiveNumber, asRecord, asText, parseNextData } from '../next-data';
 
 const wrap = (json: string): string =>
   `<html><script id="__NEXT_DATA__" type="application/json">${json}</script></html>`;
@@ -55,6 +55,43 @@ describe('asText', () => {
     ['a number', 42],
   ])('treats %s as absent', (_label, value) => {
     expect(asText(value)).toBeUndefined();
+  });
+});
+
+describe('asNumber', () => {
+  it('passes a number through', () => {
+    expect(asNumber(114.6)).toBe(114.6);
+  });
+
+  it('parses a numeric string — kufar sends its parameters that way', () => {
+    expect(asNumber('12.5')).toBe(12.5);
+  });
+
+  // A unit inside the value means the field is not what the caller assumed. Guessing 12 from
+  // "12 сот." would put a made-up number in a card, where it reads as fact.
+  it.each([
+    ['a value carrying its unit', '12 сот.'],
+    ['blank', '   '],
+    ['not a number at all', 'Не указано'],
+    ['null', null],
+    ['infinity', Infinity],
+    ['NaN', NaN],
+  ])('treats %s as absent', (_label, value) => {
+    expect(asNumber(value)).toBeUndefined();
+  });
+});
+
+describe('asPositiveNumber', () => {
+  it('passes a positive number through', () => {
+    expect(asPositiveNumber('1979')).toBe(1979);
+  });
+
+  // These sources spell "not filled in" as a zero for an area, a room count or a year.
+  it.each([
+    ['zero', 0],
+    ['a negative', -5],
+  ])('treats %s as absent', (_label, value) => {
+    expect(asPositiveNumber(value)).toBeUndefined();
   });
 });
 

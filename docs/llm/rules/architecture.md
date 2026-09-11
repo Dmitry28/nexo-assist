@@ -30,13 +30,14 @@ src/
     ├── sources/        # Source-plugin layer (specialized module)
     │   ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
     │   ├── source-registry.ts  # Resolves an adapter by URL/id
+    │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
     │   └── <site>/             # One adapter per site (kufar, realt) + parser
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root
-        ├── bot/                # The conversation (service, handlers, format, deliver)
+        ├── bot/                # The conversation (service, handlers, card, send, deliver)
         └── watch/              # The scheduled run (scheduler, status, pacing, tally)
 ```
 

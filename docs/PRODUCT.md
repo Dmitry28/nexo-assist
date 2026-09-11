@@ -14,10 +14,13 @@ start; more frequent once throttling/dedupe land).
 
 - Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first,
   up to 5 pages (~150 listings) — a pasted sort or page number is overridden.
-- Events: **new only** — a text digest, no photos yet. Up to 100 listings per delivery, split
-  across as many messages as it takes, paced one per second. The remainder is announced, not
-  dropped, and arrives over the following runs — but a backlog larger than the page window falls
-  out of it (PRODUCT_PLAN.md, «Технический бэклог»).
+- Events: **new only**, delivered as **one card per listing**: photos (up to 10, as an album),
+  title, description, price in both currencies, address, the source's own facts (area, plot,
+  rooms, year, amenities…), seller, when it was bumped, and the link — plus a map pin when the
+  source publishes one (kufar does, realt does not). Past **30 cards** in one delivery the rest
+  goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
+  Messages are paced one per second. A refused photo falls back to the text card; a refused pin
+  is ignored — the listing already arrived.
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Logs and code stay
   English; per-profile language is Phase 7.
 - Buttons: Следить / Отмена / Показать текущие, and in `/list` ❌ remove / ▶️ resume. A «Следить»
@@ -27,7 +30,8 @@ start; more frequent once throttling/dedupe land).
 - ▶️ and re-sending the URL are **not** the same: ▶️ only lifts the pause, so everything that
   appeared during it still arrives; re-sending re-baselines the subscription and drops that
   backlog. The two need one semantic — PRODUCT_PLAN.md, «Технический бэклог».
-- «Показать текущие» fetches live, so it stays off the sources while a run is in progress.
+- «Показать текущие» fetches live, so it stays off the sources while a run is in progress. It
+  answers with one compact digest, not cards: it is a look at what is already there, on demand.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
   `/stats` reports users / active / paused / last successful run; `/check` polls now instead of
   waiting for the cron (its first 5 active subscriptions; outside production anyone may use it).

@@ -6,6 +6,7 @@ import type { Counter, Gauge } from 'prom-client';
 export const DELIVERIES_TOTAL = 'nexo_deliveries_total';
 export const POLL_ERRORS_TOTAL = 'nexo_poll_errors_total';
 export const SUBSCRIPTIONS_PAUSED_TOTAL = 'nexo_subscriptions_paused_total';
+export const PHOTO_FALLBACKS_TOTAL = 'nexo_photo_fallbacks_total';
 export const USERS = 'nexo_users';
 export const ACTIVE_SUBSCRIPTIONS = 'nexo_active_subscriptions';
 
@@ -19,6 +20,7 @@ export class WatchMetrics {
     @InjectMetric(DELIVERIES_TOTAL) private readonly deliveries: Counter,
     @InjectMetric(POLL_ERRORS_TOTAL) private readonly pollErrors: Counter,
     @InjectMetric(SUBSCRIPTIONS_PAUSED_TOTAL) private readonly paused: Counter,
+    @InjectMetric(PHOTO_FALLBACKS_TOTAL) private readonly photoFallbacks: Counter,
     @InjectMetric(USERS) private readonly users: Gauge,
     @InjectMetric(ACTIVE_SUBSCRIPTIONS) private readonly activeSubscriptions: Gauge,
   ) {}
@@ -29,6 +31,15 @@ export class WatchMetrics {
 
   recordPollError(source: string): void {
     this.pollErrors.inc({ source });
+  }
+
+  /**
+   * A card whose photos Telegram refused and which went out as text instead. Counted rather than
+   * only logged: one occurrence is a third-party hiccup nobody acts on, while a rate climbing to
+   * every card is a broken image source — and a pod's log cannot tell those apart.
+   */
+  recordPhotoFallback(): void {
+    this.photoFallbacks.inc();
   }
 
   recordPause(reason: PauseReason, count = 1): void {

@@ -2,11 +2,15 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { Bot } from 'grammy';
+import type { Api } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { WatchMetrics } from '@/metrics/watch.metrics';
 import { SENTRY_FLUSH_MS, reportUserFacing } from '@/modules/telegram/report';
 
+import type { CardSender, ListingMessage } from './send-card';
+import { sendCard } from './send-card';
 import { BOT_COMMANDS, NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
 
@@ -25,6 +29,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   constructor(
     @Inject(configuration.KEY) private readonly appConfig: AppConfig,
     private readonly handlers: TelegramHandlers,
+    private readonly metrics: WatchMetrics,
   ) {}
 
   onModuleInit(): void {
@@ -104,6 +109,36 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
    * would let callers mark undelivered listings as seen and drop them for good.
    */
   async notify(chatId: number, text: string): Promise<void> {
+    await this.api().sendMessage(chatId, text, { link_preview_options: NO_LINK_PREVIEW });
+  }
+
+  /**
+   * Send one listing card to a chat — the shared send path, wired to the bot API.
+   * `async` so a disabled bot rejects rather than throwing synchronously: half the callers
+   * reach for `.catch()`, which a sync throw walks straight past.
+   */
+  async notifyCard(chatId: number, message: ListingMessage): Promise<void> {
+    await sendCard(this.sender(chatId), message, this.logger, () =>
+      this.metrics.recordPhotoFallback(),
+    );
+  }
+
+  private sender(chatId: number): CardSender {
+    const api = this.api();
+    return {
+      photo: (url, caption) => api.sendPhoto(chatId, url, { caption, parse_mode: 'HTML' }),
+      group: (media) => api.sendMediaGroup(chatId, media),
+      html: (text) =>
+        api.sendMessage(chatId, text, {
+          parse_mode: 'HTML',
+          link_preview_options: NO_LINK_PREVIEW,
+        }),
+      location: ({ lat, lon }) => api.sendLocation(chatId, lat, lon),
+    };
+  }
+
+  /** The live API, or the reason there isn't one. */
+  private api(): Api {
     // Two different causes, told apart on purpose: one is a misconfigured deployment, the other
     // is an orderly stop, and they read identically in Sentry otherwise.
     if (!this.bot) {
@@ -113,6 +148,6 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
           : 'Bot is disabled — cannot deliver messages',
       );
     }
-    await this.bot.api.sendMessage(chatId, text, { link_preview_options: NO_LINK_PREVIEW });
+    return this.bot.api;
   }
 }

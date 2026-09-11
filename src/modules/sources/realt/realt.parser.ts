@@ -1,4 +1,5 @@
-import { asArray, asRecord, asText, parseNextData } from '../scraping/next-data';
+import { detail, listingDetails } from '../listing-details';
+import { asArray, asPositiveNumber, asRecord, asText, parseNextData } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
@@ -14,6 +15,18 @@ interface RawRealtObject {
   address?: string | null;
   townName?: string | null;
   streetName?: string | null;
+  /** Total area in m²; `areaLiving` and `areaKitchen` are parts of it. */
+  areaTotal?: number | null;
+  areaLiving?: number | null;
+  areaKitchen?: number | null;
+  /** Plot area, in sotki. */
+  areaLand?: number | null;
+  rooms?: number | null;
+  buildingYear?: number | null;
+  /** Storeys in the building; `levels` is how many the unit itself spans. */
+  storeys?: number | null;
+  levels?: number | null;
+  contactName?: string | null;
   /** Pre-built CDN URLs. */
   images?: string[];
 }
@@ -78,7 +91,26 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
     address: asText(obj.address),
     listTime: obj.updatedAt,
     images: obj.images ?? [],
+    // NOTE: no coordinates — realt's search payload carries none, so its cards get no map pin.
+    seller: asText(obj.contactName),
+    details: listingDetails(
+      detail('Площадь', asPositiveNumber(obj.areaTotal), 'м²'),
+      detail('Жилая', asPositiveNumber(obj.areaLiving), 'м²'),
+      detail('Кухня', asPositiveNumber(obj.areaKitchen), 'м²'),
+      detail('Участок', asPositiveNumber(obj.areaLand), 'сот.'),
+      detail('Комнат', asPositiveNumber(obj.rooms)),
+      detail('Год постройки', asPositiveNumber(obj.buildingYear)),
+      detail('Этажей', asPositiveNumber(obj.storeys)),
+      detail('Уровней', levels(obj)),
+    ),
   };
+}
+
+// A whole house spans every storey it has, and realt then reports the same number twice — one
+// line, not two.
+function levels(obj: RawRealtObject): number | undefined {
+  const value = asPositiveNumber(obj.levels);
+  return value === asPositiveNumber(obj.storeys) ? undefined : value;
 }
 
 function toPrice(value: number | undefined): number | undefined {
