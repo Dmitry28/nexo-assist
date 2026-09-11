@@ -30,6 +30,7 @@ src/
     ├── sources/        # Source-plugin layer (specialized module)
     │   ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
     │   ├── source-registry.ts  # Resolves an adapter by URL/id
+    │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
     │   └── <site>/             # One adapter per site (kufar, realt) + parser

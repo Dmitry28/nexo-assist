@@ -90,6 +90,78 @@ describe('mapAd', () => {
     );
   });
 
+  it('fills the card fields: seller, labelled details in order, and the map pin', () => {
+    const [ad] = extractPage(fixture).ads;
+
+    const listing = mapAd(ad);
+
+    expect(listing.seller).toBe('Продавец');
+    expect(listing.details).toEqual([
+      { label: 'Тип', value: 'Металлический' },
+      { label: 'Площадь', value: '18 м²' },
+      // A single amenity key holding a list of labels collapses into one line.
+      { label: 'Удобства', value: 'Свет, Охрана' },
+    ]);
+    // Verified live: kufar stores the pair longitude-first, so this must NOT be 27.53 lat.
+    expect(listing.coordinates).toEqual({ lat: 53.8795, lon: 27.5321 });
+  });
+
+  it('names a parking space from garage_parking_type, which has no garage_type', () => {
+    const ad = extractPage(fixture).ads[1];
+
+    const listing = mapAd(ad);
+
+    expect(listing.details[0]).toEqual({ label: 'Тип', value: 'Машиноместо' });
+    expect(listing.coordinates).toBeUndefined();
+  });
+
+  it('reads the label, never the internal code, for a dictionary field', () => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [{ p: 'house_type_for_sell', v: '25', vl: 'Таунхаус' }],
+    });
+
+    expect(listing.details).toEqual([{ label: 'Тип', value: 'Таунхаус' }]);
+  });
+
+  it('takes the plot area from size_area and the building area from size', () => {
+    // Live shapes: a house sets both (m² and sotki), a plot sets only size_area.
+    const house = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [
+        { p: 'size', v: 98 },
+        { p: 'size_area', v: 2 },
+        { p: 'rooms', v: '4' },
+        { p: 'year_built', v: 2024 },
+      ],
+    });
+
+    expect(house.details).toEqual([
+      { label: 'Площадь', value: '98 м²' },
+      { label: 'Участок', value: '2 сот.' },
+      { label: 'Комнат', value: '4' },
+      { label: 'Год постройки', value: '2024' },
+    ]);
+  });
+
+  it.each([
+    ['malformed', 'not a pair'],
+    ['half-filled', [27.53]],
+    ['out of range', [27.53, 953.9]],
+    // A zeroed pair is an unfilled field, not a spot in the Atlantic.
+    ['zeroed', [0, 0]],
+  ])('drops %s coordinates rather than pinning the wrong place', (_label, value) => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [{ p: 'coordinates', v: value }],
+    });
+
+    expect(listing.coordinates).toBeUndefined();
+  });
+
   it('omits price when the raw value is zero or missing', () => {
     const listing = mapAd({ ad_id: 1, subject: 'x', list_time: '2026-01-01T00:00:00Z' });
 

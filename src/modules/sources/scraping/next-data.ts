@@ -28,6 +28,31 @@ export function asText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * Narrow an untyped `__NEXT_DATA__` branch to a finite number, or undefined. Strings are parsed
+ * because kufar spells its numeric parameters as strings ("12.5") where realt sends numbers.
+ *
+ * Strict on purpose: "12 сот." yields undefined rather than 12. A unit inside the value means
+ * the field is not what we assumed, and a wrong number in a card reads as fact.
+ */
+export function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * As `asNumber`, but zero and negatives count as absent — which is how these sources spell "not
+ * filled in" for an area, a room count or a year. Fields where zero is a real value (a mileage,
+ * say) take `asNumber` instead; the adapter knows which it is.
+ */
+export function asPositiveNumber(value: unknown): number | undefined {
+  const parsed = asNumber(value);
+  return parsed !== undefined && parsed > 0 ? parsed : undefined;
+}
+
 const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 
 /**
