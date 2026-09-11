@@ -7,7 +7,7 @@ import {
   asText,
   parseNextData,
 } from '../scraping/next-data';
-import { UNTITLED_LISTING } from '../source-adapter';
+import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Coordinates, Listing } from '../source-adapter';
 
 /**
@@ -64,7 +64,7 @@ export interface KufarPage {
  */
 export function extractPage(html: string): KufarPage {
   const data = parseNextData(html);
-  if (!data) throw new Error('kufar: __NEXT_DATA__ missing or unparseable');
+  if (!data) throw new SourceUnavailableError('kufar: __NEXT_DATA__ missing or unparseable');
 
   const props = asRecord(data.props);
   const pageProps = asRecord(props?.pageProps);
@@ -72,7 +72,7 @@ export function extractPage(html: string): KufarPage {
   const initialState = asRecord(pageProps?.initialState ?? props?.initialState);
   const listing = asRecord(initialState?.listing);
   const ads = asArray<RawKufarAd>(listing?.ads);
-  if (!ads) throw new Error('kufar: listing.ads missing — page layout changed?');
+  if (!ads) throw new SourceUnavailableError('kufar: listing.ads missing — page layout changed?');
   // No pagination block, or one of another shape, simply means no next page — unlike `ads`,
   // whose absence is the signal that the page is not a search result at all.
   const pagination = asArray<RawPagination>(listing?.pagination) ?? [];

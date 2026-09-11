@@ -90,6 +90,7 @@ production token must never be used locally. Left unset, the app runs with the b
 | `npm run test:cov`                                             | Unit tests with coverage                                        |
 | `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                 |
 | `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                |
+| `npm run notify:test`                                          | Print the listing cards; `-- --send` delivers them via the bot  |
 | `npm run dev:docker`                                           | Full local stack in docker with hot-reload                      |
 | `npm run db:up`                                                | Start local Postgres (docker)                                   |
 | `npm run db:down`                                              | Stop local Postgres                                             |

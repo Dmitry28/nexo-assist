@@ -3,6 +3,8 @@ import type { Dispatcher, RequestInit, Response } from 'undici';
 
 import { matchesHost } from '@/common/url';
 
+import { SourceUnavailableError } from '../source-adapter';
+
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
 const MAX_HTML_LENGTH = 5 * 1024 * 1024;
@@ -34,17 +36,6 @@ function proxyAgent(): ProxyAgent | undefined {
   if (!url) return undefined;
   if (proxyAgentCache?.url !== url) proxyAgentCache = { url, agent: new ProxyAgent(url) };
   return proxyAgentCache.agent;
-}
-
-/**
- * The source did not give us usable HTML — an error status, a timeout, a network failure, or a
- * response too large to accept. Distinct from a bug in our code: triage and alerting treat them
- * differently (a site misbehaving is not something we can fix, but its volume still matters).
- */
-export class SourceUnavailableError extends Error {
-  // Without this the issue title in Sentry reads "Error: HTTP 503" — the class name is what
-  // makes the list scannable; the `kind` tag only helps once you are already filtering.
-  override readonly name = 'SourceUnavailableError';
 }
 
 /**

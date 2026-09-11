@@ -7,7 +7,7 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
-import { SourceUnavailableError } from '@/modules/sources/scraping/http';
+import { SourceUnavailableError } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';

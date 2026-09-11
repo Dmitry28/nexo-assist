@@ -7,6 +7,27 @@ export type SourceId = 'kufar' | 'realt';
  */
 export const UNTITLED_LISTING = 'Объявление';
 
+/**
+ * The source did not give us usable HTML — an error status, a timeout, a network failure, a
+ * response too large to accept, or a body that is not the page we asked for (a bot-wall, a
+ * captcha, a redesign). Distinct from a bug in our code: triage and alerting treat them
+ * differently (a site misbehaving is not something we can fix, but its volume still matters).
+ *
+ * The last case is why the parsers throw this too: a 200 carrying a challenge page is the
+ * failure `kind: source` exists to name, and calling it our defect points triage at the wrong
+ * party exactly when a source breaks for everyone.
+ *
+ * One caveat that follows from that: a site REDESIGN also lands here, and it is ours to fix —
+ * the adapter needs updating — even though the tag says `source`. Those are the ones whose
+ * message reads "page layout changed?"; `kind: source` means "the site did not hand us a usable
+ * page", never "nothing to do".
+ */
+export class SourceUnavailableError extends Error {
+  // Without this the issue title in Sentry reads "Error: HTTP 503" — the class name is what
+  // makes the list scannable; the `kind` tag only helps once you are already filtering.
+  override readonly name = 'SourceUnavailableError';
+}
+
 /** A map pin: latitude/longitude as the source published them. */
 export interface Coordinates {
   lat: number;

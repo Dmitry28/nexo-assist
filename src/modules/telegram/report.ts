@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/nestjs';
 
-import { SourceUnavailableError } from '@/modules/sources/scraping/http';
+import { SourceUnavailableError } from '@/modules/sources/source-adapter';
 
 /** How long to wait for a report to reach Sentry before a deliberate exit gives up on it. */
 export const SENTRY_FLUSH_MS = 2000;
