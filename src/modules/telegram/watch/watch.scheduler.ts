@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { SchedulerRegistry } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { CronJob } from 'cron';
-import { GrammyError } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
@@ -14,7 +13,7 @@ import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
 import { deadSubscriptionNotice } from '@/modules/telegram/bot/telegram.format';
-import { TelegramService } from '@/modules/telegram/bot/telegram.service';
+import { isBotBlocked, TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
 
@@ -46,11 +45,6 @@ type ProcessResult = { state: 'ok' | 'blocked' } | { state: 'poll-failed'; dead:
  */
 function streakThisRun(sub: Subscription): number {
   return sub.consecutiveFailures + 1;
-}
-
-/** A Telegram 403 means delivery is impossible (blocked / deactivated) — pause the user. */
-function isBotBlocked(err: unknown): boolean {
-  return err instanceof GrammyError && err.error_code === 403;
 }
 
 /** Runs the daily subscription check and pushes new listings to each subscriber. */
