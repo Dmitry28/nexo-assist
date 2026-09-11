@@ -88,7 +88,7 @@ export function mapAd(ad: RawKufarAd): Listing {
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
-    description: asText(ad.body_short),
+    description: preview(ad.body_short),
     priceByn: toPrice(ad.price_byn),
     priceUsd: toPrice(ad.price_usd),
     address: asText(param(ad.account_parameters, 'address')),
@@ -103,7 +103,7 @@ export function mapAd(ad: RawKufarAd): Listing {
       detail('Участок', asPositiveNumber(param(ad.ad_parameters, 'size_area')), 'сот.'),
       detail('Комнат', asPositiveNumber(param(ad.ad_parameters, 'rooms'))),
       detail('Год постройки', asPositiveNumber(param(ad.ad_parameters, 'year_built'))),
-      detail('Удобства', amenities(ad)),
+      ...facilities(ad),
     ),
   };
 }
@@ -134,22 +134,36 @@ function propertyType(ad: RawKufarAd): string | undefined {
   );
 }
 
-// Amenity parameters worth a line in a card. Their labels come as a single string or as a list
-// (a house has several), so both shapes are flattened into one comma-separated line.
-const AMENITY_KEYS = [
-  're_heating',
-  're_water',
-  're_property_rights',
-  're_outbuildings',
-  'garage_improvements',
+// kufar's own cut for a listing preview, measured on a live page: every long `body_short` is
+// exactly this many characters, and it cuts mid-word with nothing to show for it.
+const BODY_SHORT_CHARS = 150;
+
+/** The listing preview, marked as cut when kufar cut it — otherwise it just stops mid-word. */
+function preview(raw: string | undefined): string | undefined {
+  const text = asText(raw);
+  return text !== undefined && text.length >= BODY_SHORT_CHARS ? `${text}…` : text;
+}
+
+// One line per parameter, each under its own label. Lumping them together produced «Удобства:
+// Центральное» — true of the heating, unreadable as a fact.
+const FACILITY_LABELS: Array<[key: string, label: string]> = [
+  ['re_heating', 'Отопление'],
+  ['re_water', 'Вода'],
+  ['re_hot_water', 'Горячая вода'],
+  ['re_sewage', 'Канализация'],
+  ['re_property_rights', 'Права'],
+  ['re_outbuildings', 'Постройки'],
+  // A garage's amenities really are one list ("Свет, Охрана"), so they keep a shared label.
+  ['garage_improvements', 'Удобства'],
 ];
 
-function amenities(ad: RawKufarAd): string | undefined {
-  const labels = AMENITY_KEYS.flatMap((key) => {
+function facilities(ad: RawKufarAd): Array<ReturnType<typeof detail>> {
+  return FACILITY_LABELS.map(([key, label]) => {
     const value = param(ad.ad_parameters, key, 'vl');
-    return (asArray<unknown>(value) ?? [value]).map(asText).filter((l) => l !== undefined);
+    // A label can be a single string or a list (a garage has several) — both become one line.
+    const labels = (asArray<unknown>(value) ?? [value]).map(asText).filter((l) => l !== undefined);
+    return detail(label, labels.join(', '));
   });
-  return labels.length > 0 ? labels.join(', ') : undefined;
 }
 
 /**

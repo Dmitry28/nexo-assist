@@ -116,6 +116,32 @@ describe('mapAd', () => {
     expect(listing.coordinates).toBeUndefined();
   });
 
+  it('gives each facility its own label — «Удобства: Центральное» names nothing', () => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [
+        { p: 're_heating', v: '10', vl: 'Электрическое' },
+        { p: 're_water', v: '15', vl: 'Центральная' },
+        { p: 're_property_rights', v: '1', vl: 'Частная собственность' },
+      ],
+    });
+
+    expect(listing.details).toEqual([
+      { label: 'Отопление', value: 'Электрическое' },
+      { label: 'Вода', value: 'Центральная' },
+      { label: 'Права', value: 'Частная собственность' },
+    ]);
+  });
+
+  // kufar cuts `body_short` at 150 characters, mid-word and with nothing to show for it.
+  it('marks a description kufar itself cut short', () => {
+    const cut = 'я'.repeat(150);
+
+    expect(mapAd({ ad_id: 1, list_time: 't', body_short: cut }).description).toBe(`${cut}…`);
+    expect(mapAd({ ad_id: 1, list_time: 't', body_short: 'коротко' }).description).toBe('коротко');
+  });
+
   it('reads the label, never the internal code, for a dictionary field', () => {
     const listing = mapAd({
       ad_id: 1,
