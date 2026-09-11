@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { UNTITLED_LISTING } from '@/modules/sources/source-adapter';
+import { UNTITLED_LISTING, SourceUnavailableError } from '@/modules/sources/source-adapter';
 
 import { extractPage, mapAd } from '../kufar.parser';
 
@@ -39,8 +39,13 @@ describe('extractPage', () => {
     expect(extractPage(html).nextCursor).toBe('t1');
   });
 
+  // The type is asserted, not just the message: Sentry derives `kind` from it, so a plain Error
+  // here would bill a bot-wall as our defect (see the SourceUnavailableError docblock).
   it('throws when __NEXT_DATA__ is absent — a bot-wall must not read as an empty search', () => {
-    expect(() => extractPage('<html><body>no data</body></html>')).toThrow('__NEXT_DATA__');
+    const thrown = () => extractPage('<html><body>no data</body></html>');
+
+    expect(thrown).toThrow('__NEXT_DATA__');
+    expect(thrown).toThrow(SourceUnavailableError);
   });
 
   it('throws on malformed JSON', () => {
@@ -69,6 +74,7 @@ describe('extractPage', () => {
       '</script>';
 
     expect(() => extractPage(noAds)).toThrow('listing.ads');
+    expect(() => extractPage(noAds)).toThrow(SourceUnavailableError);
   });
 });
 

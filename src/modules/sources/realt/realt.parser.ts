@@ -1,6 +1,6 @@
 import { detail, listingDetails } from '../listing-details';
 import { asArray, asPositiveNumber, asRecord, asText, parseNextData } from '../scraping/next-data';
-import { UNTITLED_LISTING } from '../source-adapter';
+import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
@@ -54,14 +54,15 @@ export interface RealtPage {
  */
 export function extractPage(html: string): RealtPage {
   const data = parseNextData(html);
-  if (!data) throw new Error('realt: __NEXT_DATA__ missing or unparseable');
+  if (!data) throw new SourceUnavailableError('realt: __NEXT_DATA__ missing or unparseable');
 
   const props = asRecord(data.props);
   // NOTE: asRecord rejects a non-object `pageProps` (an array, a string) where the previous cast
   // let it through to `objects: []`. Deliberate, and unreachable with a real Next.js payload: a
   // shape we don't recognise is a layout change, which must not read as an empty search.
   const pageProps = asRecord(props?.pageProps);
-  if (!pageProps) throw new Error('realt: pageProps missing — page layout changed?');
+  if (!pageProps)
+    throw new SourceUnavailableError('realt: pageProps missing — page layout changed?');
   return {
     // Array-checked: an `objects` of another shape would otherwise reach `.map` in the adapter
     // and throw "map is not a function" — a crash that names nothing useful.

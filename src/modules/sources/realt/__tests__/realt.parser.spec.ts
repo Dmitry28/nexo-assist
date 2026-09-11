@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { SourceUnavailableError } from '../../source-adapter';
 import { extractPage, mapObject } from '../realt.parser';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
@@ -14,8 +15,13 @@ describe('extractPage', () => {
     expect(pagination?.totalCount).toBe(3);
   });
 
+  // The type is asserted, not just the message: Sentry derives `kind` from it (see the
+  // SourceUnavailableError docblock in scraping/http.ts).
   it('throws when __NEXT_DATA__ is absent — a bot-wall must not read as an empty search', () => {
-    expect(() => extractPage('<html>no data</html>')).toThrow('__NEXT_DATA__');
+    const thrown = () => extractPage('<html>no data</html>');
+
+    expect(thrown).toThrow('__NEXT_DATA__');
+    expect(thrown).toThrow(SourceUnavailableError);
   });
 
   it('throws when pageProps is missing — a layout change must not read as an empty search', () => {
@@ -25,6 +31,7 @@ describe('extractPage', () => {
       '</script>';
 
     expect(() => extractPage(noPageProps)).toThrow('pageProps');
+    expect(() => extractPage(noPageProps)).toThrow(SourceUnavailableError);
   });
 
   it('treats an objects block of another shape as empty, not as a crash in the adapter', () => {

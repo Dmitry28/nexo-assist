@@ -9,8 +9,8 @@ import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
 import { SENTRY_FLUSH_MS, reportUserFacing } from '@/modules/telegram/report';
 
-import type { CardSender, ListingMessage } from './send-card';
-import { sendCard } from './send-card';
+import type { ListingMessage } from './send-card';
+import { apiCardSender, sendCard } from './send-card';
 import { BOT_COMMANDS, NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
 
@@ -118,23 +118,9 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
    * reach for `.catch()`, which a sync throw walks straight past.
    */
   async notifyCard(chatId: number, message: ListingMessage): Promise<void> {
-    await sendCard(this.sender(chatId), message, this.logger, () =>
+    await sendCard(apiCardSender(this.api(), chatId), message, this.logger, () =>
       this.metrics.recordPhotoFallback(),
     );
-  }
-
-  private sender(chatId: number): CardSender {
-    const api = this.api();
-    return {
-      photo: (url, caption) => api.sendPhoto(chatId, url, { caption, parse_mode: 'HTML' }),
-      group: (media) => api.sendMediaGroup(chatId, media),
-      html: (text) =>
-        api.sendMessage(chatId, text, {
-          parse_mode: 'HTML',
-          link_preview_options: NO_LINK_PREVIEW,
-        }),
-      location: ({ lat, lon }) => api.sendLocation(chatId, lat, lon),
-    };
   }
 
   /** The live API, or the reason there isn't one. */

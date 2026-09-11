@@ -1,5 +1,6 @@
 import type { Logger } from '@nestjs/common';
 import { GrammyError } from 'grammy';
+import type { Api } from 'grammy';
 import type { InputMediaPhoto } from 'grammy/types';
 
 import { wait } from '@/common/wait';
@@ -7,6 +8,7 @@ import type { Coordinates, Listing } from '@/modules/sources/source-adapter';
 
 import type { CardPosition } from './listing-card';
 import { CAPTION_LIMIT_CHARS, MESSAGE_LIMIT_CHARS, listingCard } from './listing-card';
+import { NO_LINK_PREVIEW } from './telegram.format';
 
 /** Telegram's hard cap on one media group — an eleventh photo is a rejected request. */
 export const MAX_PHOTOS_PER_CARD = 10;
@@ -45,6 +47,23 @@ export interface CardSender {
   /** The card as a message of its own — HTML, like every caption here. */
   html(text: string): Promise<unknown>;
   location(at: Coordinates): Promise<unknown>;
+}
+
+/**
+ * A sender that talks to a chat through the bot API.
+ *
+ * Shared with `scripts/notify-test.ts` on purpose: that script exists to catch formatting
+ * regressions in the real send path, and a private copy would drift until it exercised a path
+ * production no longer uses — while still reporting success.
+ */
+export function apiCardSender(api: Api, chatId: number): CardSender {
+  return {
+    photo: (url, caption) => api.sendPhoto(chatId, url, { caption, parse_mode: 'HTML' }),
+    group: (media) => api.sendMediaGroup(chatId, media),
+    html: (text) =>
+      api.sendMessage(chatId, text, { parse_mode: 'HTML', link_preview_options: NO_LINK_PREVIEW }),
+    location: ({ lat, lon }) => api.sendLocation(chatId, lat, lon),
+  };
 }
 
 /**

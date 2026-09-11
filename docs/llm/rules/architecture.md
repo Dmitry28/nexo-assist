@@ -115,7 +115,10 @@ module): `npm run migration:generate|run|revert|show`.
 
 For one-off DI scripts (seeds, admin tasks) use `NestFactory.createApplicationContext` in
 `src/scripts/` via a `"task:<name>": "ts-node -r tsconfig-paths/register …"` script
-(`ts-node`/`tsconfig-paths` are already devDependencies).
+(`ts-node`/`tsconfig-paths` are already devDependencies). An operator tool that needs no DI
+lives in the same folder and keeps its own verb (`notify:test`) — the `task:` prefix marks the
+DI ones, which cost a full application context. Either way `src/scripts/` is excluded from
+`tsconfig.build.json`: these are not part of the running app.
 
 ## Adding a New Env Variable
 
