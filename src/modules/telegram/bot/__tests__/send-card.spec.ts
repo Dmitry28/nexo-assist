@@ -4,7 +4,7 @@ import { GrammyError } from 'grammy';
 import { makeListing } from '@/__tests__/helpers/listing';
 
 import type { CardSender } from '../send-card';
-import { MAX_PHOTOS_PER_CARD, listingMessage, sendCard } from '../send-card';
+import { MAX_PHOTOS_PER_CARD, SEND_DELAY_MS, listingMessage, sendCard } from '../send-card';
 
 const logger = new Logger('test');
 
@@ -24,6 +24,13 @@ describe('sendCard', () => {
   beforeEach(() => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
   });
+  afterEach(() => jest.useRealTimers());
+
+  /** The extra requests a card can make — the fallback and the pin — are paced like any other. */
+  const settlePaced = async (run: Promise<void>): Promise<void> => {
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await run;
+  };
 
   it('sends a lone photo with the card as its caption', async () => {
     const sender = stubSender();
@@ -64,12 +71,26 @@ describe('sendCard', () => {
 
   // The listing matters more than its pictures, and only what arrives is marked seen.
   it('falls back to the text card when the media is refused', async () => {
+    jest.useFakeTimers();
     const sender = stubSender();
     sender.photo.mockRejectedValue(new Error('WEBPAGE_MEDIA_EMPTY'));
 
-    await send(sender, photos(1));
+    await settlePaced(send(sender, photos(1)));
 
     expect(sender.html).toHaveBeenCalledWith('card');
+  });
+
+  it('counts a fallback, so a systematic media failure is visible outside the log', async () => {
+    jest.useFakeTimers();
+    const sender = stubSender();
+    sender.photo.mockRejectedValue(new Error('WEBPAGE_MEDIA_EMPTY'));
+    const onPhotoFallback = jest.fn();
+
+    await settlePaced(
+      sendCard(sender, { caption: 'card', images: photos(1) }, logger, onPhotoFallback),
+    );
+
+    expect(onPhotoFallback).toHaveBeenCalledTimes(1);
   });
 
   it('gives up when the chat itself is blocked — the text would be refused too', async () => {
@@ -87,13 +108,28 @@ describe('sendCard', () => {
   });
 
   it('drops the pin after the card, and a failed pin is not a failed delivery', async () => {
+    jest.useFakeTimers();
     const sender = stubSender();
     sender.location.mockRejectedValue(new Error('nope'));
 
-    await expect(
-      send(sender, photos(1), { coordinates: { lat: 53.68, lon: 23.85 } }),
-    ).resolves.toBeUndefined();
+    const run = send(sender, photos(1), { coordinates: { lat: 53.68, lon: 23.85 } });
+
+    await expect(settlePaced(run)).resolves.toBeUndefined();
     expect(sender.location).toHaveBeenCalledWith({ lat: 53.68, lon: 23.85 });
+  });
+
+  // The pin is one more request to the same chat, so it waits its turn like the rest.
+  it('paces the pin behind the card', async () => {
+    jest.useFakeTimers();
+    const sender = stubSender();
+
+    const run = send(sender, photos(1), { coordinates: { lat: 53.68, lon: 23.85 } });
+    await Promise.resolve();
+    expect(sender.location).not.toHaveBeenCalled();
+
+    await settlePaced(run);
+
+    expect(sender.location).toHaveBeenCalled();
   });
 
   it('sends no pin when the source published none — realt never does', async () => {

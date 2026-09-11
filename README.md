@@ -10,7 +10,9 @@ health checks, and a full lint/format/test pipeline. Product spec:
 
 Send the bot a search link from **kufar.by** or **realt.by** with your filters already applied;
 it offers a "Следить" button and, from then on, sends the listings that appeared since the
-last check, once a day, as a capped digest split across as many messages as it takes. Delivery
+last check, once a day — a card per listing with its photos, price in both currencies, the
+source's own details and a map pin where there is one; past 30 in one delivery the rest arrives
+as a compact list. Delivery
 rules and what the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its
 beta audience does.
 

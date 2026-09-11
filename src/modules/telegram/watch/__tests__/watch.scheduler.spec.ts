@@ -11,7 +11,7 @@ import { SourceUnavailableError } from '@/modules/sources/scraping/http';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
-import { SEND_DELAY_MS } from '@/modules/telegram/bot/telegram.deliver';
+import { SEND_DELAY_MS } from '@/modules/telegram/bot/send-card';
 import { CARDS_PER_DELIVERY } from '@/modules/telegram/bot/telegram.format';
 import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 

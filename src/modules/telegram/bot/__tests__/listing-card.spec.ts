@@ -96,6 +96,25 @@ describe('listingCard', () => {
       expect(text).toContain('<a href="https://re.kufar.by/vi/1">🔗 Подробнее</a>');
     });
 
+    // The core the card never trims — address, details, seller — can itself exceed the budget.
+    // A photo-less card has no text fallback to catch the resulting 400, so it would be rebuilt
+    // and rejected on every run: the price and the link have to survive, the rest gives way.
+    it('drops the details before it ships a card over the limit', () => {
+      const text = card(
+        {
+          priceUsd: 33000,
+          address: long(300),
+          seller: long(300),
+          details: Array.from({ length: 20 }, (_, i) => ({ label: `л${i}`, value: long(50) })),
+        },
+        400,
+      );
+
+      expect(text.length).toBeLessThanOrEqual(400);
+      expect(text).toContain('💰 $33\u00A0000');
+      expect(text).toContain('<a href="https://re.kufar.by/vi/1">🔗 Подробнее</a>');
+    });
+
     // Escaping inflates: 500 ampersands become 2500 characters, so the trim has to be measured
     // on the escaped output or the message goes over the limit and Telegram rejects it.
     it('counts the escaped text, not the raw text', () => {

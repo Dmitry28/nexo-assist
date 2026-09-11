@@ -85,8 +85,9 @@ describe('mapAd', () => {
       priceUsd: 5000,
       address: 'Гурского ул, 28, Минск',
     });
+    // The gallery variant, not the list thumbnail: a card shows the photo full width.
     expect(listing.images[0]).toBe(
-      'https://rms.kufar.by/v1/list_thumbs_2x/adim1/ab2e0c37-703d-4580-a1a8-ebf7228caaa3.jpg',
+      'https://rms.kufar.by/v1/gallery/adim1/ab2e0c37-703d-4580-a1a8-ebf7228caaa3.jpg',
     );
   });
 

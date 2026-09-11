@@ -2,12 +2,8 @@ import { wait } from '@/common/wait';
 import type { Listing } from '@/modules/sources/source-adapter';
 
 import type { ListingMessage } from './send-card';
-import { listingMessage } from './send-card';
+import { SEND_DELAY_MS, listingMessage } from './send-card';
 import { CARDS_PER_DELIVERY, tailBatches } from './telegram.format';
-
-// Pause between messages to one chat. Telegram tolerates about one per second per chat; the
-// auto-retry plugin would survive a 429 anyway, but waiting is cheaper than being rate-limited.
-export const SEND_DELAY_MS = 1000;
 
 /** What actually reached the user, plus whatever went wrong around it. */
 export interface DeliveryResult {

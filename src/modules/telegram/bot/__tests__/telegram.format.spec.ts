@@ -9,12 +9,15 @@ import {
   tailBatches,
 } from '../telegram.format';
 
+// The digest groups thousands like the cards do (U+00A0), so the expectations spell it out.
+const PRICE_5000 = '$5\u00A0000';
+
 describe('tailBatches', () => {
   it('shows the count header and listing fields', () => {
     const [{ text }] = tailBatches([listing(1, { priceUsd: 5000 })]);
 
     expect(text).toContain('🆕 Ещё объявлений: 1');
-    expect(text).toContain('$5000');
+    expect(text).toContain(PRICE_5000);
     expect(text).toContain('https://re.kufar.by/vi/1');
   });
 
@@ -60,7 +63,7 @@ describe('tailBatches', () => {
     // A delivered item is marked seen for good, so truncating the assembled line — which would
     // cut the trailing link — loses the listing silently.
     const item = text.split('\n\n')[1];
-    expect(item.split('\n')).toEqual([expect.stringMatching(/^t+…$/), '$5000', link]);
+    expect(item.split('\n')).toEqual([expect.stringMatching(/^t+…$/), PRICE_5000, link]);
     expect(item.length).toBeLessThanOrEqual(MAX_LINE_CHARS);
     expect(delivered).toHaveLength(1);
   });
@@ -85,11 +88,12 @@ describe('tailBatches', () => {
   });
 
   it('keeps the link whole when the tail alone fills the line — no ellipsis budget left', () => {
-    // A link long enough to leave the title zero budget: tail = '\n$5000\n' + link is exactly
-    // MAX_LINE_CHARS, so truncate() is asked for a non-positive budget and must yield nothing.
-    // Returning '…' instead would push the line over the cap and cut the link off its end.
-    const link = `https://x.by/${'x'.repeat(493 - 'https://x.by/'.length)}`;
-    const tailLength = `\n$5000\n${link}`.length;
+    // A link long enough to leave the title zero budget: tail = '\n' + price + '\n' + link is
+    // exactly MAX_LINE_CHARS, so truncate() is asked for a non-positive budget and must yield
+    // nothing. Returning '…' instead would push the line over the cap and cut the link off.
+    const linkLength = MAX_LINE_CHARS - `\n${PRICE_5000}\n`.length;
+    const link = `https://x.by/${'x'.repeat(linkLength - 'https://x.by/'.length)}`;
+    const tailLength = `\n${PRICE_5000}\n${link}`.length;
     expect(tailLength).toBe(MAX_LINE_CHARS);
 
     const [{ text }] = tailBatches([listing(1, { title: 'a title', priceUsd: 5000, link })]);

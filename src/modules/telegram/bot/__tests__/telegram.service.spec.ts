@@ -5,7 +5,9 @@ import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import type { AppConfig } from '@/config/configuration';
 import { AppEnv } from '@/config/env.validation';
+import type { WatchMetrics } from '@/metrics/watch.metrics';
 
+import { SEND_DELAY_MS } from '../send-card';
 import { BOT_COMMANDS } from '../telegram.format';
 import type { TelegramHandlers } from '../telegram.handlers';
 import { TelegramService } from '../telegram.service';
@@ -14,10 +16,12 @@ import { TelegramService } from '../telegram.service';
 // else grammY exports (GrammyError & co) stays real, so error handling is exercised for real.
 jest.mock('grammy', () => ({ ...jest.requireActual<object>('grammy'), Bot: jest.fn() }));
 
+const metrics = { recordPhotoFallback: jest.fn() } as unknown as WatchMetrics;
+
 const make = (overrides: Partial<AppConfig> = {}): TelegramService => {
   // Handlers are only registered on a live bot, so a stub suffices here.
   const handlers = { register: jest.fn() } as unknown as TelegramHandlers;
-  return new TelegramService(makeAppConfig(overrides), handlers);
+  return new TelegramService(makeAppConfig(overrides), handlers, metrics);
 };
 
 /** The bot the next service will build; `start` decides how the polling loop ends. */
@@ -181,13 +185,16 @@ describe('TelegramService', () => {
 
 describe('notifyCard', () => {
   it('wires the bot API into the shared send path', async () => {
+    jest.useFakeTimers();
     const { bot, service } = started(pollsForever);
 
-    await service.notifyCard(7, {
+    const run = service.notifyCard(7, {
       caption: '<b>card</b>',
       images: ['https://cdn/0.jpg'],
       coordinates: { lat: 53.68, lon: 23.85 },
     });
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await run;
 
     expect(bot.api.sendPhoto).toHaveBeenCalledWith(7, 'https://cdn/0.jpg', {
       caption: '<b>card</b>',
@@ -198,5 +205,19 @@ describe('notifyCard', () => {
 
   it('throws when the bot is disabled — callers must not mark listings seen', async () => {
     await expect(make().notifyCard(1, { caption: 'card', images: [] })).rejects.toThrow('disabled');
+  });
+
+  it('counts a photo fallback, so a systematic media failure is visible outside the log', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const { bot, service } = started(pollsForever);
+    bot.api.sendPhoto.mockRejectedValue(new Error('WEBPAGE_MEDIA_EMPTY'));
+
+    const run = service.notifyCard(7, { caption: 'card', images: ['https://cdn/0.jpg'] });
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await run;
+
+    expect(metrics.recordPhotoFallback).toHaveBeenCalledTimes(1);
+    expect(bot.api.sendMessage).toHaveBeenCalledWith(7, 'card', expect.anything());
   });
 });

@@ -12,7 +12,7 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { CheckHandlers } from '../check.handlers';
-import { SEND_DELAY_MS } from '../telegram.deliver';
+import { SEND_DELAY_MS } from '../send-card';
 
 import { makeCtx } from './fixtures/bot-ctx';
 

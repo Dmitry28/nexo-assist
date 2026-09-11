@@ -40,7 +40,11 @@ interface RawParam {
   vl?: unknown;
 }
 
-const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/list_thumbs_2x';
+// The gallery variant, not the list thumbnail the prototype used: measured on a live ad, the
+// same image is 920×690 (82 KB) here against 667×500 (47 KB) there — and a card shows it full
+// width. Both paths answer 302 to a shard host (rms → rms8); Telegram follows that itself,
+// see send-card.ts.
+const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/gallery';
 
 interface RawPagination {
   label: string;

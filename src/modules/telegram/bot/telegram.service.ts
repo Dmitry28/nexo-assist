@@ -6,6 +6,7 @@ import type { Api } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { WatchMetrics } from '@/metrics/watch.metrics';
 import { SENTRY_FLUSH_MS, reportUserFacing } from '@/modules/telegram/report';
 
 import type { CardSender, ListingMessage } from './send-card';
@@ -28,6 +29,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   constructor(
     @Inject(configuration.KEY) private readonly appConfig: AppConfig,
     private readonly handlers: TelegramHandlers,
+    private readonly metrics: WatchMetrics,
   ) {}
 
   onModuleInit(): void {
@@ -116,7 +118,9 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
    * reach for `.catch()`, which a sync throw walks straight past.
    */
   async notifyCard(chatId: number, message: ListingMessage): Promise<void> {
-    await sendCard(this.sender(chatId), message, this.logger);
+    await sendCard(this.sender(chatId), message, this.logger, () =>
+      this.metrics.recordPhotoFallback(),
+    );
   }
 
   private sender(chatId: number): CardSender {

@@ -37,7 +37,7 @@ src/
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root
-        ├── bot/                # The conversation (service, handlers, format, deliver)
+        ├── bot/                # The conversation (service, handlers, card, send, deliver)
         └── watch/              # The scheduled run (scheduler, status, pacing, tally)
 ```
 

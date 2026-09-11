@@ -9,6 +9,7 @@ import { MetricsController } from './metrics.controller';
 import {
   ACTIVE_SUBSCRIPTIONS,
   DELIVERIES_TOTAL,
+  PHOTO_FALLBACKS_TOTAL,
   POLL_ERRORS_TOTAL,
   SUBSCRIPTIONS_PAUSED_TOTAL,
   USERS,
@@ -32,6 +33,10 @@ import {
       name: POLL_ERRORS_TOTAL,
       help: 'Source poll failures',
       labelNames: ['source'],
+    }),
+    makeCounterProvider({
+      name: PHOTO_FALLBACKS_TOTAL,
+      help: 'Listing cards that fell back to text because Telegram refused the photos',
     }),
     makeCounterProvider({
       name: SUBSCRIPTIONS_PAUSED_TOTAL,

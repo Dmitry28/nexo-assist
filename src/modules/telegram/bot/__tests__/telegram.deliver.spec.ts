@@ -1,7 +1,8 @@
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 
+import { SEND_DELAY_MS } from '../send-card';
 import type { DeliveryTargets } from '../telegram.deliver';
-import { SEND_DELAY_MS, deliverAndMark, deliverListings } from '../telegram.deliver';
+import { deliverAndMark, deliverListings } from '../telegram.deliver';
 import { CARDS_PER_DELIVERY, DIGEST_LIMIT } from '../telegram.format';
 
 const many = (n: number) => Array.from({ length: n }, (_, i) => listing(i + 1));

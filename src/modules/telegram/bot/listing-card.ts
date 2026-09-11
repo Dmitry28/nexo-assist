@@ -1,5 +1,7 @@
 import { LOCALE, TIMEZONE } from '@/common/locale';
-import type { Listing } from '@/modules/sources/source-adapter';
+import type { Listing, ListingDetail } from '@/modules/sources/source-adapter';
+
+import { truncate } from './telegram.format';
 
 /** Telegram's ceiling for a photo caption — a fifth of what a plain message allows. */
 export const CAPTION_LIMIT_CHARS = 1024;
@@ -60,79 +62,105 @@ export interface CardPosition {
   total: number;
 }
 
-/** The card's blocks, in reading order, with the parts that may be trimmed kept separate. */
-function compose(
-  listing: Listing,
-  title: string,
-  description: string | undefined,
-  position?: CardPosition,
-): string {
+/**
+ * A card's text, escaped once. Every scraped field is escaped on the way in here, so `compose`
+ * below is pure layout: a block added later cannot forget the escaping and turn one bad
+ * character into a subscription that fails on every run.
+ */
+interface CardText {
+  title: string;
+  description?: string;
+  address?: string;
+  seller?: string;
+  details: ListingDetail[];
+  /** Built from numbers, so nothing to escape. */
+  price: string;
+  listTime: string;
+  link: string;
+}
+
+const escapeCard = (listing: Listing): CardText => ({
+  title: escapeHtml(listing.title),
+  description: listing.description === undefined ? undefined : escapeHtml(listing.description),
+  address: listing.address === undefined ? undefined : escapeHtml(listing.address),
+  seller: listing.seller === undefined ? undefined : escapeHtml(listing.seller),
+  details: listing.details.map(({ label, value }) => ({
+    label: escapeHtml(label),
+    value: escapeHtml(value),
+  })),
+  price: formatPrice(listing),
+  listTime: formatListTime(listing.listTime),
+  link: escapeHtml(listing.link),
+});
+
+/** The card's blocks, in reading order. */
+function compose(card: CardText, position?: CardPosition): string {
   const lines: string[] = [];
   // A single card needs no counter: "1/1" is noise.
   if (position !== undefined && position.total > 1) {
     lines.push(`🆕 ${position.index}/${position.total}`);
   }
-  lines.push(`🏠 <b>${title}</b>`);
-  if (description !== undefined) lines.push(`<i>${description}</i>`);
+  lines.push(`🏠 <b>${card.title}</b>`);
+  if (card.description !== undefined) lines.push(`<i>${card.description}</i>`);
   lines.push('');
-  if (listing.address !== undefined) lines.push(`📍 ${escapeHtml(listing.address)}`);
-  lines.push(`💰 ${formatPrice(listing)}`);
-  for (const { label, value } of listing.details) {
-    lines.push(`${escapeHtml(label)}: ${escapeHtml(value)}`);
-  }
-  if (listing.seller !== undefined) lines.push(`👤 ${escapeHtml(listing.seller)}`);
-  const listTime = formatListTime(listing.listTime);
-  if (listTime !== '') lines.push(`🕐 ${listTime}`);
-  lines.push('', `<a href="${escapeHtml(listing.link)}">🔗 Подробнее</a>`);
+  if (card.address !== undefined) lines.push(`📍 ${card.address}`);
+  lines.push(`💰 ${card.price}`);
+  for (const { label, value } of card.details) lines.push(`${label}: ${value}`);
+  if (card.seller !== undefined) lines.push(`👤 ${card.seller}`);
+  if (card.listTime !== '') lines.push(`🕐 ${card.listTime}`);
+  lines.push('', `<a href="${card.link}">🔗 Подробнее</a>`);
   return lines.join('\n');
 }
+
+/**
+ * A cut that landed inside an HTML entity — «&amp» without its «;» renders literally at best and
+ * rejects the message at worst. Half-written only: a complete entity ends in «;» and survives.
+ */
+const PARTIAL_ENTITY = /&[a-z]*$/i;
 
 /**
  * Cut already-escaped text to at most `max` characters, ellipsis included.
  *
  * Escaped, not raw, on purpose: the budget is measured on the composed message, and escaping can
  * quintuple a length («&» → «&amp;»), so trimming the raw text overshoots the limit — which is a
- * Telegram 400 and, since nothing is marked seen undelivered, a card that fails forever.
- * A cut therefore has to dodge two hazards it can land inside: an HTML entity and an emoji.
+ * Telegram 400 and, since nothing undelivered is marked seen, a card that fails forever.
  */
-function clamp(escaped: string, max: number): string {
-  if (max <= 0) return '';
-  const cut = escaped
-    .slice(0, max - 1)
-    .replace(/&[a-z]*;?$/i, '')
-    .replace(/[\uD800-\uDBFF]$/, '');
-  return `${cut}…`;
-}
+const clamp = (escaped: string, max: number): string => truncate(escaped, max, PARTIAL_ENTITY);
 
 /**
  * One listing as one message, at most `limit` characters — pass `CAPTION_LIMIT_CHARS` when a
  * photo carries it, `MESSAGE_LIMIT_CHARS` when it stands alone.
  *
- * What gets cut, in order: the description, then the title. The price, the details and the link
- * are never trimmed — a delivered listing is marked seen, so a card that arrives without its
- * link is lost for good, and that is the one thing the reader needs from us.
+ * What gets cut, in order: the description, then the title, and only then the blocks that
+ * identify the object (address, details, seller). The price and the link are never trimmed — a
+ * delivered listing is marked seen, so a card that arrives without its link is lost for good.
  */
 export function listingCard(listing: Listing, limit: number, position?: CardPosition): string {
-  const title = escapeHtml(listing.title);
-  const description =
-    listing.description === undefined ? undefined : escapeHtml(listing.description);
+  const card = escapeCard(listing);
 
-  const full = compose(listing, title, description, position);
+  const full = compose(card, position);
   if (full.length <= limit) return full;
 
-  if (description !== undefined) {
-    const room = description.length - (full.length - limit);
+  if (card.description !== undefined) {
+    const room = card.description.length - (full.length - limit);
     // Nothing worth reading would be left — drop the block rather than ship a bare ellipsis.
-    const shorter = compose(
-      listing,
-      title,
-      room > 1 ? clamp(description, room) : undefined,
-      position,
-    );
+    const description = room > 1 ? clamp(card.description, room) : undefined;
+    const shorter = compose({ ...card, description }, position);
     if (shorter.length <= limit) return shorter;
   }
 
-  const bare = compose(listing, title, undefined, position);
-  const trimmed = clamp(title, title.length - (bare.length - limit));
-  return compose(listing, trimmed, undefined, position);
+  const bare = { ...card, description: undefined };
+  const trimmedTitle = clamp(
+    card.title,
+    card.title.length - (compose(bare, position).length - limit),
+  );
+  const withTrimmedTitle = compose({ ...bare, title: trimmedTitle }, position);
+  if (withTrimmedTitle.length <= limit) return withTrimmedTitle;
+
+  // Last resort: the blocks that identify the object are themselves over the limit. A card that
+  // stays oversized is rejected by Telegram, and a listing without photos has no text fallback
+  // to save it — so it would fail again on every later run. Price and link survive.
+  const core = { ...bare, address: undefined, seller: undefined, details: [] };
+  const room = card.title.length - (compose(core, position).length - limit);
+  return compose({ ...core, title: clamp(card.title, room) }, position);
 }
