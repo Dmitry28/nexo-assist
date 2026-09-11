@@ -12,7 +12,7 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { SEND_DELAY_MS } from '@/modules/telegram/bot/telegram.deliver';
-import { DIGEST_LIMIT } from '@/modules/telegram/bot/telegram.format';
+import { CARDS_PER_DELIVERY } from '@/modules/telegram/bot/telegram.format';
 import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
 import {
@@ -45,7 +45,10 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     countActive: jest.fn().mockResolvedValue(0),
   };
   const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
-  const telegram = { notify: jest.fn().mockResolvedValue(undefined) };
+  const telegram = {
+    notify: jest.fn().mockResolvedValue(undefined),
+    notifyCard: jest.fn().mockResolvedValue(undefined),
+  };
   const metrics = {
     recordDelivery: jest.fn(),
     recordPollError: jest.fn(),
@@ -86,8 +89,11 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     // Sub 2 is still delivered despite sub 1 throwing.
-    expect(telegram.notify).toHaveBeenCalledTimes(1);
-    expect(telegram.notify).toHaveBeenCalledWith(2, expect.stringContaining('🆕'));
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(1);
+    expect(telegram.notifyCard).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+    );
     expect(watch.markSeen).toHaveBeenCalledTimes(1);
     expect(status.markRun).toHaveBeenCalledTimes(1); // run stamped for /stats
   });
@@ -99,24 +105,28 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).not.toHaveBeenCalled();
+    expect(telegram.notifyCard).not.toHaveBeenCalled();
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('sends more than one message rather than dropping the overflow', async () => {
+  it('sends a card per listing, and the tail past the card limit as a digest', async () => {
     jest.useFakeTimers();
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
-    const overflow = Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1));
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: overflow });
+    const fresh = CARDS_PER_DELIVERY + 5;
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      listings: Array.from({ length: fresh }, (_, i) => listing(i + 1)),
+    });
 
     const run = scheduler.runDaily();
-    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * fresh);
     await run;
 
-    expect(telegram.notify).toHaveBeenCalledTimes(2);
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(CARDS_PER_DELIVERY);
+    expect(telegram.notify).toHaveBeenCalledTimes(1); // the five that did not fit
     // Everything sent is marked seen — nothing waits for tomorrow and nothing repeats.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT + 5);
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(fresh);
   });
 
   it('keeps what already arrived when a later message fails', async () => {
@@ -125,22 +135,24 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({
       kind: 'fresh',
-      listings: Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1)),
+      listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
-    telegram.notify.mockResolvedValueOnce(undefined).mockRejectedValue(new Error('send failed'));
+    telegram.notifyCard
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValue(new Error('send failed'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     const run = scheduler.runDaily();
-    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
     await run;
 
-    // The first message arrived — re-sending it tomorrow would duplicate it.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT);
+    // The first card arrived — re-sending it tomorrow would duplicate it.
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(1);
     // …and the part that did not is reported, with how much had already gone out.
     expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'deliver');
     expect(sentryScope().setContext).toHaveBeenCalledWith(
       'subscription',
-      expect.objectContaining({ deliveredBefore: DIGEST_LIMIT }),
+      expect.objectContaining({ deliveredBefore: 1 }),
     );
   });
 
@@ -148,7 +160,7 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
-    telegram.notify.mockRejectedValue(new Error('403: bot was blocked'));
+    telegram.notifyCard.mockRejectedValue(new Error('403: bot was blocked'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
@@ -192,7 +204,7 @@ describe('WatchScheduler.runDaily', () => {
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
-    telegram.notify.mockRejectedValue(blocked);
+    telegram.notifyCard.mockRejectedValue(blocked);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -200,7 +212,7 @@ describe('WatchScheduler.runDaily', () => {
 
     expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
     expect(metrics.recordPause).toHaveBeenCalledWith('blocked', 2); // counted per subscription
-    expect(telegram.notify).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
     expect(watch.markSeen).not.toHaveBeenCalled();
     // A blocked user is an expected state handled by the pause above, not a defect — reporting
     // it would flood Sentry with noise on every run.
@@ -216,14 +228,17 @@ describe('WatchScheduler.runDaily', () => {
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
-    telegram.notify.mockRejectedValueOnce(blocked).mockResolvedValue(undefined);
+    telegram.notifyCard.mockRejectedValueOnce(blocked).mockResolvedValue(undefined);
     subscriptions.pauseAllForUser.mockRejectedValue(new Error('db down'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).toHaveBeenCalledTimes(2); // user 2 still attempted
-    expect(telegram.notify).toHaveBeenLastCalledWith(2, expect.stringContaining('🆕'));
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(2); // user 2 still attempted
+    expect(telegram.notifyCard).toHaveBeenLastCalledWith(
+      2,
+      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+    );
   });
 
   it('reports a swallowed poll failure — a caught error must not stay invisible', async () => {
@@ -288,7 +303,7 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] }); // poll OK
-    telegram.notify.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
+    telegram.notifyCard.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
@@ -334,10 +349,8 @@ describe('WatchScheduler.runDaily', () => {
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
-    // The user delivery 403s; the admin alert succeeds.
-    telegram.notify.mockImplementation((id: number) =>
-      id === 99 ? Promise.resolve() : Promise.reject(blocked),
-    );
+    // The user delivery 403s; the admin alert (plain text) succeeds.
+    telegram.notifyCard.mockRejectedValue(blocked);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
@@ -499,11 +512,11 @@ describe('WatchScheduler.runDaily', () => {
         ? Promise.reject(new Error('dead link'))
         : Promise.resolve({ kind: 'fresh' as const, listings: [listing(1)] }),
     );
-    telegram.notify.mockRejectedValue(
+    telegram.notifyCard.mockRejectedValue(
       new GrammyError(
         'Forbidden',
         { ok: false, error_code: 403, description: 'blocked' },
-        'sendMessage',
+        'sendPhoto',
         {},
       ),
     );

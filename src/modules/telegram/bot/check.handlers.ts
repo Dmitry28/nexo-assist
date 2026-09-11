@@ -13,6 +13,8 @@ import { pace } from '@/modules/telegram/watch/watch.pacing';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { isAdmin } from './admin';
+import type { CardSender } from './send-card';
+import { sendCard } from './send-card';
 import { deliverAndMark } from './telegram.deliver';
 import { NO_LINK_PREVIEW, PROMPT, formatCurrentListings } from './telegram.format';
 
@@ -104,7 +106,10 @@ export class CheckHandlers {
       }
       const { delivered, error, markSeenError } = await deliverAndMark({
         listings: outcome.listings,
-        send: (text) => ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW }),
+        send: {
+          card: (message) => sendCard(this.replySender(ctx), message, this.logger),
+          digest: (text) => ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW }),
+        },
         markSeen: (items) => this.watch.markSeen(sub, items),
       });
       // A markSeen failure must not surface to the user as "could not check" (that would
@@ -194,6 +199,21 @@ export class CheckHandlers {
       return;
     }
     await ctx.reply(formatCurrentListings(listings), { link_preview_options: NO_LINK_PREVIEW });
+  }
+
+  /**
+   * Cards for /check go out as replies to the update being handled, not through the bot API:
+   * injecting TelegramService here would close the DI cycle that once stopped the app from
+   * booting (src/__tests__/di-wiring.spec.ts). The send rules themselves stay shared.
+   */
+  private replySender(ctx: Context): CardSender {
+    return {
+      photo: (url, caption) => ctx.replyWithPhoto(url, { caption, parse_mode: 'HTML' }),
+      group: (media) => ctx.replyWithMediaGroup(media),
+      html: (text) =>
+        ctx.reply(text, { parse_mode: 'HTML', link_preview_options: NO_LINK_PREVIEW }),
+      location: ({ lat, lon }) => ctx.replyWithLocation(lat, lon),
+    };
   }
 
   /** Report an on-demand failure — same who/where for every operation, as WatchScheduler does. */

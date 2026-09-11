@@ -11,9 +11,10 @@ import type { Subscription } from '@/modules/subscriptions/entities/subscription
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
+import { isBotBlocked } from '@/modules/telegram/bot/send-card';
 import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
 import { deadSubscriptionNotice } from '@/modules/telegram/bot/telegram.format';
-import { isBotBlocked, TelegramService } from '@/modules/telegram/bot/telegram.service';
+import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
 
@@ -218,7 +219,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
     const { delivered, error, markSeenError } = await deliverAndMark({
       listings,
-      send: (text) => this.telegram.notify(sub.user.telegramId, text),
+      send: {
+        card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),
+        digest: (text) => this.telegram.notify(sub.user.telegramId, text),
+      },
       markSeen: (items) => this.watch.markSeen(sub, items),
     });
 

@@ -88,13 +88,18 @@ export const formatCurrentListings = (listings: Listing[]): string =>
     ? 'Сейчас объявлений нет.'
     : digest(listings, `📋 Объявлений сейчас: ${listings.length}`).text;
 
-// Ceiling on one delivery. Beyond it the rest waits for the next run: a hundred listings is
-// already more than anyone reads at once, and it bounds the burst we send into one chat.
-export const MAX_LISTINGS_PER_DELIVERY = 100;
+/**
+ * How many listings of one delivery go out as full cards, the rest as a digest.
+ *
+ * Thirty cards is around half a minute of paced sending to one chat; a hundred would be minutes
+ * and would start tripping Telegram's per-chat limit, and a run walks subscriptions one after
+ * another while holding the polling slot.
+ */
+export const CARDS_PER_DELIVERY = 30;
 
-// Room the header ("🆕 Новых объявлений: 103 (10/10)") and the deferred-tail line need, since
-// both are added after the listings are chunked.
-const HEADER_TAIL_RESERVE_CHARS = 120;
+// Room the header ("🆕 Ещё объявлений: 103 (10/10)") needs, since it is added after the
+// listings are chunked.
+const HEADER_RESERVE_CHARS = 120;
 
 /** One message of a batched digest and the listings it carries. */
 export interface DigestBatch {
@@ -103,32 +108,32 @@ export interface DigestBatch {
 }
 
 /**
- * Split fresh listings into messages instead of cutting at the first cap: everything up to
- * MAX_LISTINGS_PER_DELIVERY is sent, the remainder is announced rather than dropped silently.
+ * The listings past the card limit, as compact digest messages.
+ *
+ * Everything found in the run goes out in the run: the cards carry the first
+ * CARDS_PER_DELIVERY and this carries the rest, so nothing is deferred to "the next check" —
+ * a promise the page window could not keep, since a deferred tail can age out of it and be
+ * lost (PRODUCT_PLAN.md § Технический бэклог).
+ *
  * Callers must markSeen only the batches that were actually sent.
  */
-export function newListingsBatches(fresh: Listing[]): DigestBatch[] {
-  const sending = fresh.slice(0, MAX_LISTINGS_PER_DELIVERY);
-  const later = fresh.length - sending.length;
-
+export function tailBatches(listings: Listing[]): DigestBatch[] {
   const chunks: Listing[][] = [];
-  let rest = sending;
+  let rest = listings;
   while (rest.length > 0) {
-    // Reserve room for the header and the tail, which are added after chunking — otherwise the
-    // measured string is not the string sent, and an oversized message fails on every retry.
-    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_TAIL_RESERVE_CHARS);
+    // Reserve room for the header, which is added after chunking — otherwise the measured
+    // string is not the string sent, and an oversized message fails on every retry.
+    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS);
     chunks.push(chunk);
     rest = rest.slice(chunk.length);
   }
 
-  return chunks.map((listings, i) => {
+  return chunks.map((chunk, i) => {
     const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
-    const header = `🆕 Новых объявлений: ${fresh.length}${part}`;
-    const tail =
-      later > 0 && i === chunks.length - 1
-        ? `\n\n…и ещё ${later} — пришлю в следующую проверку`
-        : '';
-    return { text: compose(header, listings, tail), listings };
+    return {
+      text: compose(`🆕 Ещё объявлений: ${listings.length}${part}`, chunk),
+      listings: chunk,
+    };
   });
 }
 
@@ -160,7 +165,8 @@ export const HELP_MESSAGE = [
   '',
   'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
     '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +
-    `проверки — до ${MAX_LISTINGS_PER_DELIVERY} за раз, несколькими сообщениями.`,
+    `проверки: карточкой с фото на каждое объявление, а если их больше ${CARDS_PER_DELIVERY} — ` +
+    'остальные одним списком.',
   '',
   'Команды:',
   ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),

@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Bot, GrammyError } from 'grammy';
-import type { InputMediaPhoto } from 'grammy/types';
+import { Bot } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
@@ -9,7 +8,7 @@ import { AppEnv } from '@/config/env.validation';
 
 import { BOT_COMMANDS } from '../telegram.format';
 import type { TelegramHandlers } from '../telegram.handlers';
-import { MAX_PHOTOS_PER_CARD, TelegramService } from '../telegram.service';
+import { TelegramService } from '../telegram.service';
 
 // Only `Bot` is stubbed: it is the one thing that would open a network connection. Everything
 // else grammY exports (GrammyError & co) stays real, so error handling is exercised for real.
@@ -181,92 +180,19 @@ describe('TelegramService', () => {
 });
 
 describe('notifyCard', () => {
-  const photos = (n: number): string[] =>
-    Array.from({ length: n }, (_, i) => `https://cdn/${i}.jpg`);
-
-  it('sends a lone photo with the card as its caption', async () => {
+  it('wires the bot API into the shared send path', async () => {
     const { bot, service } = started(pollsForever);
 
-    await service.notifyCard(7, { caption: '<b>card</b>', images: photos(1) });
+    await service.notifyCard(7, {
+      caption: '<b>card</b>',
+      images: ['https://cdn/0.jpg'],
+      coordinates: { lat: 53.68, lon: 23.85 },
+    });
 
     expect(bot.api.sendPhoto).toHaveBeenCalledWith(7, 'https://cdn/0.jpg', {
       caption: '<b>card</b>',
       parse_mode: 'HTML',
     });
-  });
-
-  it('puts the caption on the first item of a group — Telegram ignores the others', async () => {
-    const { bot, service } = started(pollsForever);
-
-    await service.notifyCard(7, { caption: 'card', images: photos(3) });
-
-    const [, media] = bot.api.sendMediaGroup.mock.calls[0] as [number, InputMediaPhoto[]];
-    expect(media).toHaveLength(3);
-    expect(media[0]).toMatchObject({ media: 'https://cdn/0.jpg', caption: 'card' });
-    expect(media.slice(1).every((item) => item.caption === undefined)).toBe(true);
-  });
-
-  it('caps a group at the limit Telegram accepts', async () => {
-    const { bot, service } = started(pollsForever);
-
-    await service.notifyCard(7, { caption: 'card', images: photos(MAX_PHOTOS_PER_CARD + 5) });
-
-    const [, media] = bot.api.sendMediaGroup.mock.calls[0] as [number, InputMediaPhoto[]];
-    expect(media).toHaveLength(MAX_PHOTOS_PER_CARD);
-  });
-
-  it('sends a card without photos as a plain HTML message', async () => {
-    const { bot, service } = started(pollsForever);
-
-    await service.notifyCard(7, { caption: 'card', images: [] });
-
-    expect(bot.api.sendMessage).toHaveBeenCalledWith(
-      7,
-      'card',
-      expect.objectContaining({ parse_mode: 'HTML' }),
-    );
-    expect(bot.api.sendPhoto).not.toHaveBeenCalled();
-  });
-
-  // The listing matters more than its pictures, and only what arrives is marked seen.
-  it('falls back to the text card when the media is refused', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    const { bot, service } = started(pollsForever);
-    bot.api.sendPhoto.mockRejectedValue(new Error('WEBPAGE_MEDIA_EMPTY'));
-
-    await service.notifyCard(7, { caption: 'card', images: photos(1) });
-
-    expect(bot.api.sendMessage).toHaveBeenCalledWith(7, 'card', expect.anything());
-  });
-
-  it('gives up when the chat itself is blocked — the text would be refused too', async () => {
-    const { bot, service } = started(pollsForever);
-    const blocked = new GrammyError(
-      'Forbidden: bot was blocked by the user',
-      { ok: false, error_code: 403, description: 'blocked' },
-      'sendPhoto',
-      {},
-    );
-    bot.api.sendPhoto.mockRejectedValue(blocked);
-
-    await expect(service.notifyCard(7, { caption: 'card', images: photos(1) })).rejects.toBe(
-      blocked,
-    );
-    expect(bot.api.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('drops the pin after the card, and a failed pin is not a failed delivery', async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    const { bot, service } = started(pollsForever);
-    bot.api.sendLocation.mockRejectedValue(new Error('nope'));
-
-    await expect(
-      service.notifyCard(7, {
-        caption: 'card',
-        images: photos(1),
-        coordinates: { lat: 53.68, lon: 23.85 },
-      }),
-    ).resolves.toBeUndefined();
     expect(bot.api.sendLocation).toHaveBeenCalledWith(7, 53.68, 23.85);
   });
 

@@ -1,36 +1,17 @@
 import { autoRetry } from '@grammyjs/auto-retry';
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { Bot, GrammyError } from 'grammy';
+import { Bot } from 'grammy';
 import type { Api } from 'grammy';
-import type { InputMediaPhoto } from 'grammy/types';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import type { Coordinates } from '@/modules/sources/source-adapter';
 import { SENTRY_FLUSH_MS, reportUserFacing } from '@/modules/telegram/report';
 
+import type { CardSender, ListingMessage } from './send-card';
+import { sendCard } from './send-card';
 import { BOT_COMMANDS, NO_LINK_PREVIEW } from './telegram.format';
 import { TelegramHandlers } from './telegram.handlers';
-
-/** Telegram's hard cap on one media group — an eleventh photo is a rejected request. */
-export const MAX_PHOTOS_PER_CARD = 10;
-
-/**
- * A Telegram 403 means delivery to this chat is impossible — the user blocked the bot or
- * deleted the account. Callers treat it as a state to handle (pause the user), not as a defect,
- * and it is the one send failure no retry or fallback can help.
- */
-export function isBotBlocked(err: unknown): boolean {
-  return err instanceof GrammyError && err.error_code === 403;
-}
-
-/** One listing, ready to send: the card text plus whatever media the source published. */
-export interface ListingMessage {
-  caption: string;
-  images: string[];
-  coordinates?: Coordinates;
-}
 
 /**
  * Owns the bot lifecycle (long-polling). Handlers live in TelegramHandlers.
@@ -130,61 +111,26 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   }
 
   /**
-   * Send one listing: its photos carry the card, and the card falls back to a plain message if
-   * Telegram refuses the media. Resolves once the listing has reached the user in some form —
-   * callers mark seen on that, so anything that leaves it undelivered throws instead.
-   *
-   * NOTE: the prototype found kufar's image CDN answering 302 (`rms.kufar.by` → `rms8…`), which
-   * Telegram handles unpredictably in a media group (`WEBPAGE_MEDIA_EMPTY`). It never resolved
-   * those redirects, and neither do we: up to ten HEAD requests per card to pre-empt a failure
-   * we have not observed is a worse trade than falling back to text and logging the reason. The
-   * log below is what turns that guess into evidence if it does happen.
+   * Send one listing card to a chat — the shared send path, wired to the bot API.
+   * `async` so a disabled bot rejects rather than throwing synchronously: half the callers
+   * reach for `.catch()`, which a sync throw walks straight past.
    */
-  async notifyCard(
-    chatId: number,
-    { caption, images, coordinates }: ListingMessage,
-  ): Promise<void> {
-    const api = this.api();
-    const photos = images.slice(0, MAX_PHOTOS_PER_CARD);
-    try {
-      await this.sendWithPhotos(api, chatId, caption, photos);
-    } catch (err) {
-      // A blocked chat rejects the text too, and the run pauses the user on this error — a
-      // second doomed request would only add another failure to report.
-      if (photos.length === 0 || isBotBlocked(err)) throw err;
-      this.logger.warn({ err }, 'Photo send failed — falling back to the text card');
-      await this.notify(chatId, caption);
-    }
-    // The listing is already delivered, so a missing pin is not worth failing the delivery for.
-    if (coordinates) {
-      await api
-        .sendLocation(chatId, coordinates.lat, coordinates.lon)
-        .catch((err: unknown) => this.logger.warn({ err }, 'Location pin failed'));
-    }
+  async notifyCard(chatId: number, message: ListingMessage): Promise<void> {
+    await sendCard(this.sender(chatId), message, this.logger);
   }
 
-  private sendWithPhotos(
-    api: Api,
-    chatId: number,
-    caption: string,
-    photos: string[],
-  ): Promise<unknown> {
-    if (photos.length === 0) {
-      return api.sendMessage(chatId, caption, {
-        parse_mode: 'HTML',
-        link_preview_options: NO_LINK_PREVIEW,
-      });
-    }
-    if (photos.length === 1) {
-      return api.sendPhoto(chatId, photos[0], { caption, parse_mode: 'HTML' });
-    }
-    // Telegram shows the caption of the FIRST item as the group's caption and ignores the rest.
-    const media: InputMediaPhoto[] = photos.map((photo, i) =>
-      i === 0
-        ? { type: 'photo', media: photo, caption, parse_mode: 'HTML' }
-        : { type: 'photo', media: photo },
-    );
-    return api.sendMediaGroup(chatId, media);
+  private sender(chatId: number): CardSender {
+    const api = this.api();
+    return {
+      photo: (url, caption) => api.sendPhoto(chatId, url, { caption, parse_mode: 'HTML' }),
+      group: (media) => api.sendMediaGroup(chatId, media),
+      html: (text) =>
+        api.sendMessage(chatId, text, {
+          parse_mode: 'HTML',
+          link_preview_options: NO_LINK_PREVIEW,
+        }),
+      location: ({ lat, lon }) => api.sendLocation(chatId, lat, lon),
+    };
   }
 
   /** The live API, or the reason there isn't one. */

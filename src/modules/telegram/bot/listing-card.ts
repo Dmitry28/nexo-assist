@@ -54,9 +54,25 @@ export function formatListTime(iso: string, now = new Date()): string {
   return date.toLocaleDateString(LOCALE, { timeZone: TIMEZONE });
 }
 
+/** Which card of how many — a run of 30 cards is otherwise a wall with no end in sight. */
+export interface CardPosition {
+  index: number;
+  total: number;
+}
+
 /** The card's blocks, in reading order, with the parts that may be trimmed kept separate. */
-function compose(listing: Listing, title: string, description: string | undefined): string {
-  const lines = [`🏠 <b>${title}</b>`];
+function compose(
+  listing: Listing,
+  title: string,
+  description: string | undefined,
+  position?: CardPosition,
+): string {
+  const lines: string[] = [];
+  // A single card needs no counter: "1/1" is noise.
+  if (position !== undefined && position.total > 1) {
+    lines.push(`🆕 ${position.index}/${position.total}`);
+  }
+  lines.push(`🏠 <b>${title}</b>`);
   if (description !== undefined) lines.push(`<i>${description}</i>`);
   lines.push('');
   if (listing.address !== undefined) lines.push(`📍 ${escapeHtml(listing.address)}`);
@@ -96,21 +112,27 @@ function clamp(escaped: string, max: number): string {
  * are never trimmed — a delivered listing is marked seen, so a card that arrives without its
  * link is lost for good, and that is the one thing the reader needs from us.
  */
-export function listingCard(listing: Listing, limit: number): string {
+export function listingCard(listing: Listing, limit: number, position?: CardPosition): string {
   const title = escapeHtml(listing.title);
   const description =
     listing.description === undefined ? undefined : escapeHtml(listing.description);
 
-  const full = compose(listing, title, description);
+  const full = compose(listing, title, description, position);
   if (full.length <= limit) return full;
 
   if (description !== undefined) {
     const room = description.length - (full.length - limit);
     // Nothing worth reading would be left — drop the block rather than ship a bare ellipsis.
-    const shorter = compose(listing, title, room > 1 ? clamp(description, room) : undefined);
+    const shorter = compose(
+      listing,
+      title,
+      room > 1 ? clamp(description, room) : undefined,
+      position,
+    );
     if (shorter.length <= limit) return shorter;
   }
 
-  const bare = compose(listing, title, undefined);
-  return compose(listing, clamp(title, title.length - (bare.length - limit)), undefined);
+  const bare = compose(listing, title, undefined, position);
+  const trimmed = clamp(title, title.length - (bare.length - limit));
+  return compose(listing, trimmed, undefined, position);
 }

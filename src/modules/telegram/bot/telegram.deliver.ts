@@ -1,8 +1,9 @@
 import { wait } from '@/common/wait';
 import type { Listing } from '@/modules/sources/source-adapter';
 
-import type { DigestBatch } from './telegram.format';
-import { newListingsBatches } from './telegram.format';
+import type { ListingMessage } from './send-card';
+import { listingMessage } from './send-card';
+import { CARDS_PER_DELIVERY, tailBatches } from './telegram.format';
 
 // Pause between messages to one chat. Telegram tolerates about one per second per chat; the
 // auto-retry plugin would survive a 429 anyway, but waiting is cheaper than being rate-limited.
@@ -17,28 +18,58 @@ export interface DeliveryResult {
   markSeenError?: unknown;
 }
 
+/** How a caller puts a delivery on the wire: a card per listing, a digest for the tail. */
+export interface DeliveryTargets {
+  card: (message: ListingMessage) => Promise<unknown>;
+  /** Plain text, NOT HTML — the digest is not escaped (see telegram.format.ts). */
+  digest: (text: string) => Promise<unknown>;
+}
+
+/** One message to send, and the listings it accounts for once it lands. */
+interface DeliveryStep {
+  listings: Listing[];
+  send: () => Promise<unknown>;
+}
+
 /**
- * Send a digest as however many messages it takes, paced, and report exactly what got through.
- *
- * The caller marks `delivered` as seen — never the whole batch list: if the third message of
- * five fails, the first two must not be re-sent tomorrow, and the rest must not be lost. The
- * error is returned rather than thrown so the caller can still persist that prefix.
+ * The messages one delivery consists of: a full card for the first CARDS_PER_DELIVERY listings,
+ * then the rest as digest messages. Everything found goes out in the same run.
  */
-export async function deliverDigest(
+function plan(fresh: Listing[], send: DeliveryTargets): DeliveryStep[] {
+  const cards = fresh.slice(0, CARDS_PER_DELIVERY);
+  return [
+    ...cards.map((listing, i) => ({
+      listings: [listing],
+      send: () => send.card(listingMessage(listing, { index: i + 1, total: cards.length })),
+    })),
+    ...tailBatches(fresh.slice(CARDS_PER_DELIVERY)).map((batch) => ({
+      listings: batch.listings,
+      send: () => send.digest(batch.text),
+    })),
+  ];
+}
+
+/**
+ * Send a delivery as however many messages it takes, paced, and report exactly what got through.
+ *
+ * The caller marks `delivered` as seen — never the whole list: if the third message of five
+ * fails, the first two must not be re-sent tomorrow, and the rest must not be lost. The error is
+ * returned rather than thrown so the caller can still persist that prefix.
+ */
+export async function deliverListings(
   fresh: Listing[],
-  send: (text: string) => Promise<unknown>,
+  send: DeliveryTargets,
 ): Promise<DeliveryResult> {
-  const batches: DigestBatch[] = newListingsBatches(fresh);
   const delivered: Listing[] = [];
 
-  for (const [i, batch] of batches.entries()) {
+  for (const [i, step] of plan(fresh, send).entries()) {
     if (i > 0) await wait(SEND_DELAY_MS);
     try {
-      await send(batch.text);
+      await step.send();
     } catch (error) {
       return { delivered, error };
     }
-    delivered.push(...batch.listings);
+    delivered.push(...step.listings);
   }
   return { delivered };
 }
@@ -57,10 +88,10 @@ export async function deliverAndMark({
   markSeen,
 }: {
   listings: Listing[];
-  send: (text: string) => Promise<unknown>;
+  send: DeliveryTargets;
   markSeen: (delivered: Listing[]) => Promise<void>;
 }): Promise<DeliveryResult> {
-  const result = await deliverDigest(listings, send);
+  const result = await deliverListings(listings, send);
 
   // Persist whatever reached the user, even if a later message failed — otherwise the whole
   // digest would be re-sent next run.

@@ -6,15 +6,14 @@ import {
   HELP_MESSAGE,
   MAX_LINE_CHARS,
   formatCurrentListings,
-  MAX_LISTINGS_PER_DELIVERY,
-  newListingsBatches,
+  tailBatches,
 } from '../telegram.format';
 
-describe('newListingsBatches', () => {
+describe('tailBatches', () => {
   it('shows the count header and listing fields', () => {
-    const [{ text }] = newListingsBatches([listing(1, { priceUsd: 5000 })]);
+    const [{ text }] = tailBatches([listing(1, { priceUsd: 5000 })]);
 
-    expect(text).toContain('🆕 Новых объявлений: 1');
+    expect(text).toContain('🆕 Ещё объявлений: 1');
     expect(text).toContain('$5000');
     expect(text).toContain('https://re.kufar.by/vi/1');
   });
@@ -22,10 +21,10 @@ describe('newListingsBatches', () => {
   it('splits into messages instead of dropping the overflow', () => {
     const many = Array.from({ length: DIGEST_LIMIT + 2 }, (_, i) => listing(i + 1));
 
-    const batches = newListingsBatches(many);
+    const batches = tailBatches(many);
 
     expect(batches).toHaveLength(2);
-    expect(batches[0].text).toContain(`🆕 Новых объявлений: ${DIGEST_LIMIT + 2} (1/2)`);
+    expect(batches[0].text).toContain(`🆕 Ещё объявлений: ${DIGEST_LIMIT + 2} (1/2)`);
     expect(batches[1].listings).toHaveLength(2);
     // Every listing ends up in exactly one message — nothing silently lost.
     expect(batches.flatMap((b) => b.listings.map((l) => l.externalId))).toEqual(
@@ -33,26 +32,28 @@ describe('newListingsBatches', () => {
     );
   });
 
-  it('stops at the per-delivery ceiling and says what waits for the next run', () => {
-    const many = Array.from({ length: MAX_LISTINGS_PER_DELIVERY + 3 }, (_, i) => listing(i + 1));
+  // Nothing is deferred any more: a deferred tail could age out of the source's page window
+  // and be lost, so the whole run goes out in the run.
+  it('carries every listing and promises nothing for later', () => {
+    const many = Array.from({ length: 120 }, (_, i) => listing(i + 1));
 
-    const batches = newListingsBatches(many);
+    const batches = tailBatches(many);
 
-    expect(batches.flatMap((b) => b.listings)).toHaveLength(MAX_LISTINGS_PER_DELIVERY);
-    expect(batches.at(-1)?.text).toContain('…и ещё 3 — пришлю в следующую проверку');
+    expect(batches.flatMap((b) => b.listings)).toHaveLength(120);
+    expect(batches.map((b) => b.text).join()).not.toContain('в следующую проверку');
   });
 
   it('leaves a single message unnumbered', () => {
-    const [{ text }] = newListingsBatches([listing(1)]);
+    const [{ text }] = tailBatches([listing(1)]);
 
-    expect(text).toContain('🆕 Новых объявлений: 1\n');
+    expect(text).toContain('🆕 Ещё объявлений: 1\n');
     expect(text).not.toContain('(1/1)');
   });
 
   it('truncates a pathological title but keeps the price and link intact', () => {
     const link = 'https://re.kufar.by/vi/1';
 
-    const [{ text, listings: delivered }] = newListingsBatches([
+    const [{ text, listings: delivered }] = tailBatches([
       listing(1, { title: 't'.repeat(5000), priceUsd: 5000, link }),
     ]);
 
@@ -67,7 +68,7 @@ describe('newListingsBatches', () => {
   it.each(['', 'x'])('does not split an emoji when truncating the title (prefix %p)', (prefix) => {
     // The prefix shifts where the cut lands; one parity falls inside a surrogate pair, which
     // an unguarded slice would leave half of.
-    const [{ text }] = newListingsBatches([listing(1, { title: `${prefix}${'🏠'.repeat(400)}` })]);
+    const [{ text }] = tailBatches([listing(1, { title: `${prefix}${'🏠'.repeat(400)}` })]);
 
     // A high surrogate not followed by a low one is half an emoji — renders as "�".
     expect(text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
@@ -75,7 +76,7 @@ describe('newListingsBatches', () => {
   });
 
   it('clamps a pathological link too — a single huge link still delivers one item', () => {
-    const [{ text, listings: delivered }] = newListingsBatches([
+    const [{ text, listings: delivered }] = tailBatches([
       listing(1, { link: `https://x.by/${'x'.repeat(5000)}` }),
     ]);
 
@@ -91,7 +92,7 @@ describe('newListingsBatches', () => {
     const tailLength = `\n$5000\n${link}`.length;
     expect(tailLength).toBe(MAX_LINE_CHARS);
 
-    const [{ text }] = newListingsBatches([listing(1, { title: 'a title', priceUsd: 5000, link })]);
+    const [{ text }] = tailBatches([listing(1, { title: 'a title', priceUsd: 5000, link })]);
 
     expect(text).toContain(link);
   });
@@ -101,7 +102,7 @@ describe('newListingsBatches', () => {
       listing(i + 1, { link: `https://re.kufar.by/vi/${'x'.repeat(400)}${i}` }),
     );
 
-    const batches = newListingsBatches(longLinks);
+    const batches = tailBatches(longLinks);
 
     expect(batches.length).toBeGreaterThan(1); // char budget, not the item count, forced the split
     for (const batch of batches) expect(batch.text.length).toBeLessThan(4096);
@@ -109,8 +110,8 @@ describe('newListingsBatches', () => {
   });
 
   it('falls back through the price options', () => {
-    expect(newListingsBatches([listing(1, { priceByn: 100 })])[0].text).toContain('100 BYN');
-    expect(newListingsBatches([listing(1)])[0].text).toContain('цена не указана');
+    expect(tailBatches([listing(1, { priceByn: 100 })])[0].text).toContain('100 BYN');
+    expect(tailBatches([listing(1)])[0].text).toContain('цена не указана');
   });
 });
 
