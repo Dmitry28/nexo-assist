@@ -7,5 +7,6 @@ export const makeListing = (id: number, overrides: Partial<Listing> = {}): Listi
   title: `t${id}`,
   listTime: '2026-01-01T00:00:00Z',
   images: [],
+  details: [],
   ...overrides,
 });

@@ -12,37 +12,44 @@ start; more frequent once throttling/dedupe land).
 
 ## Status now (implemented)
 
-- Sources: **kufar + realt** via the adapter registry; paginated fetch (page cap).
-- Events: **new only**; a text digest split across as many messages as it takes (up to 100
-  listings per delivery, one message a second), no photos yet. Anything beyond that ceiling is
-  announced, not dropped, and arrives on the next run. An over-long title is truncated so that
-  price and link always survive.
-- Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Per-profile
-  language comes later (PRODUCT_PLAN.md, phase 7 "i18n"). Logs and code stay English.
-- Buttons: Следить / Отмена / Показать текущие / list / remove / resume. `/list` is capped to fit
-  one Telegram message and marks paused subscriptions (⏸), each with a ▶️ button that un-pauses
-  it — same effect as re-sending its URL, and it respects the active-subscription limit.
+- Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first,
+  up to 5 pages (~150 listings) — a pasted sort or page number is overridden.
+- Events: **new only**, delivered as **one card per listing**: photos (up to 10, as an album),
+  title, description, price in both currencies, address, the source's own facts (area, plot,
+  rooms, year, amenities…), seller, when it was bumped, and the link — plus a map pin when the
+  source publishes one (kufar does, realt does not). Past **30 cards** in one delivery the rest
+  goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
+  Messages are paced one per second. A refused photo falls back to the text card; a refused pin
+  is ignored — the listing already arrived.
+- Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Logs and code stay
+  English; per-profile language is Phase 7.
+- Buttons: Следить / Отмена / Показать текущие, and in `/list` ❌ remove / ▶️ resume. A «Следить»
+  prompt stays tappable for 24 hours and only until the next restart; after that the button
+  answers «Кнопка устарела» and the link is pasted again. `/list` shows as much as fits one
+  message, announces the rest, and marks paused subscriptions with ⏸.
+- ▶️ and re-sending the URL are **not** the same: ▶️ only lifts the pause, so everything that
+  appeared during it still arrives; re-sending re-baselines the subscription and drops that
+  backlog. The two need one semantic — PRODUCT_PLAN.md, «Технический бэклог».
+- «Показать текущие» fetches live, so it stays off the sources while a run is in progress. It
+  answers with one compact digest, not cards: it is a look at what is already there, on demand.
 - Owner-only commands (`ADMIN_TELEGRAM_ID`), silent for everyone else so they stay unadvertised:
-  `/stats` reports users / active / paused / last run; `/check` polls now instead of waiting
-  for the cron — open to anyone outside production, owner-only inside it. `/check` is paced like
-  the daily run, covers the first 5 active subscriptions (grammY handles updates one at a time,
-  so a longer loop would freeze the bot for everyone), and shares one polling slot with the
-  daily run: whichever starts second is refused, so they never poll the same subscriptions at
-  once or race each other's "seen" bookkeeping.
-- Adapters pin newest-first sorting and start from page 1 regardless of pasted params.
+  `/stats` reports users / active / paused / last successful run; `/check` polls now instead of
+  waiting for the cron (its first 5 active subscriptions; outside production anyone may use it).
+  `/check` and the daily run share one polling slot, so they never poll at once: `/check` is
+  refused while a run holds it, and the day's run is **skipped** when `/check` does (owner told).
 - Baseline on subscribe; seen marked **only after successful delivery**.
-- Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change)
-  raises an error — it is never mistaken for an empty search. Scraper redirects are
-  pinned to the source's host.
-- Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the
-  seen set survive restarts; seen is pruned to a bounded window per subscription;
-  per-user limit on **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
-- Deployment: **single replica** (long-polling bot + in-memory pending prompts; see k8s NOTE);
-  production refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits
-  the process so the orchestrator restarts it.
+- Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change) raises an
+  error — never mistaken for an empty search. Redirects are pinned to the source's host.
+- Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the seen set
+  survive restarts; seen is pruned to a bounded window per subscription; per-user limit on
+  **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
+- Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
+  refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
+  orchestrator restarts it.
 - Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
 
-Everything below this section describes the target design.
+Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
+design; «Volume and limits» describes what is **already shipped** (limits, pausing, alerts).
 
 ## User flow
 
@@ -64,31 +71,33 @@ Everything below this section describes the target design.
    optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.
-6. Persist only what was actually delivered (on failure, retry next run — no loss, no duplicates).
+6. Persist only what was actually delivered (on failure, retry next run). The guarantee is
+   **no loss**, not exactly-once: if recording the seen set fails after a successful send, or the
+   pod dies between the two, those listings are re-sent next run. Duplicates are the deliberate
+   choice over silence (see `src/modules/telegram/bot/telegram.deliver.ts`).
 
 **Two "seen" levels:** the delta is per source (normalized URL, dedupe); delivery
 is per subscription (a new subscriber gets a baseline, not a flood).
 
 ## Volume and limits
 
-- **First subscription:** take a baseline of recent listings, send nothing.
-- **Many new at once:** the digest goes out as several messages (overall cap 100 listings per
-  delivery), not one message per item and not a silent "N more" drop. Messages are paced one per
-  second, and only what actually reached the user is marked seen — a failure mid-way re-sends the
-  rest, never the part that arrived.
-- **Telegram limits:** messages to one chat are paced one per second, and subscriptions are
-  polled with a gap — enough at beta volume. A global fan-out queue (Telegram's ~30 msg/s ceiling)
-  is not built and is not needed until the user count makes it reachable. If a user blocked the
-  bot (403) → pause their subscriptions.
-- **Dead link:** if a search keeps failing to poll (errors, not empty results) for
-  several runs in a row → tell the user to refresh it and pause that subscription.
-  A paused subscription is revived by re-sending its link or by ▶️ in `/list`.
+- **Telegram limits:** messages to one chat are paced one per second and subscriptions are polled
+  with a gap — enough at beta volume. A global fan-out queue (Telegram's ~30 msg/s ceiling) is not
+  built and isn't needed until the user count makes it reachable. A user who blocked the bot (403)
+  gets their subscriptions paused.
+- **Dead link:** a search that keeps failing to poll (errors, not empty results) for five runs in
+  a row is paused, and the user is asked to check the link. **Unless the whole source failed that
+  run** — a broken adapter fails every poll, so «Проверьте ссылку» would be false for everyone;
+  then nothing is paused, the owner gets the outage alert, and the streak keeps counting until the
+  source answers for somebody (or hits the 15-failure ceiling, since a source whose every
+  subscription is dead can never answer again).
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
-  when the pings stop, the watchdog alerts the owner. It covers what no in-app report can — the
-  app dying outright.
-- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — without it every
-  alert below would go nowhere silently) is notified on every auto-pause
-  (403 / dead link) and when a whole source fails all its polls in a run.
+  when the pings stop, the watchdog alerts the owner (setup — DEPLOY.md §4.3b).
+- **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — otherwise every alert
+  would go nowhere silently) is told about each auto-pause (403 / dead link) and about a source
+  that failed all its polls in a run. That verdict needs at least three polls, so a source with
+  fewer subscriptions is neither reported nor given the reprieve above
+  (PRODUCT_PLAN.md § Технический бэклог).
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture
@@ -107,8 +116,9 @@ interface SourceAdapter {
 diff → notify), the bot, and the DB schema know nothing about specific sites.
 `fetch` returns `Listing`s with a stable `externalId` — the diff/dedup key.
 
-Deferred until needed (kept out of the contract for now): `normalizeUrl` (URL
-dedupe — Phase 3), `capabilities: EventKind[]` (with removed/price events).
+Deferred until needed (kept out of the contract for now): `capabilities: EventKind[]`
+(with removed/price events). URL dedupe shipped instead as `normalizeUrl` in `common/url.ts`,
+source-agnostic and backed by a unique index — not as part of the adapter contract.
 Parsing is an adapter-internal detail; message formatting lives in the telegram
 layer, not the adapter.
 

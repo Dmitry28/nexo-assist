@@ -52,7 +52,7 @@ describe('RealtAdapter', () => {
 
       const listings = await adapter.fetch('https://realt.by/grodno-region/sale/plots/map/');
 
-      expect(listings).toHaveLength(2);
+      expect(listings).toHaveLength(3);
       expect(listings[0].externalId).toBe('4152736');
       expect(listings[0].link).toBe('https://realt.by/sale-plots/object/4152736/');
     });

@@ -1,17 +1,13 @@
-import type { AppConfig } from '@/config/configuration';
-
 /**
- * Timing for the watch flow: sleeping, and the paced delay between source polls that the
- * daily run and the manual /check share.
+ * How long the watch loop waits between source polls — shared by the daily run and /check.
  *
  * NOTE: its own leaf module on purpose — living in watch.scheduler.ts it closed an import
  * cycle that stopped the app from booting. The full account and the guard against a repeat:
  * src/__tests__/di-wiring.spec.ts.
  */
 
-/** Sleep for `ms`. Lives here rather than at each call site: this is the timing module. */
-export const wait = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+import { wait } from '@/common/wait';
+import type { AppConfig } from '@/config/configuration';
 
 /** Base delay plus a random 0..jitter, in ms — so we don't hammer a source. */
 export function jitteredDelay({

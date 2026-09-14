@@ -3,7 +3,7 @@
 #
 # It lands on the app node — a different failure domain from the managed database, which is what
 # the realistic threats need: a bad migration, an accidental delete, a provider incident. Losing
-# BOTH at once is not covered; `npm run db:backup:fetch` pulls a copy off the server for that.
+# BOTH at once is not covered; `npm run k8s:backup:fetch` pulls a copy off the server for that.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

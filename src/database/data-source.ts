@@ -10,9 +10,18 @@ import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
 // .env is loaded by the CLI script (-r dotenv/config); in prod env comes from the environment.
 const ext = __filename.endsWith('.js') ? 'js' : 'ts';
 
+// The same TLS fallback app.module.ts keeps, for the same reason (DEPLOY.md § TLS к базе): the
+// URL governs SSL whenever it carries `sslmode`, and this only covers a deployed URL that omits
+// it. Without it the two paths disagree — the app would negotiate TLS while THIS one, which the
+// initContainer runs before the app starts, sent the database password in the clear. The CA is
+// mounted for both containers via NODE_EXTRA_CA_CERTS, so verification works here too.
+// APP_ENV is read directly: the CLI runs outside Nest, so there is no AppConfig to inject.
+const isDeployed = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
+
 export default new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
+  ssl: isDeployed ? { rejectUnauthorized: true } : false,
   entities: [`${__dirname}/../**/*.entity.${ext}`],
   migrations: [`${__dirname}/migrations/*.${ext}`],
 });

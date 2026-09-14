@@ -7,16 +7,20 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
-import { SourceUnavailableError } from '@/modules/sources/scraping/http';
+import { SourceUnavailableError } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
+import { SEND_DELAY_MS } from '@/modules/telegram/bot/send-card';
+import { CARDS_PER_DELIVERY } from '@/modules/telegram/bot/telegram.format';
+import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
-import { SEND_DELAY_MS } from '../deliver';
-import { jitteredDelay } from '../pacing';
-import { DIGEST_LIMIT } from '../telegram.format';
-import type { TelegramService } from '../telegram.service';
-import { JOB_NAME, MAX_CONSECUTIVE_FAILURES, WatchScheduler } from '../watch.scheduler';
+import {
+  JOB_NAME,
+  MAX_CONSECUTIVE_FAILURES,
+  MAX_REPRIEVE_FAILURES,
+  WatchScheduler,
+} from '../watch.scheduler';
 import { WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
@@ -41,7 +45,10 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     countActive: jest.fn().mockResolvedValue(0),
   };
   const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
-  const telegram = { notify: jest.fn().mockResolvedValue(undefined) };
+  const telegram = {
+    notify: jest.fn().mockResolvedValue(undefined),
+    notifyCard: jest.fn().mockResolvedValue(undefined),
+  };
   const metrics = {
     recordDelivery: jest.fn(),
     recordPollError: jest.fn(),
@@ -82,8 +89,11 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     // Sub 2 is still delivered despite sub 1 throwing.
-    expect(telegram.notify).toHaveBeenCalledTimes(1);
-    expect(telegram.notify).toHaveBeenCalledWith(2, expect.stringContaining('🆕'));
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(1);
+    expect(telegram.notifyCard).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+    );
     expect(watch.markSeen).toHaveBeenCalledTimes(1);
     expect(status.markRun).toHaveBeenCalledTimes(1); // run stamped for /stats
   });
@@ -95,24 +105,28 @@ describe('WatchScheduler.runDaily', () => {
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).not.toHaveBeenCalled();
+    expect(telegram.notifyCard).not.toHaveBeenCalled();
     expect(watch.markSeen).not.toHaveBeenCalled();
   });
 
-  it('sends more than one message rather than dropping the overflow', async () => {
+  it('sends a card per listing, and the tail past the card limit as a digest', async () => {
     jest.useFakeTimers();
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
-    const overflow = Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1));
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: overflow });
+    const fresh = CARDS_PER_DELIVERY + 5;
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      listings: Array.from({ length: fresh }, (_, i) => listing(i + 1)),
+    });
 
     const run = scheduler.runDaily();
-    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * fresh);
     await run;
 
-    expect(telegram.notify).toHaveBeenCalledTimes(2);
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(CARDS_PER_DELIVERY);
+    expect(telegram.notify).toHaveBeenCalledTimes(1); // the five that did not fit
     // Everything sent is marked seen — nothing waits for tomorrow and nothing repeats.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT + 5);
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(fresh);
   });
 
   it('keeps what already arrived when a later message fails', async () => {
@@ -121,22 +135,24 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({
       kind: 'fresh',
-      listings: Array.from({ length: DIGEST_LIMIT + 5 }, (_, i) => listing(i + 1)),
+      listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
-    telegram.notify.mockResolvedValueOnce(undefined).mockRejectedValue(new Error('send failed'));
+    telegram.notifyCard
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValue(new Error('send failed'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     const run = scheduler.runDaily();
-    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
     await run;
 
-    // The first message arrived — re-sending it tomorrow would duplicate it.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(DIGEST_LIMIT);
+    // The first card arrived — re-sending it tomorrow would duplicate it.
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(1);
     // …and the part that did not is reported, with how much had already gone out.
     expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'deliver');
     expect(sentryScope().setContext).toHaveBeenCalledWith(
       'subscription',
-      expect.objectContaining({ deliveredBefore: DIGEST_LIMIT }),
+      expect.objectContaining({ deliveredBefore: 1 }),
     );
   });
 
@@ -144,12 +160,15 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
-    telegram.notify.mockRejectedValue(new Error('403: bot was blocked'));
+    telegram.notifyCard.mockRejectedValue(new Error('403: bot was blocked'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
     expect(watch.markSeen).not.toHaveBeenCalled();
+    // The 403 is in the MESSAGE, not the type — a plain Error is an ordinary send failure, and
+    // deciding off the text would pause a user Telegram never said had blocked us.
+    expect(subscriptions.pauseAllForUser).not.toHaveBeenCalled();
   });
 
   it('counts a delivery, logs distinctly and reports when markSeen fails afterward', async () => {
@@ -185,15 +204,20 @@ describe('WatchScheduler.runDaily', () => {
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
-    telegram.notify.mockRejectedValue(blocked);
+    telegram.notifyCard.mockRejectedValue(blocked);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
     expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
     expect(metrics.recordPause).toHaveBeenCalledWith('blocked', 2); // counted per subscription
-    expect(telegram.notify).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
     expect(watch.markSeen).not.toHaveBeenCalled();
+    // A blocked user is an expected state handled by the pause above, not a defect — reporting
+    // it would flood Sentry with noise on every run.
+    expect(sentryCapture()).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('keeps running when the pause write fails after a 403', async () => {
@@ -204,14 +228,17 @@ describe('WatchScheduler.runDaily', () => {
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
-    telegram.notify.mockRejectedValueOnce(blocked).mockResolvedValue(undefined);
+    telegram.notifyCard.mockRejectedValueOnce(blocked).mockResolvedValue(undefined);
     subscriptions.pauseAllForUser.mockRejectedValue(new Error('db down'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
-    expect(telegram.notify).toHaveBeenCalledTimes(2); // user 2 still attempted
-    expect(telegram.notify).toHaveBeenLastCalledWith(2, expect.stringContaining('🆕'));
+    expect(telegram.notifyCard).toHaveBeenCalledTimes(2); // user 2 still attempted
+    expect(telegram.notifyCard).toHaveBeenLastCalledWith(
+      2,
+      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+    );
   });
 
   it('reports a swallowed poll failure — a caught error must not stay invisible', async () => {
@@ -276,7 +303,7 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
     watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] }); // poll OK
-    telegram.notify.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
+    telegram.notifyCard.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
@@ -322,10 +349,8 @@ describe('WatchScheduler.runDaily', () => {
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
-    // The user delivery 403s; the admin alert succeeds.
-    telegram.notify.mockImplementation((id: number) =>
-      id === 99 ? Promise.resolve() : Promise.reject(blocked),
-    );
+    // The user delivery 403s; the admin alert (plain text) succeeds.
+    telegram.notifyCard.mockRejectedValue(blocked);
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
@@ -360,6 +385,151 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
   });
 
+  // A subscription that polled fine but threw in its bookkeeping must still count as an attempt.
+  // Without that, the tally sees "3 polls, 3 failed" and cries outage — while the source in fact
+  // answered the fourth poll.
+  it('does not cry outage when a source answered a poll that later threw', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1), sub(2), sub(3), sub(4, 4, 1)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '4'
+        ? Promise.resolve({ kind: 'nothing' as const })
+        : Promise.reject(new Error('adapter broke')),
+    );
+    // sub 4 carries a streak, so the successful path resets it — and that write fails.
+    subscriptions.resetFailures.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // A broken adapter fails every poll of its source. Pausing on that tells each subscriber
+  // «Проверьте ссылку» about a link that is fine, and leaves every one of them to press ▶️.
+  it('does not retire subscriptions when the source itself is down', async () => {
+    const { subscriptions, watch, telegram, metrics, scheduler } = build({ adminTelegramId: 99 });
+    // Enough polls for the outage verdict, and every one of them one short of the cap.
+    const out = MAX_CONSECUTIVE_FAILURES - 1;
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, out), sub(2, 2, out), sub(3, 3, out)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    // The streak still grows, so a link that really is dead is retired once the source answers.
+    expect(subscriptions.bumpFailures).toHaveBeenCalledTimes(3);
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    expect(metrics.recordPause).not.toHaveBeenCalled();
+    // Only the owner hears about it — he is the one who can fix an adapter.
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  it('still retires a dead link when the same source answers other polls', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    // 3 polls of one source: only sub 1 fails, so the source is not down — its link is.
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 2),
+      sub(3, 3),
+    ]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1'
+        ? Promise.reject(new Error('dead link'))
+        : Promise.resolve({ kind: 'nothing' as const }),
+    );
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).toHaveBeenCalledWith('1');
+    expect(telegram.notify).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('поставил его на паузу'),
+    );
+  });
+
+  it('keeps retiring the rest when one dead-link pause write fails', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    const out = MAX_CONSECUTIVE_FAILURES - 1;
+    // Two dead links on different sources, so neither source counts as down.
+    subscriptions.listActive.mockResolvedValue([
+      { ...sub(1, 1, out), source: 'kufar' as const },
+      { ...sub(2, 2, out), source: 'realt' as const },
+    ]);
+    watch.poll.mockRejectedValue(new Error('dead link'));
+    subscriptions.pause.mockRejectedValueOnce(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).toHaveBeenCalledTimes(2); // the second one still happened
+  });
+
+  // A source whose every subscription is dead fails every poll, so it reads as a broken adapter
+  // and can never "answer again" — without a ceiling the reprieve would shelter those links for
+  // good and no user would ever be told their search is dead.
+  it('retires a dead link anyway once the reprieve has run long enough', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    const out = MAX_REPRIEVE_FAILURES - 1;
+    subscriptions.listActive.mockResolvedValue([sub(1, 1, out), sub(2, 2, out), sub(3, 3, out)]);
+    watch.poll.mockRejectedValue(new Error('every link of this source is dead'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).toHaveBeenCalledTimes(3);
+    expect(telegram.notify).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('поставил его на паузу'),
+    );
+    // The owner's alert must say how many polls actually failed. Quoting
+    // MAX_CONSECUTIVE_FAILURES would report 5 for a link the reprieve carried to 15 — exactly
+    // the case he opened the alert to understand.
+    expect(telegram.notify).toHaveBeenCalledWith(
+      99,
+      expect.stringContaining(`неудачных опросов подряд: ${MAX_REPRIEVE_FAILURES}`),
+    );
+  });
+
+  // The 403 path already paused every one of that user's subscriptions. Pausing again would
+  // double-count the metric and send a notice straight into another 403.
+  it('does not pause a dead link again for a user who just blocked the bot', async () => {
+    const { subscriptions, watch, telegram, metrics, scheduler } = build();
+    // Same user, in this order: sub 1 fails its poll into the cap, then sub 2 delivers into a
+    // 403. Reversed, blockedUsers would skip sub 1 before it was ever polled.
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 1),
+    ]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1'
+        ? Promise.reject(new Error('dead link'))
+        : Promise.resolve({ kind: 'fresh' as const, listings: [listing(1)] }),
+    );
+    telegram.notifyCard.mockRejectedValue(
+      new GrammyError(
+        'Forbidden',
+        { ok: false, error_code: 403, description: 'blocked' },
+        'sendPhoto',
+        {},
+      ),
+    );
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    expect(metrics.recordPause).not.toHaveBeenCalledWith('dead');
+  });
+
   it('sends no admin alert when ADMIN_TELEGRAM_ID is unset', async () => {
     const { subscriptions, watch, telegram, scheduler } = build(); // no adminTelegramId
     subscriptions.listActive.mockResolvedValue([sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1)]);
@@ -375,6 +545,44 @@ describe('WatchScheduler.runDaily', () => {
       1,
       expect.stringContaining('поставил его на паузу'),
     );
+  });
+
+  // Without the guard around recordFailure, a failing bump escapes processSubscription into the
+  // run's isolation catch, which counts the attempt as a SUCCESS — so a broken adapter plus a
+  // sick DB silences the one alert that says the source is down.
+  it('still alerts on a source outage when the failure bookkeeping itself fails', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2), sub(3, 3)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    subscriptions.bumpFailures.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // The guard's return VALUE, which the test above cannot see: there the whole source is down,
+  // so the outage reprieve suppresses the pause either way. Here the source answers for the
+  // other two, so the verdict rests on the streak alone — and the streak never incremented.
+  it('does not retire a subscription off a streak the failed write never incremented', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 2),
+      sub(3, 3),
+    ]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1'
+        ? Promise.reject(new Error('dead link'))
+        : Promise.resolve({ kind: 'nothing' as const }),
+    );
+    subscriptions.bumpFailures.mockRejectedValue(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pause).not.toHaveBeenCalled();
   });
 
   it('does not raise a source alert below the min-polls threshold', async () => {
@@ -446,13 +654,5 @@ describe('WatchScheduler.runDaily overlap', () => {
     await expect(scheduler.runDaily()).rejects.toThrow('db down');
 
     expect(status.tryStartPolling()).toBe(true);
-  });
-});
-
-describe('jitteredDelay', () => {
-  it('returns the base with no jitter, and stays within [min, min+jitter]', () => {
-    expect(jitteredDelay({ minMs: 2000, jitterMs: 0 })).toBe(2000);
-    expect(jitteredDelay({ minMs: 2000, jitterMs: 3000, random: () => 0 })).toBe(2000); // low end
-    expect(jitteredDelay({ minMs: 2000, jitterMs: 3000, random: () => 0.999999 })).toBe(5000); // high end
   });
 });

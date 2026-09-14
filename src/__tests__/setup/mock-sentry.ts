@@ -7,6 +7,8 @@ jest.mock('@sentry/nestjs', () => {
   return {
     withScope: jest.fn((fn: (s: unknown) => void) => fn(scope)),
     captureException: jest.fn(),
+    // Awaited before a deliberate process.exit, so it must resolve or that exit never happens.
+    flush: jest.fn().mockResolvedValue(true),
     // Test-only handle: the scope is created inside the factory, so specs need a way in.
     __scope: scope,
   };

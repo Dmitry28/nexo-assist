@@ -13,7 +13,10 @@
 - **Behaviour, not implementation** — and the error paths, not just the happy one.
 - **One concern per `test`.** Several `expect`s are fine when they verify one behaviour.
 - A new test must **fail against the unfixed code** — otherwise you don't know what it guards.
+  **Verify it, never assume: delete the guard (or revert the fix), re-run, see red, restore.**
   Re-check that after refactoring the code it covers.
+- **Every guard clause, cap and ordering rule is behaviour** and takes the same deletion check.
+  Skipping it is how a dozen of them shipped into `modules/telegram/` deletable with a green suite.
 
 ## Don't Over-Mock
 
@@ -31,7 +34,11 @@ When the same fixture is rebuilt in 2+ specs, extract it. Reuse generic helpers 
 
 ## Console Rules
 
-Tests should fail on unexpected `console.error` / `console.warn`. Fix the root cause, don't suppress. If a test genuinely needs to silence a known warning, scope the spy locally:
+Treat an unexpected `console.error` / `console.warn` as a failure: fix the root cause, don't
+suppress. NOTE: nothing enforces this — no setup file fails a spec over console output, and the
+app logs through pino rather than `console`, so accidental noise is silent. Making it mechanical
+(the preference in [workflow.md](workflow.md#post-completion-checklist) § 8) is a real option,
+not yet taken: it needs a per-spec allowance for the places that log on purpose. If a test genuinely needs to silence a known warning, scope the spy locally:
 
 ```typescript
 jest.spyOn(console, 'error').mockImplementation(() => {});

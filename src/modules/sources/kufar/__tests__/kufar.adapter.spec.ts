@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
-import { SourceUnavailableError } from '@/modules/sources/scraping/http';
+import { SourceUnavailableError } from '@/modules/sources/source-adapter';
 
 import { KufarAdapter } from '../kufar.adapter';
 

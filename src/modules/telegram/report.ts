@@ -1,12 +1,15 @@
 import * as Sentry from '@sentry/nestjs';
 
-import { SourceUnavailableError } from '@/modules/sources/scraping/http';
+import { SourceUnavailableError } from '@/modules/sources/source-adapter';
+
+/** How long to wait for a report to reach Sentry before a deliberate exit gives up on it. */
+export const SENTRY_FLUSH_MS = 2000;
 
 /** Where it broke — a Sentry tag to filter by. 'daily' is the scheduled run, not a user action. */
 export type UserAction = 'subscribe' | 'check' | 'show-current' | 'bot-update' | 'daily';
 
 /** Which operation failed. A closed set: a typo here silently empties a Sentry filter. */
-export type ReportOp = 'poll' | 'deliver' | 'mark-seen' | 'process' | 'record-failure';
+export type ReportOp = 'poll' | 'deliver' | 'mark-seen' | 'process' | 'record-failure' | 'pause';
 
 /**
  * Report an error that affects a user, with who and what attached.

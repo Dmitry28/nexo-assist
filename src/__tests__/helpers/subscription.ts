@@ -7,8 +7,9 @@ type SubscriptionOverrides = Partial<Omit<Subscription, 'user'>> & { user?: Part
 /**
  * A Subscription for unit tests; override only what the test cares about.
  *
- * NOTE: `baselinedAt` is deliberately absent by default — that is the "baseline still pending"
- * state, which is the branch a fresh subscription takes.
+ * NOTE: `baselinedAt` is deliberately null by default — that is the "baseline still pending"
+ * state, which is the branch a fresh subscription takes. Null and not absent, because that is
+ * what a row loaded from Postgres holds; a double of a different shape hides real differences.
  */
 export const makeSubscription = (overrides: SubscriptionOverrides = {}): Subscription =>
   ({
@@ -17,6 +18,7 @@ export const makeSubscription = (overrides: SubscriptionOverrides = {}): Subscri
     user: { telegramId: 1 },
     source: 'kufar',
     url: 'https://kufar.by/l',
+    baselinedAt: null,
     pausedAt: null,
     consecutiveFailures: 0,
     ...overrides,

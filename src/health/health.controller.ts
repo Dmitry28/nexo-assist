@@ -4,6 +4,13 @@ import { HealthCheck, HealthCheckService, TypeOrmHealthIndicator } from '@nestjs
 import type { HealthCheckResult } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 
+// Terminus defaults to 1s. The database is off-cluster and reached over the internet with TLS,
+// and Supabase free sleeps when idle (PRODUCT_TECH.md § Ограничения) — one second does not
+// cover a normal cold first attempt. Matches timeoutSeconds on the readiness probe in
+// k8s/deployment.yaml: a shorter inner timeout would always fire first, answering 503 while
+// the orchestrator was still willing to wait.
+const DB_PING_TIMEOUT_MS = 3_000;
+
 @ApiTags('health')
 @SkipThrottle() // probes must never be rate-limited
 @Controller('health')
@@ -30,6 +37,8 @@ export class HealthController {
   @Get('ready')
   @HealthCheck()
   ready(): Promise<HealthCheckResult> {
-    return this.health.check([() => this.db.pingCheck('database')]);
+    return this.health.check([
+      () => this.db.pingCheck('database', { timeout: DB_PING_TIMEOUT_MS }),
+    ]);
   }
 }

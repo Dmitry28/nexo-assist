@@ -1,5 +1,5 @@
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
-import { SourceUnavailableError } from '@/modules/sources/scraping/http';
+import { SourceUnavailableError } from '@/modules/sources/source-adapter';
 
 import { reportUserFacing } from '../report';
 

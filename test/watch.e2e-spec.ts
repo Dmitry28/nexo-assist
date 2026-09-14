@@ -84,6 +84,9 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       url: 'https://kufar.by/l/u1',
     });
     expect(sub.id).toEqual(expect.any(String));
+    // On the returned entity, not on a re-read: `save` leaves the eager relation unloaded, so
+    // this is what tells us `add` reloads the row before handing it over.
+    expect(sub.user.telegramId).toBe(1);
 
     const mine = await subscriptions.listByUser(1);
     expect(mine.map((s) => s.url)).toEqual(['https://kufar.by/l/u1']);
@@ -339,7 +342,13 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
 
     await subscriptions.pause(s.id);
     expect(await subscriptions.listActive()).toEqual([]); // paused → excluded
-    expect((await subscriptions.listByUser(1))[0].pausedAt).toBeInstanceOf(Date);
+    const pausedAt = (await subscriptions.listByUser(1))[0].pausedAt;
+    expect(pausedAt).toBeInstanceOf(Date);
+
+    // Pausing again must not move the timestamp — /list shows it, and the 403 path may have
+    // paused this row earlier in the same run.
+    await subscriptions.pause(s.id);
+    expect((await subscriptions.listByUser(1))[0].pausedAt).toEqual(pausedAt);
   });
 
   it('re-adding a paused search revives it (clears pause + failure streak, same row)', async () => {

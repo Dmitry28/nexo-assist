@@ -1,9 +1,12 @@
+import { Logger } from '@nestjs/common';
+
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { makeSubscription as sub } from '@/__tests__/helpers/subscription';
 import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from '../entities/subscription.entity';
+import { MAX_SEEN_PER_SUBSCRIPTION } from '../subscriptions.service';
 import type { SubscriptionsService } from '../subscriptions.service';
 import { WatchService } from '../watch.service';
 
@@ -108,5 +111,38 @@ describe('WatchService — the rest of the contract', () => {
     await expect(watch.current(sub())).resolves.toEqual([listing(1)]);
     expect(subscriptions.getSeen).not.toHaveBeenCalled();
     expect(subscriptions.markSeen).not.toHaveBeenCalled();
+  });
+});
+
+// The stored-seen cap only bounds the table safely while it stays comfortably above what one
+// fetch returns. Nothing else in the system can notice that assumption breaking, so this warn
+// is the only tripwire — and a silent break means pruned-but-still-visible listings are
+// re-delivered as new on every run.
+describe('WatchService — the seen-set cap assumption', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('stays quiet for an ordinary page window', async () => {
+    const { watch } = build([listing(1), listing(2)]);
+
+    await watch.current(sub());
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns once a single fetch crosses half the cap', async () => {
+    const many = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION / 2 + 1 }, (_, i) => listing(i));
+    const { watch } = build(many);
+
+    await watch.check(baselined());
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('MAX_SEEN_PER_SUBSCRIPTION'));
   });
 });

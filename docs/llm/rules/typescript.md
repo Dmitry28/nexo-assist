@@ -16,7 +16,14 @@ discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`. If y
 
 ## Strictness
 
-The repo runs with `strict: true` plus `noImplicitReturns`, `noImplicitOverride`. No `any` — `no-explicit-any` is an ESLint error.
+The repo runs with `strict: true` plus `noImplicitReturns`, `noImplicitOverride`,
+`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch` and `isolatedModules`. No
+`any` — `no-explicit-any` is an ESLint error.
+
+One deliberate exception: **`strictPropertyInitialization` is off**, because entities and DTOs are
+populated by TypeORM and `class-transformer`, not by constructors. `noUncheckedIndexedAccess` is
+**not** on — so an index access is typed as present even when it is not; narrow it yourself where
+it matters (`split('?')[0]`, `match[1]`, `array[i]`).
 
 ## NestJS Specifics
 

@@ -1,12 +1,20 @@
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
+
+import { makeAppConfig } from '@/__tests__/helpers/app-config';
+import { sentryCapture } from '@/__tests__/helpers/sentry';
 
 import { AllExceptionsFilter } from '../all-exceptions.filter';
 
 /** Minimal HTTP ArgumentsHost double; captures the JSON body the filter writes. */
-const makeHost = () => {
+const makeHost = (url = '/api/v1/x') => {
   const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-  const request = { method: 'GET', url: '/api/v1/x' };
+  const request = { method: 'GET', url };
   const host = {
     switchToHttp: () => ({ getResponse: () => response, getRequest: () => request }),
   } as unknown as ArgumentsHost;
@@ -15,7 +23,7 @@ const makeHost = () => {
 };
 
 describe('AllExceptionsFilter', () => {
-  const filter = new AllExceptionsFilter();
+  const filter = new AllExceptionsFilter(makeAppConfig());
   let errorLog: jest.SpyInstance;
 
   beforeEach(() => {
@@ -55,5 +63,18 @@ describe('AllExceptionsFilter', () => {
       expect.stringContaining('500'),
       expect.stringContaining('hunter2'),
     );
+    // A 5xx on a real route is a bug, and logs alone are not read.
+    expect(sentryCapture()).toHaveBeenCalled();
+  });
+
+  // The orchestrator re-asks every few seconds, so a database blip would otherwise become
+  // hundreds of Sentry events for a condition the probe already reports by failing.
+  it('does not report a failing readiness probe, but still logs which check failed', () => {
+    const { host } = makeHost('/api/v1/health/ready');
+
+    filter.catch(new ServiceUnavailableException({ error: { database: 'down' } }), host);
+
+    expect(sentryCapture()).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('503'), expect.anything());
   });
 });

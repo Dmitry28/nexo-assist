@@ -5,7 +5,8 @@
     "test/**/*.e2e-spec.ts",
     "src/database/data-source.ts",
     "src/database/migrations/*.ts",
-    "src/modules/**/entities/*.entity.ts"
+    "src/modules/**/entities/*.entity.ts",
+    "src/scripts/*.ts"
   ],
   "project": ["src/**/*.ts", "test/**/*.ts"],
   "ignoreDependencies": ["pino-pretty"],

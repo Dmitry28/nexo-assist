@@ -31,6 +31,11 @@
 - Message format → [../commands/git/rules/changes-message-format-rules.md](../commands/git/rules/changes-message-format-rules.md).
 - Generate a commit with `/git-commit`, a PR description with `/pr-description`.
 - Correcting a PR or issue comment → **edit the existing one**, never post a second.
+- **Stage every file you edited before committing, then check the result with `git show`.**
+  The pre-commit hook backs up and restores the working tree around lint-staged, and an edit made
+  to an _unstaged_ file between `git add` and `git commit` was observed to be lost in that restore
+  (2026-09-08, a doc comment in `pending-links.ts`). The commit reported success, so nothing
+  flagged it — only re-reading the committed diff did.
 
 ## Calling the API
 
@@ -56,9 +61,19 @@ Wait for explicit approval to **commit** and, separately, to **merge**. A broad 
 think is right" is not either one. Between them, **push and open the PR freely** — that is
 where the owner reads the diff ([../commands/git/commit-local-changes.md](../commands/git/commit-local-changes.md)).
 
+**Push once, at the end.** Owner's instruction, 2026-09-09: through a multi-part task, commit
+locally as you go and push a single time when the whole thing is done — not after each commit.
+It keeps the PR from being read while it is still growing, and it avoids the failure noted above:
+five same-day PRs pushed one at a time raced with their own merges twice, each time re-creating a
+deleted branch that then had to be rebased and cleaned up.
+
 The two gates exist for different reasons: a commit is what the owner reviews, and merging
 into `main` **auto-deploys to production** — so merge approval is never implied by commit
 approval. Merging a feature branch into `dev` deploys nothing, but still needs its own approval;
 the `dev → main` promotion needs a separate one again, after local testing.
 Report the CI result, then ask. Force-pushing your own unmerged branch is fine (that is how a
 mistake stays out of `dev`'s history); force-pushing `dev` or `main` is not.
+
+NOTE: `.claude/settings.json` prompts only on `git push` and `gh pr merge` — `git commit` is
+allowed without a prompt on purpose (the prompts were noise). Commit approval is therefore a
+rule you follow, not a gate the harness enforces: still show the diff and wait.

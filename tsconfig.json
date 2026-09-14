@@ -9,7 +9,11 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    // Required, not decorative: ts-jest compiles every spec through this config, and TS 6 fails
+    // with TS5011 unless rootDir is explicit. Removing it turns all 29 suites red — verified.
+    // The repo root is the right value here (this config spans src/ and test/); the emitting
+    // build uses tsconfig.build.json, where it is ./src, so dist/ stays flat.
+    "rootDir": "./",
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
@@ -26,8 +30,11 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
+    // TS 6 no longer picks up every @types package on its own, so the two that provide
+    // *globals* must be named. Everything else is reached through explicit imports.
+    "types": ["node", "jest"],
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "exclude": ["node_modules", "dist"]

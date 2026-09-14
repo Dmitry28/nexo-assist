@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 
 import { AppModule } from '@/app.module';
-import { TelegramHandlers } from '@/modules/telegram/telegram.handlers';
-import { TelegramService } from '@/modules/telegram/telegram.service';
+import { TelegramHandlers } from '@/modules/telegram/bot/telegram.handlers';
+import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
 /**
  * Guards against import cycles that silently strip DI metadata.

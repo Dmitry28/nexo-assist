@@ -1,4 +1,6 @@
-import { asRecord, parseNextData } from '../scraping/next-data';
+import { detail, listingDetails } from '../listing-details';
+import { asArray, asPositiveNumber, asRecord, asText, parseNextData } from '../scraping/next-data';
+import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
@@ -13,6 +15,18 @@ interface RawRealtObject {
   address?: string | null;
   townName?: string | null;
   streetName?: string | null;
+  /** Total area in m²; `areaLiving` and `areaKitchen` are parts of it. */
+  areaTotal?: number | null;
+  areaLiving?: number | null;
+  areaKitchen?: number | null;
+  /** Plot area, in sotki. */
+  areaLand?: number | null;
+  rooms?: number | null;
+  buildingYear?: number | null;
+  /** Storeys in the building; `levels` is how many the unit itself spans. */
+  storeys?: number | null;
+  levels?: number | null;
+  contactName?: string | null;
   /** Pre-built CDN URLs. */
   images?: string[];
 }
@@ -40,16 +54,21 @@ export interface RealtPage {
  */
 export function extractPage(html: string): RealtPage {
   const data = parseNextData(html);
-  if (!data) throw new Error('realt: __NEXT_DATA__ missing or unparseable');
+  if (!data) throw new SourceUnavailableError('realt: __NEXT_DATA__ missing or unparseable');
 
   const props = asRecord(data.props);
   // NOTE: asRecord rejects a non-object `pageProps` (an array, a string) where the previous cast
   // let it through to `objects: []`. Deliberate, and unreachable with a real Next.js payload: a
   // shape we don't recognise is a layout change, which must not read as an empty search.
   const pageProps = asRecord(props?.pageProps);
-  if (!pageProps) throw new Error('realt: pageProps missing — page layout changed?');
+  if (!pageProps)
+    throw new SourceUnavailableError('realt: pageProps missing — page layout changed?');
   return {
-    objects: (pageProps.objects as RawRealtObject[] | undefined) ?? [],
+    // Array-checked: an `objects` of another shape would otherwise reach `.map` in the adapter
+    // and throw "map is not a function" — a crash that names nothing useful.
+    objects: asArray<RawRealtObject>(pageProps.objects) ?? [],
+    // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
+    // reads two numbers off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
 }
@@ -60,26 +79,39 @@ export function extractPage(html: string): RealtPage {
  */
 export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
   // NOTE: title is often empty on realt — fall back to town + street, then a generic label.
-  const place = [str(obj.townName), str(obj.streetName)].filter(
-    (s): s is string => s !== undefined,
-  );
-  const title = str(obj.title) ?? (place.length > 0 ? place.join(', ') : 'Объявление');
+  const place = [asText(obj.townName), asText(obj.streetName)].filter((s) => s !== undefined);
+  const title = asText(obj.title) ?? (place.length > 0 ? place.join(', ') : UNTITLED_LISTING);
 
   return {
     externalId: String(obj.code),
     link: `https://realt.by/${linkPath}/object/${obj.code}/`,
     title,
-    description: str(obj.headline) ?? str(obj.description),
+    description: asText(obj.headline) ?? asText(obj.description),
     priceByn: toPrice(obj.priceRates?.[CURRENCY_BYN]),
     priceUsd: toPrice(obj.priceRates?.[CURRENCY_USD]),
-    address: str(obj.address),
+    address: asText(obj.address),
     listTime: obj.updatedAt,
     images: obj.images ?? [],
+    // NOTE: no coordinates — realt's search payload carries none, so its cards get no map pin.
+    seller: asText(obj.contactName),
+    details: listingDetails(
+      detail('Площадь', asPositiveNumber(obj.areaTotal), 'м²'),
+      detail('Жилая', asPositiveNumber(obj.areaLiving), 'м²'),
+      detail('Кухня', asPositiveNumber(obj.areaKitchen), 'м²'),
+      detail('Участок', asPositiveNumber(obj.areaLand), 'сот.'),
+      detail('Комнат', asPositiveNumber(obj.rooms)),
+      detail('Год постройки', asPositiveNumber(obj.buildingYear)),
+      detail('Этажей', asPositiveNumber(obj.storeys)),
+      detail('Уровней', levels(obj)),
+    ),
   };
 }
 
-function str(value: string | null | undefined): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+// A whole house spans every storey it has, and realt then reports the same number twice — one
+// line, not two.
+function levels(obj: RawRealtObject): number | undefined {
+  const value = asPositiveNumber(obj.levels);
+  return value === asPositiveNumber(obj.storeys) ? undefined : value;
 }
 
 function toPrice(value: number | undefined): number | undefined {

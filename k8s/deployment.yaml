@@ -5,9 +5,11 @@ metadata:
   labels:
     app.kubernetes.io/name: nexo-assist
 spec:
-  # NOTE: singleton by design — grammY long polling allows one poller per token
-  # (a second pod gets Telegram 409s) and the store is in-memory (each replica
-  # would hold disjoint subscriptions). Scale out only after webhook + DB land.
+  # NOTE: singleton by design — WatchStatus (the polling slot) is a per-process boolean, so two
+  # replicas' crons run concurrently: both compute the fresh set against the same seen set before
+  # either writes it, and the same user gets every listing twice. On top of that, grammY long
+  # polling allows one receiver per token (a second pod gets Telegram 409s).
+  # Scale out only after a shared run lock + webhook delivery land.
   replicas: 1
   # Recreate: a rolling update would briefly run two pollers (409s).
   strategy:

@@ -40,7 +40,10 @@ services:
       POSTGRES_PASSWORD: app
       POSTGRES_DB: app
     ports:
-      - '5432:5432'
+      # Bound to loopback: the default publishes on every interface, so a laptop on a shared
+      # network offers a Postgres with the credentials printed two lines below. Only the host
+      # connects here (the app container reaches it by service name).
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

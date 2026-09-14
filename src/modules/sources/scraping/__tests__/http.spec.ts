@@ -1,6 +1,7 @@
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
-import { fetchHtml, SourceUnavailableError } from '../http';
+import { SourceUnavailableError } from '../../source-adapter';
+import { fetchHtml } from '../http';
 
 const fetchMock = undiciFetchMock();
 
