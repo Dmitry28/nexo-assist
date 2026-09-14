@@ -37,7 +37,10 @@ start; more frequent once throttling/dedupe land).
   waiting for the cron (its first 5 active subscriptions; outside production anyone may use it).
   `/check` and the daily run share one polling slot, so they never poll at once: `/check` is
   refused while a run holds it, and the day's run is **skipped** when `/check` does (owner told).
-- Baseline on subscribe; seen marked **only after successful delivery**.
+- Baseline on subscribe; seen marked **only after successful delivery** — a message Telegram
+  refuses is skipped and comes back next run, while the rest of the batch still goes out. Two
+  exceptions end a delivery early: a blocked chat (the scheduled run then pauses the user), and
+  three refusals in a row, read as Telegram being down — the remainder waits for the next run.
 - Failures are loud: a fetch **or parse** failure (outage, bot-wall, layout change) raises an
   error — never mistaken for an empty search. Redirects are pinned to the source's host.
 - Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the seen set

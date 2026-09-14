@@ -14,9 +14,11 @@
 ## Function Parameters
 
 3+ parameters, or any two adjacent same-typed/boolean arguments a call site could
-swap silently → object parameter. Two clearly-distinct params stay positional
-(`notify(chatId, text)`), as do pairs mirroring a platform API
-(`withParam(url, key, value)` ~ `URLSearchParams.set`).
+swap silently → object parameter. The trigger is swap risk, not arity: parameters of
+distinct types that no call site could transpose stay positional
+(`notify(chatId, text)`, `listingCard(listing, limit, position)`), as do signatures
+mirroring a platform API (`withParam(url, key, value)` ~ `URLSearchParams.set`).
+Past four, take an object regardless — a fifth parameter says the function does too much.
 
 ```typescript
 // ❌

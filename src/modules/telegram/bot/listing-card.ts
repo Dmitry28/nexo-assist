@@ -79,11 +79,14 @@ interface CardText {
   link: string;
 }
 
+const escapeOptional = (text: string | undefined): string | undefined =>
+  text === undefined ? undefined : escapeHtml(text);
+
 const escapeCard = (listing: Listing): CardText => ({
   title: escapeHtml(listing.title),
-  description: listing.description === undefined ? undefined : escapeHtml(listing.description),
-  address: listing.address === undefined ? undefined : escapeHtml(listing.address),
-  seller: listing.seller === undefined ? undefined : escapeHtml(listing.seller),
+  description: escapeOptional(listing.description),
+  address: escapeOptional(listing.address),
+  seller: escapeOptional(listing.seller),
   details: listing.details.map(({ label, value }) => ({
     label: escapeHtml(label),
     value: escapeHtml(value),
@@ -128,6 +131,14 @@ const PARTIAL_ENTITY = /&[a-z]*$/i;
 const clamp = (escaped: string, max: number): string => truncate(escaped, max, PARTIAL_ENTITY);
 
 /**
+ * `clamp` for text that may already fit: `truncate` appends «…» unconditionally, so running an
+ * uncut string through it would claim a cut that never happened — and add the one character that
+ * puts a borderline card over the limit.
+ */
+const fit = (escaped: string, room: number): string =>
+  room >= escaped.length ? escaped : clamp(escaped, room);
+
+/**
  * One listing as one message, at most `limit` characters — pass `CAPTION_LIMIT_CHARS` when a
  * photo carries it, `MESSAGE_LIMIT_CHARS` when it stands alone.
  *
@@ -150,17 +161,25 @@ export function listingCard(listing: Listing, limit: number, position?: CardPosi
   }
 
   const bare = { ...card, description: undefined };
-  const trimmedTitle = clamp(
-    card.title,
-    card.title.length - (compose(bare, position).length - limit),
-  );
-  const withTrimmedTitle = compose({ ...bare, title: trimmedTitle }, position);
-  if (withTrimmedTitle.length <= limit) return withTrimmedTitle;
+  const titleRoom = card.title.length - (compose(bare, position).length - limit);
+  // Same guard as the description above: with no room left the title would compose as an empty
+  // `<b></b>`, which says nothing and is markup we have no reason to send.
+  if (titleRoom > 1) {
+    const withTrimmedTitle = compose({ ...bare, title: fit(card.title, titleRoom) }, position);
+    if (withTrimmedTitle.length <= limit) return withTrimmedTitle;
+  }
 
   // Last resort: the blocks that identify the object are themselves over the limit. A card that
   // stays oversized is rejected by Telegram, and a listing without photos has no text fallback
   // to save it — so it would fail again on every later run. Price and link survive.
   const core = { ...bare, address: undefined, seller: undefined, details: [] };
   const room = card.title.length - (compose(core, position).length - limit);
-  return compose({ ...core, title: clamp(card.title, room) }, position);
+  const minimal = compose({ ...core, title: fit(card.title, room) }, position);
+  if (minimal.length <= limit) return minimal;
+
+  // Even the minimal card is too long, so the link itself is pathological. It cannot be cut
+  // inside `<a href="…">` — a half-written tag is the same 400 this whole ladder exists to
+  // avoid — so the card drops its markup and the bare text is clamped. An unusable link beats a
+  // card Telegram rejects on every run, and nothing readable survives such a link anyway.
+  return clamp(`💰 ${card.price}\n${card.link}`, limit);
 }

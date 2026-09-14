@@ -26,6 +26,9 @@ describe('matchesHost', () => {
     ['https://notkufar.by/x', false],
     ['https://kufar.by.evil.com/x', false],
     ['https://kufar.by:6379/x', false],
+    // Parses with hostname `kufar.by` — the host alone cannot tell these from a real address.
+    ['javascript://kufar.by/%0aalert(1)', false],
+    ['ftp://kufar.by/x', false],
     ['not a url', false],
   ])('matchesHost(%s, kufar.by) → %s', (url, expected) => {
     expect(matchesHost({ url, host: 'kufar.by' })).toBe(expected);

@@ -35,7 +35,7 @@ const PHOTOS = [
   { dir: '3/3f', file: 'Bikewest_shark_bay.jpg' },
 ] as const;
 
-const PHOTO = (n: number): string => {
+const photo = (n: number): string => {
   const { dir, file } = PHOTOS[n % PHOTOS.length];
   return `https://upload.wikimedia.org/wikipedia/commons/thumb/${dir}/${file}/640px-${file}`;
 };
@@ -63,7 +63,7 @@ const MOCK_LISTINGS: Listing[] = [
     priceByn: 558_645,
     priceUsd: 185_000,
     seller: 'Агентство недвижимости',
-    images: [PHOTO(0), PHOTO(1), PHOTO(0), PHOTO(1)],
+    images: [photo(0), photo(1), photo(0), photo(1)],
     coordinates: { lat: 53.6822, lon: 23.8558 },
     details: [
       { label: 'Тип', value: 'Дом' },
@@ -79,7 +79,7 @@ const MOCK_LISTINGS: Listing[] = [
     ...base(2),
     title: 'Участок 9.84 сот., Кировск',
     priceUsd: 7000,
-    images: [PHOTO(1)],
+    images: [photo(1)],
     details: [{ label: 'Участок', value: '9.84 сот.' }],
   },
   // Nothing but the essentials — the plain-message path, the "negotiable price" line, and a
@@ -93,7 +93,7 @@ const MOCK_LISTINGS: Listing[] = [
     description: `Описание, которое не влезает в подпись к фото. ${'Очень длинный текст. '.repeat(60)}`,
     address: 'ул. "Тихая" <центр>',
     priceByn: 100_000,
-    images: [PHOTO(0), PHOTO(1)],
+    images: [photo(0), photo(1)],
     details: [{ label: 'Тип', value: '<Дача>' }],
   },
   // More photos than Telegram accepts in one album — the eleventh must be dropped, not rejected.
@@ -102,7 +102,7 @@ const MOCK_LISTINGS: Listing[] = [
     title: 'Одиннадцать фото — альбом обрезается до десяти',
     priceUsd: 42_000,
     listTime: at(26),
-    images: Array.from({ length: 11 }, (_, i) => PHOTO(i)),
+    images: Array.from({ length: 11 }, (_, i) => photo(i)),
   },
   // A dead image URL: under --send this is the photo→text fallback, which no test can show.
   {
@@ -149,10 +149,9 @@ async function main(): Promise<void> {
   const logger = new Logger('notify-test');
 
   for (const [i, listing] of MOCK_LISTINGS.entries()) {
-    // The first card goes out unnumbered: one fresh listing is the ordinary case, and "1/1"
-    // would be noise the reader never actually sees.
-    const position = i === 0 ? undefined : { index: i + 1, total: MOCK_LISTINGS.length };
-    const message = listingMessage(listing, position);
+    // Every card carries its position, exactly as `plan()` sends them. The one shape this does
+    // not show is a lone listing, whose «1/1» the card suppresses (covered in listing-card.spec).
+    const message = listingMessage(listing, { index: i + 1, total: MOCK_LISTINGS.length });
     console.info(
       `[${i + 1}/${MOCK_LISTINGS.length}] photos ${message.images.length}, ` +
         `pin ${message.coordinates ? 'yes' : 'no'}, caption ${message.caption.length} chars`,

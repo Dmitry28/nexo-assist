@@ -220,3 +220,27 @@ describe('mapAd', () => {
     expect(listing.title).toBe(UNTITLED_LISTING);
   });
 });
+
+describe('mapAd — the listing link', () => {
+  const withLink = (ad_link: string | undefined): string =>
+    mapAd({ ad_id: 42, list_time: '2026-09-11T09:00:00+03:00', ad_link }).link;
+
+  it('keeps the link the ad published', () => {
+    expect(withLink('https://re.kufar.by/vi/42')).toBe('https://re.kufar.by/vi/42');
+  });
+
+  // `ad_link` is source-controlled and ends up inside `<a href="…">`. Telegram can refuse a
+  // foreign host or a non-http scheme, and a refused card is never marked seen — it would come
+  // back at the head of the batch on every later run.
+  it.each([
+    ['javascript:alert(1)'],
+    // Parses with hostname `kufar.by`: the host alone does not make it an address.
+    ['javascript://kufar.by/%0aalert(1)'],
+    ['https://evil.example/vi/42'],
+    ['not a url'],
+    [''],
+    [undefined],
+  ])('falls back to the id-built link for %s', (hostile) => {
+    expect(withLink(hostile)).toBe('https://re.kufar.by/vi/42');
+  });
+});
