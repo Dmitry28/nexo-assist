@@ -217,7 +217,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   /** Send the fresh digest. Returns true if the user blocked us; other send failures are
    *  logged and retried next run (markSeen only after a successful send). */
   private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
-    const { delivered, error, markSeenError } = await deliverAndMark({
+    const { delivered, error, failures, markSeenError } = await deliverAndMark({
       listings,
       send: {
         card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),
@@ -244,10 +244,20 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // A 403 is an expected state (the user blocked us) handled by pausing them, not a defect —
     // reporting every blocked user would flood Sentry with noise.
     if (isBotBlocked(error)) return true;
-    // A send that failed part-way must not pass silently: the user sees a digest numbered
-    // "(1/5)" and would wait for four messages that never come.
-    this.logger.error({ err: error }, `Delivery failed for subscription ${sub.id}`);
-    this.report({ err: error, sub, op: 'deliver', details: { deliveredBefore: delivered.length } });
+    // A send that failed part-way must not pass silently: the delivery continues past a refused
+    // message, so the user is left with a gap in the numbering and no idea one is missing.
+    this.logger.error(
+      { err: error, failures },
+      `Delivery failed for subscription ${sub.id}: ${failures} message(s) refused`,
+    );
+    this.report({
+      err: error,
+      sub,
+      op: 'deliver',
+      // `failures` alongside the count delivered: only the first error is kept, so without it one
+      // refused card and nine read the same in Sentry.
+      details: { delivered: delivered.length, failures },
+    });
     return false;
   }
 

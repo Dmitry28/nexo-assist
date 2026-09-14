@@ -1,3 +1,5 @@
+import { matchesHost } from '@/common/url';
+
 import { detail, listingDetails } from '../listing-details';
 import {
   asArray,
@@ -46,6 +48,9 @@ interface RawParam {
 // see send-card.ts.
 const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/gallery';
 
+/** The source's host — every search and every listing link must be on it (or a subdomain). */
+export const HOST = 'kufar.by';
+
 interface RawPagination {
   label: string;
   token: string | null;
@@ -84,7 +89,7 @@ export function extractPage(html: string): KufarPage {
 export function mapAd(ad: RawKufarAd): Listing {
   return {
     externalId: String(ad.ad_id),
-    link: ad.ad_link ?? `https://re.kufar.by/vi/${ad.ad_id}`,
+    link: link(ad),
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
@@ -106,6 +111,20 @@ export function mapAd(ad: RawKufarAd): Listing {
       ...facilities(ad),
     ),
   };
+}
+
+/**
+ * The ad's own link when it is really a kufar address, otherwise one built from the id.
+ *
+ * `ad_link` is source-controlled text that we put inside `<a href="…">`. A value that is not an
+ * http(s) kufar URL — another host, a `javascript:` scheme — is one Telegram can refuse, and a
+ * card it refuses is never marked seen, so it would lead the batch again on every later run.
+ */
+function link(ad: RawKufarAd): string {
+  const published = asText(ad.ad_link);
+  return published !== undefined && matchesHost({ url: published, host: HOST })
+    ? published
+    : `https://re.kufar.by/vi/${ad.ad_id}`;
 }
 
 // NOTE: Kufar stores prices as integers in 1/100 of the currency unit (1385000 → 13850 BYN).

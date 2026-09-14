@@ -6,6 +6,11 @@ import { fetchHtml } from './http';
 
 // NOTE: page-cap bound (not a time window) — deterministic and enough for daily volumes
 // (e.g. 5 × ~30 = 150 listings). A lookback window can be added later if it proves wasteful.
+//
+// The cap is also what lets pages be fetched back-to-back with no pause: kufar rate-limits
+// sustained pagination, and the prototype measured HTTP 429 on page 12 of a feed walked
+// without a delay (land-scraper, kufar/constants/index.ts pauses 1.5 s for that reason).
+// Five is far enough under it; raising this number means pacing the loop as well.
 const MAX_PAGES = 5;
 
 /** One parsed page: its listings and the URL of the next page (null = last page). */

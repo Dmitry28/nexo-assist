@@ -69,6 +69,10 @@ export function apiCardSender(api: Api, chatId: number): CardSender {
 /**
  * The card for one listing. Photos get the caption limit (a fifth of a message's), and a
  * listing without photos gets the full one.
+ *
+ * TODO [L]: when the photo send fails, the text fallback re-uses this caption, so it stays cut
+ * to 1024 chars where a standalone message allows 4096. Fixing it means carrying the listing
+ * (or both variants) through to `sendCard`.
  */
 export function listingMessage(listing: Listing, position?: CardPosition): ListingMessage {
   const limit = listing.images.length > 0 ? CAPTION_LIMIT_CHARS : MESSAGE_LIMIT_CHARS;
@@ -104,6 +108,11 @@ export async function sendCard(
     // A blocked chat rejects the text too, and the run pauses the user on this error — a second
     // doomed request would only add another failure to report.
     if (photos.length === 0 || isBotBlocked(err)) throw err;
+    // TODO [L]: the fallback re-sends the same HTML with the same parse_mode, so it cannot save
+    // a card Telegram refused for its markup — only one refused for its photos. No such markup
+    // is reachable today (everything scraped is escaped, and the only source-controlled URL is
+    // validated in kufar.parser.ts), so a plain-text last resort would be error handling for a
+    // path that cannot happen. Add it if a caption ever does get refused.
     logger.warn({ err }, 'Photo send failed — falling back to the text card');
     onPhotoFallback?.();
     // Paced like every other message to this chat: the refused send still counted against the
@@ -112,6 +121,8 @@ export async function sendCard(
     await sender.html(caption);
   }
   // The listing is already delivered, so a missing pin is not worth failing the delivery for.
+  // Log-only, unlike the photo fallback above: a pin carries no information the card lacks (the
+  // address is in it), so a systematic pin failure changes nothing anyone would act on.
   if (coordinates) {
     await wait(SEND_DELAY_MS);
     await sender

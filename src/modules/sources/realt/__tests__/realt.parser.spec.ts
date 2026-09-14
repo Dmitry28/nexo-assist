@@ -16,7 +16,7 @@ describe('extractPage', () => {
   });
 
   // The type is asserted, not just the message: Sentry derives `kind` from it (see the
-  // SourceUnavailableError docblock in scraping/http.ts).
+  // SourceUnavailableError docblock in source-adapter.ts).
   it('throws when __NEXT_DATA__ is absent — a bot-wall must not read as an empty search', () => {
     const thrown = () => extractPage('<html>no data</html>');
 
@@ -34,15 +34,28 @@ describe('extractPage', () => {
     expect(() => extractPage(noPageProps)).toThrow(SourceUnavailableError);
   });
 
-  it('treats an objects block of another shape as empty, not as a crash in the adapter', () => {
-    // The blob is cast, not validated: a non-array used to reach `.map` in the adapter and
-    // throw "map is not a function" — a crash that names nothing useful.
+  it('throws when objects is present but not an array — that shape is no zero-result page', () => {
+    // It used to read as an empty search, which is the one outcome a broken page must never
+    // produce: every realt subscription would report "nothing new" forever, with no alert.
     const oddObjects =
       '<script id="__NEXT_DATA__" type="application/json">' +
       JSON.stringify({ props: { pageProps: { objects: {} } } }) +
       '</script>';
 
-    expect(extractPage(oddObjects).objects).toEqual([]);
+    expect(() => extractPage(oddObjects)).toThrow(SourceUnavailableError);
+    expect(() => extractPage(oddObjects)).toThrow('not an array');
+  });
+
+  it('treats an explicit objects: null as empty — that reads as "no results", not a new layout', () => {
+    // The distinction the guard above turns on: JSON carries no `undefined`, so `null` is the
+    // shape a zero-result page can legitimately take. Calling it a layout change would alert on
+    // every poll of such a page.
+    const nullObjects =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { objects: null } } }) +
+      '</script>';
+
+    expect(extractPage(nullObjects)).toEqual({ objects: [], pagination: null });
   });
 
   it('treats pageProps without an objects array as empty — realt renders some zero-result pages so', () => {

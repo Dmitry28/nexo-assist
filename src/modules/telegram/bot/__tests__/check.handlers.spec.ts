@@ -6,6 +6,7 @@ import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { AppConfig } from '@/config/configuration';
 import { AppEnv } from '@/config/env.validation';
+import type { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
@@ -21,6 +22,8 @@ const sub = (over: Partial<Subscription> = {}): Subscription =>
 
 // Collaborators are mocked — these tests cover the on-demand poll (the polling slot, pacing,
 // what the user is told), not persistence (the DB layer is covered by the integration e2e).
+const metrics = { recordPhotoFallback: jest.fn() } as unknown as WatchMetrics;
+
 describe('CheckHandlers', () => {
   let subscriptions: { listByUser: jest.Mock; findOwned: jest.Mock };
   let watch: { poll: jest.Mock; current: jest.Mock; markSeen: jest.Mock };
@@ -34,6 +37,7 @@ describe('CheckHandlers', () => {
       subscriptions as unknown as SubscriptionsService,
       watch as unknown as WatchService,
       status,
+      metrics,
     );
 
   beforeEach(() => {
@@ -94,6 +98,28 @@ describe('CheckHandlers', () => {
     expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
   });
 
+  it('/check counts a photo fallback — the metric claims every card, not just the daily run', async () => {
+    const s = sub({ url: 'u1' });
+    subscriptions.listByUser.mockResolvedValue([s]);
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      listings: [listing(1, { images: ['https://example.test/dead.jpg'] })],
+    });
+    const ctx = makeCtx({ userId: 1 });
+    ctx.replyWithPhoto.mockRejectedValue(new Error('WEBPAGE_MEDIA_EMPTY'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    // The fallback is paced like any other message — don't spend that second for real.
+    jest.useFakeTimers();
+
+    const run = handlers.onCheck(ctx);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 2);
+    await run;
+
+    // The card still arrived, as text.
+    expect(ctx.reply).toHaveBeenCalled();
+    expect(metrics.recordPhotoFallback).toHaveBeenCalledTimes(1);
+  });
+
   it('/check keeps the delivered digest when markSeen fails — no contradictory error', async () => {
     const s = sub({ url: 'u1' });
     subscriptions.listByUser.mockResolvedValue([s]);
@@ -152,7 +178,7 @@ describe('CheckHandlers', () => {
       listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
     const ctx = makeCtx({ userId: 1 });
-    // The first card arrives, the second does not.
+    // The second card is refused; the three after it still go out.
     ctx.reply.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('telegram 500'));
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
@@ -163,8 +189,9 @@ describe('CheckHandlers', () => {
     expect(ctx.reply).toHaveBeenCalledWith(
       'Часть объявлений не отправилась — пришлю в следующую проверку.',
     );
-    // What did arrive is recorded, so the next run sends the remainder and not a duplicate.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(1);
+    // Everything that arrived is recorded — four of five. Only the refused one comes back next
+    // run: stopping at it would have held the other three hostage on every run.
+    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(4);
   });
 
   it('/check answers the owner in production — the only live check without waiting for the cron', async () => {
