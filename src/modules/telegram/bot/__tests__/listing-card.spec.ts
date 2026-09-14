@@ -178,3 +178,34 @@ describe('escapeHtml', () => {
     expect(escapeHtml('<a href="x">&</a>')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;');
   });
 });
+
+describe('listingCard — pathological input', () => {
+  it('never exceeds the limit, even when the link alone is longer than the card', () => {
+    // `link` is source-controlled (kufar's `ad_link`). An oversized card is a Telegram 400, and
+    // nothing undelivered is marked seen — so it would be retried, and refused, on every run.
+    const card = listingCard(
+      makeListing(1, { link: `https://re.kufar.by/vi/${'9'.repeat(2000)}`, priceUsd: 7000 }),
+      CAPTION_LIMIT_CHARS,
+    );
+
+    expect(card.length).toBeLessThanOrEqual(CAPTION_LIMIT_CHARS);
+    expect(card).toContain('7');
+  });
+
+  it('does not mark a title as cut when it was not cut', () => {
+    // The last-resort branch used to run every title through the clamp, which appends «…»
+    // unconditionally — claiming a cut that never happened and adding the one char that can put
+    // the card over the limit.
+    const listing = makeListing(1, {
+      title: 'Дом в Гродно',
+      address: 'а'.repeat(1500),
+      priceUsd: 7000,
+    });
+
+    const card = listingCard(listing, CAPTION_LIMIT_CHARS);
+
+    expect(card).toContain('Дом в Гродно');
+    expect(card).not.toContain('Дом в Гродно…');
+    expect(card.length).toBeLessThanOrEqual(CAPTION_LIMIT_CHARS);
+  });
+});

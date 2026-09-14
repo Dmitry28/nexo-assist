@@ -3,6 +3,7 @@ import type { Context } from 'grammy';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Listing } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -38,11 +39,13 @@ export class CheckHandlers {
     private readonly subscriptions: SubscriptionsService,
     private readonly watch: WatchService,
     private readonly status: WatchStatus,
+    private readonly metrics: WatchMetrics,
   ) {}
 
   // TODO [L]: grammY processes updates sequentially, so the paced loop below blocks the bot for
-  // every other user for tens of seconds. Acceptable today because /check is owner-only in
-  // production; running it off the update loop is needed before it opens up.
+  // every other user for minutes — up to 5 subscriptions × (30 cards + digest) × 1 s. Acceptable
+  // today because /check is owner-only in production; running it off the update loop is needed
+  // before it opens up.
   async onCheck(ctx: Context): Promise<void> {
     // Silent for non-owners in production, like /stats — an explicit refusal would advertise
     // a command that hits sources.
@@ -107,7 +110,10 @@ export class CheckHandlers {
       const { delivered, error, markSeenError } = await deliverAndMark({
         listings: outcome.listings,
         send: {
-          card: (message) => sendCard(this.replySender(ctx), message, this.logger),
+          card: (message) =>
+            sendCard(this.replySender(ctx), message, this.logger, () =>
+              this.metrics.recordPhotoFallback(),
+            ),
           digest: (text) => ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW }),
         },
         markSeen: (items) => this.watch.markSeen(sub, items),

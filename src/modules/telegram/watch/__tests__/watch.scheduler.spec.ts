@@ -148,11 +148,12 @@ describe('WatchScheduler.runDaily', () => {
 
     // The first card arrived — re-sending it tomorrow would duplicate it.
     expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(1);
-    // …and the part that did not is reported, with how much had already gone out.
+    // …and the part that did not is reported, with both how much arrived and how much bounced —
+    // only the first error is kept, so the count is what tells one refusal from many.
     expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'deliver');
     expect(sentryScope().setContext).toHaveBeenCalledWith(
       'subscription',
-      expect.objectContaining({ deliveredBefore: 1 }),
+      expect.objectContaining({ delivered: 1, failures: 3 }),
     );
   });
 

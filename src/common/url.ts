@@ -55,6 +55,10 @@ export function matchesHost({ url, host }: { url: string; host: string }): boole
   } catch {
     return false;
   }
+  // The host is only half the check. `new URL('javascript://kufar.by/x')` parses with hostname
+  // `kufar.by`, so a scheme-blind match would accept it — and every caller (the adapters, the
+  // redirect guard, the listing link that goes into an `<a href>`) means an http(s) address.
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   // An explicit (non-default) port could point the scraper at other services on the host.
   if (parsed.port !== '') return false;
   const hostname = stripWww(parsed.hostname);

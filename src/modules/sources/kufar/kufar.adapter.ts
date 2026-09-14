@@ -5,9 +5,8 @@ import { matchesHost, withParam, withoutParam } from '@/common/url';
 import { paginate } from '../scraping/paginate';
 import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
 
-import { extractPage, mapAd } from './kufar.parser';
+import { HOST, extractPage, mapAd } from './kufar.parser';
 
-const HOST = 'kufar.by';
 // Pin newest-first ordering — the page-cap model relies on new listings being on page 1
 // (verified live: sort=lst.d orders by list_time desc).
 const SORT_NEWEST = 'lst.d';

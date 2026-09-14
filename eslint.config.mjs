@@ -69,6 +69,12 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'error',
       // 'error' explicitly — `--max-warnings 0` would promote a warning anyway.
       '@typescript-eslint/no-unsafe-argument': 'error',
+      // `in-try-catch` (the default) requires the await when returning inside try/catch/finally.
+      // Not style: `return promise` there lets `finally` run before the promise settles, so a
+      // cleanup releases the very resource the promise is still using. It killed the prototype's
+      // scraper outright — page.close() fired mid-evaluate and the process died on an unhandled
+      // "Target closed" (land-scraper, bid-cars-parser.service.ts).
+      '@typescript-eslint/return-await': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

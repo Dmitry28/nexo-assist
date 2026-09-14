@@ -48,9 +48,10 @@ export interface RealtPage {
 
 /**
  * Parse a realt search page's `__NEXT_DATA__`.
- * Throws when the blob or `pageProps` is missing — a bot-wall or layout change
- * must not read as an empty search. A present `pageProps` without an `objects`
- * array is NOT an error: realt renders some zero-result pages so (observed live).
+ * Throws when the blob or `pageProps` is missing, or when `objects` is present in a shape that
+ * is not an array — a bot-wall or layout change must not read as an empty search. A `pageProps`
+ * with no `objects` key at all is NOT an error: realt renders some zero-result pages so
+ * (observed live).
  */
 export function extractPage(html: string): RealtPage {
   const data = parseNextData(html);
@@ -63,10 +64,19 @@ export function extractPage(html: string): RealtPage {
   const pageProps = asRecord(props?.pageProps);
   if (!pageProps)
     throw new SourceUnavailableError('realt: pageProps missing — page layout changed?');
+  // An absent `objects` key is a real zero-result page (observed live). A key that IS there but
+  // is not an array cannot be one — it is a layout change, and reporting it as an empty search
+  // would leave every realt subscription saying "nothing new" forever with no alert. kufar
+  // throws on that same shape; it differs on an absent key, which realt really does render.
+  // `!= null` on purpose: JSON carries no `undefined`, so the real question is whether the key
+  // is there at all — and an explicit `null` reads as "no results", not as a changed layout.
+  // Guessing the other way would alert on every poll of a zero-result page.
+  const objects = asArray<RawRealtObject>(pageProps.objects);
+  if (pageProps.objects != null && objects === undefined) {
+    throw new SourceUnavailableError('realt: objects is not an array — page layout changed?');
+  }
   return {
-    // Array-checked: an `objects` of another shape would otherwise reach `.map` in the adapter
-    // and throw "map is not a function" — a crash that names nothing useful.
-    objects: asArray<RawRealtObject>(pageProps.objects) ?? [],
+    objects: objects ?? [],
     // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
     // reads two numbers off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,

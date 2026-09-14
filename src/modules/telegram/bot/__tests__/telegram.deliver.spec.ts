@@ -1,3 +1,5 @@
+import { GrammyError } from 'grammy';
+
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 
 import { SEND_DELAY_MS } from '../send-card';
@@ -84,6 +86,77 @@ describe('deliverListings', () => {
 
     expect(delivered).toHaveLength(1);
     expect(error).toEqual(new Error('send failed'));
+  });
+
+  it('keeps delivering after one refused message — a poison listing must not hold the rest', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    // Only the second card is refused. Stopping there would leave listings 3-5 undelivered, and
+    // since nothing undelivered is marked seen, the same card would lead the batch every run.
+    send.card
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('send failed'))
+      .mockResolvedValue(undefined);
+
+    const run = deliverListings(many(5), send);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
+    const { delivered, error } = await run;
+
+    expect(send.card).toHaveBeenCalledTimes(5);
+    expect(delivered.map((l) => l.externalId)).toEqual(['1', '3', '4', '5']);
+    // The failure is still reported — the caller tells the user part of it is coming later.
+    expect(error).toEqual(new Error('send failed'));
+  });
+
+  it('gives up after a streak of failures — an outage must not cost a full paced loop', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    send.card.mockRejectedValue(new Error('telegram is down'));
+
+    const run = deliverListings(many(20), send);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 20);
+    const { delivered, error } = await run;
+
+    expect(send.card).toHaveBeenCalledTimes(3);
+    expect(delivered).toHaveLength(0);
+    expect(error).toEqual(new Error('telegram is down'));
+  });
+
+  it('counts the streak consecutively — scattered failures keep the delivery going', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    // Every other card fails: eight failures in all, never three in a row.
+    let n = 0;
+    send.card.mockImplementation(() =>
+      ++n % 2 === 0 ? Promise.reject(new Error('send failed')) : Promise.resolve(undefined),
+    );
+
+    const run = deliverListings(many(16), send);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 16);
+    const { delivered } = await run;
+
+    expect(send.card).toHaveBeenCalledTimes(16);
+    expect(delivered).toHaveLength(8);
+  });
+
+  it('stops when the chat is blocked — everything after it would be refused too', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    const blocked = new GrammyError(
+      'Forbidden: bot was blocked by the user',
+      { ok: false, error_code: 403, description: 'blocked' },
+      'sendMessage',
+      {},
+    );
+    send.card.mockResolvedValueOnce(undefined).mockRejectedValue(blocked);
+
+    const run = deliverListings(many(5), send);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
+    const { delivered, error } = await run;
+
+    expect(send.card).toHaveBeenCalledTimes(2);
+    expect(delivered).toHaveLength(1);
+    expect(error).toBe(blocked);
   });
 });
 
