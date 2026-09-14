@@ -56,9 +56,11 @@ Fields and their defaults — [Claude Code docs](https://code.claude.com/docs/en
 restate them here. Our choices:
 
 - **Background rule** (auto-loaded on triggers): `user-invocable: false` — the default is `true`.
-- **Command** (`/name` only): `disable-model-invocation: true` — for the ones the model must
-  never start by itself (`git-commit`). A command the rules tell it to run — `review-code`,
-  `logic-review`, `verify-task-result` — stays model-invocable, or the workflow cannot run it.
+- **Command**: `user-invocable: true`, and leave it model-invocable. `disable-model-invocation`
+  is set nowhere here: `review-code`, `logic-review` and `verify-task-result` are commands the
+  rules tell the model to run, and on `git-commit` the flag would be a false guardrail — it hides
+  the procedure that says _propose the command, never run it_ while `git commit` itself stays one
+  Bash call away.
 - **Large output** (diffs, reviews, PR descriptions): `context: fork`, so the output stays out of
   the main conversation.
 
