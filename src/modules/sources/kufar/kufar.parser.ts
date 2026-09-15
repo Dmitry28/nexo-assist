@@ -107,6 +107,10 @@ export function mapAd(ad: RawKufarAd): Listing {
       detail('Площадь', asPositiveNumber(param(ad.ad_parameters, 'size')), 'м²'),
       detail('Участок', asPositiveNumber(param(ad.ad_parameters, 'size_area')), 'сот.'),
       detail('Комнат', asPositiveNumber(param(ad.ad_parameters, 'rooms'))),
+      // Rent ads carry the storey and the building's height; a sale ad carries neither. Both
+      // are positive-only: storeys here are 1-based, so a 0 is an unfilled field, not a basement.
+      detail('Этаж', asPositiveNumber(param(ad.ad_parameters, 'floor'))),
+      detail('Этажей', asPositiveNumber(param(ad.ad_parameters, 're_number_floors'))),
       detail('Год постройки', asPositiveNumber(param(ad.ad_parameters, 'year_built'))),
       ...facilities(ad),
     ),
@@ -171,6 +175,10 @@ const FACILITY_LABELS: Array<[key: string, label: string]> = [
   ['re_hot_water', 'Горячая вода'],
   ['re_sewage', 'Канализация'],
   ['re_property_rights', 'Права'],
+  // Long-term rent: what the flat comes with, and what the tenant pays up front.
+  ['flat_repair', 'Ремонт'],
+  ['flat_furnished', 'Мебель'],
+  ['flat_rent_prepayment', 'Предоплата'],
   ['re_outbuildings', 'Постройки'],
   // A garage's amenities really are one list ("Свет, Охрана"), so they keep a shared label.
   ['garage_improvements', 'Удобства'],

@@ -36,10 +36,20 @@ export function asText(value: unknown): string | undefined {
  *
  * Strict on purpose: "12 сот." yields undefined rather than 12. A unit inside the value means
  * the field is not what we assumed, and a wrong number in a card reads as fact.
+ *
+ * A one-element array is unwrapped: kufar spells some numeric parameters that way (`floor: [11]`
+ * on 27 of 30 long-term rent ads, measured), and reading that as "no value" silently empties the
+ * field. A longer array is still nothing — two numbers are not one.
+ *
+ * The unwrap sits here rather than in kufar's own accessor on purpose: kufar's `param()` also
+ * feeds `facilities`, which reads an array as the list it is, so a local unwrap would need a
+ * second numeric accessor. Every source gets the rule; for one that never wraps, it is a no-op.
  */
 export function asNumber(value: unknown): number | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
-  const text = asText(value);
+  const wrapped = asArray<unknown>(value);
+  const single = wrapped?.length === 1 ? wrapped[0] : value;
+  if (typeof single === 'number') return Number.isFinite(single) ? single : undefined;
+  const text = asText(single);
   if (text === undefined) return undefined;
   const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : undefined;
