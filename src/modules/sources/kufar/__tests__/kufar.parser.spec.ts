@@ -179,20 +179,15 @@ describe('mapAd', () => {
     ]);
   });
 
-  it.each([
-    ['malformed', 'not a pair'],
-    ['half-filled', [27.53]],
-    ['out of range', [27.53, 953.9]],
-    // A zeroed pair is an unfilled field, not a spot in the Atlantic.
-    ['zeroed', [0, 0]],
-  ])('drops %s coordinates rather than pinning the wrong place', (_label, value) => {
+  // Only the order is pinned here — the guards live beside the helper, in next-data.spec.ts.
+  it('reads the pair longitude first', () => {
     const listing = mapAd({
       ad_id: 1,
       list_time: '2026-01-01T00:00:00Z',
-      ad_parameters: [{ p: 'coordinates', v: value }],
+      ad_parameters: [{ p: 'coordinates', v: [23.85, 53.68] }],
     });
 
-    expect(listing.coordinates).toBeUndefined();
+    expect(listing.coordinates).toEqual({ lat: 53.68, lon: 23.85 });
   });
 
   it('omits price when the raw value is zero or missing', () => {

@@ -58,7 +58,7 @@ export interface Listing {
   /** ISO 8601 timestamp of the last update/bump. */
   listTime: string;
   images: string[];
-  /** Present only when the source published a pin — realt, for one, never does. */
+  /** Present only when the source published a pin. */
   coordinates?: Coordinates;
   /** Seller or contact name, when the source publishes one. */
   seller?: string;

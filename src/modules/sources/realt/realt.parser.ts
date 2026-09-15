@@ -1,5 +1,12 @@
 import { detail, listingDetails } from '../listing-details';
-import { asArray, asPositiveNumber, asRecord, asText, parseNextData } from '../scraping/next-data';
+import {
+  asArray,
+  asCoordinates,
+  asPositiveNumber,
+  asRecord,
+  asText,
+  parseNextData,
+} from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
@@ -27,6 +34,8 @@ interface RawRealtObject {
   storeys?: number | null;
   levels?: number | null;
   contactName?: string | null;
+  /** `[longitude, latitude]` — longitude first, same order as kufar. */
+  location?: number[] | null;
   /** Pre-built CDN URLs. */
   images?: string[];
 }
@@ -40,10 +49,11 @@ interface RawPagination {
   totalCount: number;
 }
 
-/** One page of a realt search: objects + pagination block (null = unknown). */
+/** One page of a realt search: objects, pagination block and object-URL slug (null = unknown). */
 export interface RealtPage {
   objects: RawRealtObject[];
   pagination: RawPagination | null;
+  linkPath: string | null;
 }
 
 /**
@@ -77,6 +87,7 @@ export function extractPage(html: string): RealtPage {
   }
   return {
     objects: objects ?? [],
+    linkPath: linkPath(pageProps),
     // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
     // reads two numbers off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
@@ -85,7 +96,7 @@ export function extractPage(html: string): RealtPage {
 
 /**
  * Map a raw object to a normalized listing.
- * `linkPath` is the object-URL slug (e.g. `sale-plots`) derived from the search URL.
+ * `linkPath` is the object-URL slug (e.g. `sale-plots`) — see the helper of that name below.
  */
 export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
   // NOTE: title is often empty on realt — fall back to town + street, then a generic label.
@@ -102,7 +113,7 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
     address: asText(obj.address),
     listTime: obj.updatedAt,
     images: obj.images ?? [],
-    // NOTE: no coordinates — realt's search payload carries none, so its cards get no map pin.
+    coordinates: asCoordinates(obj.location),
     seller: asText(obj.contactName),
     details: listingDetails(
       detail('Площадь', asPositiveNumber(obj.areaTotal), 'м²'),
@@ -126,4 +137,23 @@ function levels(obj: RawRealtObject): number | undefined {
 
 function toPrice(value: number | undefined): number | undefined {
   return typeof value === 'number' && value > 0 ? Math.round(value) : undefined;
+}
+
+/**
+ * The object-URL slug the search page declares for itself, or null.
+ *
+ * Why this matters at all: an object of a plots search lives at `/sale-plots/object/<code>/`, and
+ * a *wrong* slug is worse than no link — `realt.by/sale/object/<code>/` answers 301 to the
+ * `/sale/` search page (measured), so the reader lands on an unrelated list while the listing is
+ * already marked seen. That is why the adapter fails the poll rather than guessing.
+ *
+ * This is the fallback, not the primary source: `parentUrl` reads `/` on region-prefixed pages
+ * (measured on /grodno-region/sale/cottages/), so it is only useful for search URLs the adapter's
+ * own regex cannot read. The shape check is deliberately narrow for the same reason — a slug of
+ * one segment is exactly the 301 case above.
+ */
+function linkPath(pageProps: Record<string, unknown>): string | null {
+  const parentUrl = asText(asRecord(pageProps.seoPayload)?.parentUrl);
+  const slug = parentUrl?.replace(/^\/+|\/+$/g, '').replace(/\//g, '-');
+  return slug !== undefined && /^(sale|rent)-[a-z]+(-[a-z]+)*$/.test(slug) ? slug : null;
 }
