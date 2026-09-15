@@ -1,4 +1,12 @@
-import { asArray, asNumber, asPositiveNumber, asRecord, asText, parseNextData } from '../next-data';
+import {
+  asArray,
+  asCoordinates,
+  asNumber,
+  asPositiveNumber,
+  asRecord,
+  asText,
+  parseNextData,
+} from '../next-data';
 
 const wrap = (json: string): string =>
   `<html><script id="__NEXT_DATA__" type="application/json">${json}</script></html>`;
@@ -113,5 +121,21 @@ describe('parseNextData', () => {
 
   it('keeps a "<" inside the JSON — the slice is positional, not a regex', () => {
     expect(parseNextData(wrap('{"title":"a < b"}'))).toEqual({ title: 'a < b' });
+  });
+});
+
+describe('asCoordinates', () => {
+  it('reads a [longitude, latitude] pair — longitude first', () => {
+    expect(asCoordinates([27.53, 53.9])).toEqual({ lat: 53.9, lon: 27.53 });
+  });
+
+  it.each([
+    ['malformed', 'not a pair'],
+    ['half-filled', [27.53]],
+    ['out of range', [27.53, 953.9]],
+    // A zeroed pair is an unfilled field, not a spot in the Atlantic.
+    ['zeroed', [0, 0]],
+  ])('drops %s input rather than pinning the wrong place', (_label, value) => {
+    expect(asCoordinates(value)).toBeUndefined();
   });
 });

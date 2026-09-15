@@ -3,14 +3,14 @@ import { matchesHost } from '@/common/url';
 import { detail, listingDetails } from '../listing-details';
 import {
   asArray,
-  asNumber,
+  asCoordinates,
   asPositiveNumber,
   asRecord,
   asText,
   parseNextData,
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
-import type { Coordinates, Listing } from '../source-adapter';
+import type { Listing } from '../source-adapter';
 
 /**
  * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
@@ -99,7 +99,7 @@ export function mapAd(ad: RawKufarAd): Listing {
     address: asText(param(ad.account_parameters, 'address')),
     listTime: ad.list_time,
     images: (ad.images ?? []).map((image) => `${IMAGE_CDN_BASE}/${image.path}`),
-    coordinates: toCoordinates(param(ad.ad_parameters, 'coordinates')),
+    coordinates: asCoordinates(param(ad.ad_parameters, 'coordinates')),
     seller: asText(param(ad.account_parameters, 'name')),
     // Order is the card's reading order — what identifies the object first, extras last.
     details: listingDetails(
@@ -183,22 +183,4 @@ function facilities(ad: RawKufarAd): Array<ReturnType<typeof detail>> {
     const labels = (asArray<unknown>(value) ?? [value]).map(asText).filter((l) => l !== undefined);
     return detail(label, labels.join(', '));
   });
-}
-
-/**
- * Kufar's `coordinates` parameter, stored as `[longitude, latitude]` — longitude FIRST, the
- * reverse of the usual order (verified live: a Grodno ad reads `[23.85, 53.68]`). The order is
- * pinned by a spec, not by this check: for Belarus both figures are in range either way, so a
- * swap would pass here and only show up as a pin in the wrong country.
- *
- * What the check does catch: malformed values, and `[0, 0]` — a zeroed pair is not a location
- * off the African coast, it is a field nobody filled.
- */
-function toCoordinates(value: unknown): Coordinates | undefined {
-  const pair = asArray<unknown>(value);
-  const lon = asNumber(pair?.[0]);
-  const lat = asNumber(pair?.[1]);
-  if (lon === undefined || lat === undefined) return undefined;
-  if (lat === 0 && lon === 0) return undefined;
-  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : undefined;
 }

@@ -17,7 +17,7 @@ start; more frequent once throttling/dedupe land).
 - Events: **new only**, delivered as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies, address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, and the link — plus a map pin when the
-  source publishes one (kufar does, realt does not). Past **30 cards** in one delivery the rest
+  source publishes one (both kufar and realt do). Past **30 cards** in one delivery the rest
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
   Messages are paced one per second. A refused photo falls back to the text card; a refused pin
   is ignored — the listing already arrived.

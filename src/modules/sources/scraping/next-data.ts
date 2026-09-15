@@ -1,3 +1,5 @@
+import type { Coordinates } from '../source-adapter';
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -73,4 +75,23 @@ export function parseNextData(html: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Narrow a `[longitude, latitude]` pair — longitude FIRST, the reverse of the usual order.
+ * Both sources spell it that way (kufar's `coordinates` parameter, realt's `location`), verified
+ * live against Grodno and Minsk listings. The order is pinned by the parsers' specs, not by this
+ * check: for Belarus both figures are in range either way, so a swap would pass here and only
+ * show up as a pin in the wrong country.
+ *
+ * What the check does catch: malformed values, and `[0, 0]` — a zeroed pair is not a location
+ * off the African coast, it is a field nobody filled.
+ */
+export function asCoordinates(value: unknown): Coordinates | undefined {
+  const pair = asArray<unknown>(value);
+  const lon = asNumber(pair?.[0]);
+  const lat = asNumber(pair?.[1]);
+  if (lon === undefined || lat === undefined) return undefined;
+  if (lat === 0 && lon === 0) return undefined;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : undefined;
 }

@@ -55,7 +55,7 @@ describe('extractPage', () => {
       JSON.stringify({ props: { pageProps: { objects: null } } }) +
       '</script>';
 
-    expect(extractPage(nullObjects)).toEqual({ objects: [], pagination: null });
+    expect(extractPage(nullObjects)).toEqual({ objects: [], pagination: null, linkPath: null });
   });
 
   it('treats pageProps without an objects array as empty — realt renders some zero-result pages so', () => {
@@ -64,7 +64,35 @@ describe('extractPage', () => {
       JSON.stringify({ props: { pageProps: { apolloState: {} } } }) +
       '</script>';
 
-    expect(extractPage(noObjects)).toEqual({ objects: [], pagination: null });
+    expect(extractPage(noObjects)).toEqual({ objects: [], pagination: null, linkPath: null });
+  });
+
+  // The slug the object links are built from. Read from the payload rather than guessed from the
+  // search URL, because a wrong one 301s to an unrelated search page instead of erroring.
+  it('reads the object-URL slug the page declares for itself', () => {
+    expect(extractPage(fixture).linkPath).toBe('sale-plots');
+  });
+
+  // A one-segment slug builds realt.by/sale/object/<code>/, which 301s to the /sale/ search page
+  // — the very link this helper exists to avoid. Region-prefixed pages really do return '/'.
+  it.each(['/sale', '/', '/sale/plots?x=1'])('refuses the unusable slug %s', (parentUrl) => {
+    const page =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { objects: [], seoPayload: { parentUrl } } } }) +
+      '</script>';
+
+    expect(extractPage(page).linkPath).toBeNull();
+  });
+
+  it('refuses a slug that is not a path of plain segments — a guess is worse than none', () => {
+    const junkSeo =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({
+        props: { pageProps: { objects: [], seoPayload: { parentUrl: '/sale/plots?x=1' } } },
+      }) +
+      '</script>';
+
+    expect(extractPage(junkSeo).linkPath).toBeNull();
   });
 });
 
@@ -81,6 +109,20 @@ describe('mapObject', () => {
       priceByn: 19401,
       address: 'Кировск Старосельская ул. 14',
     });
+  });
+
+  // realt spells coordinates the way kufar does — longitude first. Pinned here, because for
+  // Belarus a swapped pair stays in range and would only show up as a pin in the wrong country.
+  it('maps coordinates from location, longitude first', () => {
+    const [obj] = extractPage(fixture).objects;
+
+    expect(mapObject(obj, 'sale-plots').coordinates).toEqual({ lat: 53.811874, lon: 27.506369 });
+  });
+
+  it('drops a zeroed pair — [0, 0] is an unfilled field, not the Gulf of Guinea', () => {
+    const [obj] = extractPage(fixture).objects;
+
+    expect(mapObject({ ...obj, location: [0, 0] }, 'sale-plots').coordinates).toBeUndefined();
   });
 
   it('falls back to town + street when the title is empty', () => {
@@ -109,7 +151,7 @@ describe('mapObject', () => {
       { label: 'Участок', value: '8 сот.' },
       { label: 'Год постройки', value: '1979' },
     ]);
-    // realt publishes no coordinates, so its cards get no map pin.
+    // This object carries no `location`; only an object that does gets a pin.
     expect(listing.coordinates).toBeUndefined();
   });
 

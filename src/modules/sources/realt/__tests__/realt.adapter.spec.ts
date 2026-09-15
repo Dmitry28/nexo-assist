@@ -57,6 +57,44 @@ describe('RealtAdapter', () => {
       expect(listings[0].link).toBe('https://realt.by/sale-plots/object/4152736/');
     });
 
+    it('falls back to the slug the page declares when the search URL has no segment', async () => {
+      const page =
+        '<script id="__NEXT_DATA__" type="application/json">' +
+        JSON.stringify({
+          props: {
+            pageProps: {
+              objects: [{ code: 7, updatedAt: '2026-01-01T00:00:00Z', priceRates: {} }],
+              seoPayload: { parentUrl: '/rent/flats' },
+            },
+          },
+        }) +
+        '</script>';
+      fetchMock.mockResolvedValue(new Response(page, { status: 200 }));
+
+      const [listing] = await adapter.fetch('https://realt.by/search/');
+
+      expect(listing.link).toBe('https://realt.by/rent-flats/object/7/');
+    });
+
+    // The old code defaulted to `sale` here, and realt.by/sale/object/<code>/ answers 301 to the
+    // /sale/ search page — so the reader landed on an unrelated list while the listing was
+    // already marked seen. Failing the poll is the lesser evil: nothing gets marked.
+    it('fails loudly when neither the page nor the URL yields a slug', async () => {
+      const page =
+        '<script id="__NEXT_DATA__" type="application/json">' +
+        JSON.stringify({
+          props: {
+            pageProps: {
+              objects: [{ code: 7, updatedAt: '2026-01-01T00:00:00Z', priceRates: {} }],
+            },
+          },
+        }) +
+        '</script>';
+      fetchMock.mockResolvedValue(new Response(page, { status: 200 }));
+
+      await expect(adapter.fetch('https://realt.by/search/')).rejects.toThrow('object-URL slug');
+    });
+
     it('follows ?page=N until pagination is exhausted', async () => {
       fetchMock
         .mockResolvedValueOnce(new Response(realtPage([1], 40)))

@@ -132,7 +132,7 @@ describe('sendCard', () => {
     expect(sender.location).toHaveBeenCalled();
   });
 
-  it('sends no pin when the source published none — realt never does', async () => {
+  it('sends no pin when the listing carries no coordinates', async () => {
     const sender = stubSender();
 
     await send(sender, photos(1));
