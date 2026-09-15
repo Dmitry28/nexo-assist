@@ -91,15 +91,32 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Skip rather than queue: whatever is polling covers the same subscriptions, and a
     // WATCH_CRON firing faster than a run lasts would otherwise stack parallel runs.
     // The owner is told, because a warn stays inside the process (PRODUCT_PLAN.md § бэклог).
-    if (!this.status.tryStartPolling()) {
+    const slot = this.status.tryStartPolling();
+    if (slot.claim === 'busy') {
       this.logger.warn('Watch run skipped — a poll is already in progress');
       await this.notifyAdmin('⚠️ Суточный прогон пропущен — опрос уже шёл. Проверки не было.');
       return;
     }
+    if (slot.claim === 'reclaimed') {
+      // The previous run never released the slot, so it never finished either. Reporting it is
+      // the whole point of the watchdog: without this the only symptom is a bot that quietly
+      // stopped checking, and the run that hung leaves no other trace.
+      // NOTE: Sentry as well as Telegram — notifyAdmin's own failure is only a warn, and a hung
+      // run is the last thing that should depend on the channel that fails silently.
+      this.logger.error('Watch run reclaimed a stuck polling slot — the previous run never ended');
+      Sentry.captureMessage('Watch run reclaimed a stuck polling slot', 'error');
+      // Not awaited: if the previous run hung on a Telegram send, this send hangs the same way,
+      // and awaiting it would stall the very run that came to replace it.
+      void this.notifyAdmin('🚨 Предыдущий прогон завис и не завершился. Слот отобран, проверяю.');
+    }
+    const startedAt = Date.now();
     try {
       await this.pollAll();
     } finally {
-      this.status.finishPolling();
+      // Logged so the margin under POLL_STUCK_AFTER_MS stays observable as subscriptions grow —
+      // the ceiling is sized by arithmetic, and arithmetic drifts.
+      this.logger.log(`Watch run finished in ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      this.status.finishPolling(slot.key);
     }
     // NOTE: outside the try/finally on purpose — this records the last *successful* run, which
     // is what /stats now says.

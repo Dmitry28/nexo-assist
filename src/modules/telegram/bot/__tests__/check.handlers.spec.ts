@@ -286,7 +286,7 @@ describe('CheckHandlers', () => {
 
     await handlers.onCheck(makeCtx({ userId: 1 }));
 
-    expect(status.tryStartPolling()).toBe(true); // free again
+    expect(status.tryStartPolling().claim).toBe('started'); // free again
   });
 
   it('show-current denies a subscription that is not yours', async () => {
@@ -310,7 +310,7 @@ describe('CheckHandlers', () => {
     );
     expect(watch.current).not.toHaveBeenCalled();
     // The refusal must not release the slot it never took — that would free the daily run's one.
-    expect(status.tryStartPolling()).toBe(false);
+    expect(status.tryStartPolling().claim).toBe('busy');
   });
 
   it('show-current ignores a stale callback answer — the fetch still runs', async () => {
@@ -341,7 +341,7 @@ describe('CheckHandlers', () => {
 
     // runDaily abandons the run when the slot is taken, so a tap holding it would silence the
     // bot for every user until tomorrow.
-    expect(status.tryStartPolling()).toBe(true);
+    expect(status.tryStartPolling().claim).toBe('started');
     status.finishPolling();
     finishFetch();
     await tap;
