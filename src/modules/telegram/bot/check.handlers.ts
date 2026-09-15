@@ -70,9 +70,17 @@ export class CheckHandlers {
     }
 
     // Share the polling slot with the daily run — see WatchStatus.
-    if (!this.status.tryStartPolling()) {
+    const slot = this.status.tryStartPolling();
+    if (slot.claim === 'busy') {
       await ctx.reply(POLL_IN_PROGRESS);
       return;
+    }
+    // A reclaim is reported by whoever performs it: /check can beat the daily run to it, and
+    // then this reply is the only trace the hang leaves. /check is the owner's command, so the
+    // person reading this is the person who can act on it.
+    if (slot.claim === 'reclaimed') {
+      this.logger.error('/check reclaimed a stuck polling slot — the previous run never ended');
+      await ctx.reply('⚠️ Предыдущая проверка зависла и не завершилась. Начинаю заново.');
     }
     try {
       const checked = subs.slice(0, MAX_CHECK_SUBSCRIPTIONS);
@@ -91,7 +99,7 @@ export class CheckHandlers {
       // Nothing was reported (no findings, no errors) — say so; otherwise it would contradict.
       if (!replied) await ctx.reply('Ничего нового.');
     } finally {
-      this.status.finishPolling();
+      this.status.finishPolling(slot.key);
     }
   }
 

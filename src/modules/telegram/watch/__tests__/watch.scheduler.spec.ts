@@ -21,7 +21,7 @@ import {
   MAX_REPRIEVE_FAILURES,
   WatchScheduler,
 } from '../watch.scheduler';
-import { WatchStatus } from '../watch.status';
+import { POLL_STUCK_AFTER_MS, WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
   makeSubscription({
@@ -635,7 +635,10 @@ describe('WatchScheduler daily job', () => {
 });
 
 describe('WatchScheduler.runDaily overlap', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
 
   it('skips the run and alerts the admin when a poll is already in progress', async () => {
     const { subscriptions, telegram, status, scheduler } = build({ adminTelegramId: 99 });
@@ -648,12 +651,28 @@ describe('WatchScheduler.runDaily overlap', () => {
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('пропущен'));
   });
 
+  // A stuck slot is otherwise invisible: the bot simply stops checking, and the run that hung
+  // left no trace. The alert is the only thing that turns it into something anyone can notice.
+  it('runs anyway when the slot was stuck, and tells the admin it was reclaimed', async () => {
+    const { subscriptions, telegram, status, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([]);
+    jest.useFakeTimers();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    status.tryStartPolling(); // a run that will never release it
+    jest.advanceTimersByTime(POLL_STUCK_AFTER_MS);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.listActive).toHaveBeenCalled();
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('завис'));
+  });
+
   it('releases the slot when the run throws', async () => {
     const { subscriptions, status, scheduler } = build();
     subscriptions.listActive.mockRejectedValue(new Error('db down'));
 
     await expect(scheduler.runDaily()).rejects.toThrow('db down');
 
-    expect(status.tryStartPolling()).toBe(true);
+    expect(status.tryStartPolling().claim).toBe('started');
   });
 });
