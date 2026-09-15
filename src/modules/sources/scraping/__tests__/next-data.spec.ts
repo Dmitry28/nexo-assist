@@ -67,6 +67,18 @@ describe('asText', () => {
 });
 
 describe('asNumber', () => {
+  // kufar wraps some numeric parameters in a one-element array — see asNumber's docstring.
+  it('unwraps a one-element array', () => {
+    expect(asNumber([11])).toBe(11);
+  });
+
+  it.each([
+    ['a longer array', [11, 9]],
+    ['an empty array', []],
+  ])('reads %s as no value', (_label, value) => {
+    expect(asNumber(value)).toBeUndefined();
+  });
+
   it('passes a number through', () => {
     expect(asNumber(114.6)).toBe(114.6);
   });

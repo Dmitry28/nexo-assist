@@ -190,6 +190,42 @@ describe('mapAd', () => {
     expect(listing.coordinates).toEqual({ lat: 53.68, lon: 23.85 });
   });
 
+  // Values as a live long-term-rent page spells them: the storeys arrive wrapped in a
+  // one-element array, the dictionary fields as a code plus its label.
+  it('reads the long-term rent fields', () => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [
+        { p: 'floor', v: [3], vl: ['3'] },
+        { p: 're_number_floors', v: [9], vl: ['9'] },
+        { p: 'flat_repair', v: '5', vl: 'Евро' },
+        { p: 'flat_furnished', v: true, vl: 'Да' },
+        { p: 'flat_rent_prepayment', v: '5', vl: 'Один месяц' },
+      ],
+    });
+
+    expect(listing.details).toEqual([
+      { label: 'Этаж', value: '3' },
+      { label: 'Этажей', value: '9' },
+      { label: 'Ремонт', value: 'Евро' },
+      { label: 'Мебель', value: 'Да' },
+      { label: 'Предоплата', value: 'Один месяц' },
+    ]);
+  });
+
+  // Measured: an unfurnished flat carries `flat_furnished: false` with the label «-», and a
+  // card row reading «Мебель: -» is noise, not information.
+  it('drops a dictionary field whose label is just a dash', () => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [{ p: 'flat_furnished', v: false, vl: '-' }],
+    });
+
+    expect(listing.details).toEqual([]);
+  });
+
   it('omits price when the raw value is zero or missing', () => {
     const listing = mapAd({ ad_id: 1, subject: 'x', list_time: '2026-01-01T00:00:00Z' });
 
