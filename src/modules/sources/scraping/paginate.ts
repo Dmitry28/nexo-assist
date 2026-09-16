@@ -1,6 +1,6 @@
 import type { Logger } from '@nestjs/common';
 
-import type { Listing } from '../source-adapter';
+import type { FetchResult, Listing } from '../source-adapter';
 
 import { fetchHtml } from './http';
 
@@ -42,8 +42,9 @@ export async function paginate({
   logger: Logger;
   /** Route fetches through SCRAPE_PROXY_URL — for sources that block datacenter IPs. */
   useProxy?: boolean;
-}): Promise<Listing[]> {
+}): Promise<FetchResult> {
   const byId = new Map<string, Listing>();
+  let complete = true;
   let url: string | null = firstUrl;
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
     let parsed: ParsedPage;
@@ -51,11 +52,8 @@ export async function paginate({
       parsed = parsePage(await fetchHtml({ url, host, useProxy }), page);
     } catch (err) {
       if (page === 1) throw err;
-      // TODO [M]: a later-page failure is invisible outside the logs — and `parsePage` runs in
-      // this same try, so a layout change (or a bug of ours) that breaks only page 2+ leaves
-      // page 1 working, the run green, and every search silently capped at one page. A warn
-      // cannot say that; reporting it needs a caller-supplied context, since `reportUserFacing`
-      // lives in modules/telegram and its tags are the bot's, not the scraper's.
+      // A prefix, not a failure — see FetchResult for what `complete` is for.
+      complete = false;
       logger.warn(
         { err },
         `Page ${page} failed for ${firstUrl} — returning ${byId.size} collected`,
@@ -70,5 +68,5 @@ export async function paginate({
     }
     url = nextUrl;
   }
-  return [...byId.values()];
+  return { listings: [...byId.values()], complete };
 }

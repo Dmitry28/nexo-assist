@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { sentryMessage } from '@/__tests__/helpers/sentry';
 import { makeSubscription as sub } from '@/__tests__/helpers/subscription';
 import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
@@ -13,11 +14,11 @@ import { WatchService } from '../watch.service';
 const baselined = (over: Partial<Subscription> = {}): Subscription =>
   sub({ baselinedAt: new Date(), ...over });
 
-const build = (fetched: Listing[] = []) => {
+const build = (fetched: Listing[] = [], complete = true) => {
   const adapter: SourceAdapter = {
     id: 'kufar',
     matches: () => true,
-    fetch: jest.fn().mockResolvedValue(fetched),
+    fetch: jest.fn().mockResolvedValue({ listings: fetched, complete }),
   };
   const subscriptions = {
     has: jest.fn().mockResolvedValue(true),
@@ -32,6 +33,22 @@ const build = (fetched: Listing[] = []) => {
 };
 
 describe('WatchService.poll — first run (baseline)', () => {
+  // A partial baseline under-counts the search, so the listings it missed read as "new" later.
+  // It is still marked done on purpose (see baseline's NOTE) — the flag is what makes the cause
+  // visible instead of leaving a burst of fake "new" to be explained away.
+  it('reports a partial fetch, because nothing else would', async () => {
+    const { watch } = build([listing(1)], false);
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await expect(watch.poll(sub())).resolves.toEqual({ kind: 'baselined', count: 1 });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('partial'));
+    expect(sentryMessage()).toHaveBeenCalledWith(
+      expect.stringContaining('Partial fetch'),
+      'warning',
+    );
+  });
+
   it('seeds the seen set silently and reports how many were seeded', async () => {
     const { subscriptions, watch } = build([listing(1), listing(2)]);
 

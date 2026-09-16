@@ -4,7 +4,7 @@ import { matchesHost, withParam } from '@/common/url';
 
 import { paginate } from '../scraping/paginate';
 import { SourceUnavailableError } from '../source-adapter';
-import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
+import type { FetchResult, SourceAdapter, SourceId } from '../source-adapter';
 
 import { extractPage, mapObject } from './realt.parser';
 
@@ -23,7 +23,7 @@ export class RealtAdapter implements SourceAdapter {
     return matchesHost({ url, host: HOST });
   }
 
-  async fetch(url: string): Promise<Listing[]> {
+  async fetch(url: string): Promise<FetchResult> {
     const fromUrl = this.linkPath(url);
     // NOTE: realt paginates by ?page=N. Pin newest-first and the start to page 1 (a pasted
     // URL may carry its own sort/page), then advance until pageSize × page covers totalCount.

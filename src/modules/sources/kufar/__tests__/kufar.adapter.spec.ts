@@ -39,7 +39,7 @@ describe('KufarAdapter', () => {
     it('fetches and parses listings from a search url', async () => {
       fetchMock.mockResolvedValue(new Response(fixture, { status: 200 }));
 
-      const listings = await adapter.fetch('https://re.kufar.by/l/minsk/kupit/garazh');
+      const { listings } = await adapter.fetch('https://re.kufar.by/l/minsk/kupit/garazh');
 
       expect(listings).toHaveLength(2);
       expect(listings[0].externalId).toBe('1069720654');

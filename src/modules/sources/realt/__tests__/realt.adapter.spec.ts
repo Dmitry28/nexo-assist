@@ -50,7 +50,7 @@ describe('RealtAdapter', () => {
     it('parses listings and builds the link from the search-URL slug', async () => {
       fetchMock.mockResolvedValue(new Response(fixture, { status: 200 }));
 
-      const listings = await adapter.fetch('https://realt.by/grodno-region/sale/plots/map/');
+      const { listings } = await adapter.fetch('https://realt.by/grodno-region/sale/plots/map/');
 
       expect(listings).toHaveLength(3);
       expect(listings[0].externalId).toBe('4152736');
@@ -71,7 +71,9 @@ describe('RealtAdapter', () => {
         '</script>';
       fetchMock.mockResolvedValue(new Response(page, { status: 200 }));
 
-      const [listing] = await adapter.fetch('https://realt.by/search/');
+      const {
+        listings: [listing],
+      } = await adapter.fetch('https://realt.by/search/');
 
       expect(listing.link).toBe('https://realt.by/rent-flats/object/7/');
     });
@@ -100,7 +102,7 @@ describe('RealtAdapter', () => {
         .mockResolvedValueOnce(new Response(realtPage([1], 40)))
         .mockResolvedValueOnce(new Response(realtPage([2], 40)));
 
-      const listings = await adapter.fetch('https://realt.by/grodno-region/sale/plots/map/');
+      const { listings } = await adapter.fetch('https://realt.by/grodno-region/sale/plots/map/');
 
       expect(listings.map((l) => l.externalId)).toEqual(['1', '2']);
       expect(fetchMock).toHaveBeenCalledTimes(2);

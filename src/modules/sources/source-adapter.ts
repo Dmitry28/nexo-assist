@@ -28,6 +28,24 @@ export class SourceUnavailableError extends Error {
   override readonly name = 'SourceUnavailableError';
 }
 
+/**
+ * What one `fetch` collected, and whether anything was lost along the way.
+ *
+ * `complete: false` means a page after the first failed to load or parse, so these listings are a
+ * prefix of what the search actually holds. It is never an error by itself: page one carries the
+ * newest listings, and a run that delivers those is a useful run. It matters to the caller that
+ * treats a fetch as an inventory (the baseline) and to whoever needs to hear that a source
+ * started breaking on page two while page one still works.
+ *
+ * A walk that stops at the page cap is still `complete: true`. The cap is our decision, not a
+ * loss — every page we meant to read came back. Conflating the two would make the flag fire on
+ * every large search and mean nothing.
+ */
+export interface FetchResult {
+  listings: Listing[];
+  complete: boolean;
+}
+
 /** A map pin: latitude/longitude as the source published them. */
 export interface Coordinates {
   lat: number;
@@ -72,5 +90,5 @@ export interface SourceAdapter {
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /** Fetch + parse the URL into normalized listings. */
-  fetch(url: string): Promise<Listing[]>;
+  fetch(url: string): Promise<FetchResult>;
 }
