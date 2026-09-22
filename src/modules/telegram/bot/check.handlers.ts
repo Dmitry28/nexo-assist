@@ -17,7 +17,7 @@ import { isAdmin } from './admin';
 import type { CardSender } from './send-card';
 import { sendCard } from './send-card';
 import { deliverAndMark } from './telegram.deliver';
-import { NO_LINK_PREVIEW, PROMPT, formatCurrentListings } from './telegram.format';
+import { NO_LINK_PREVIEW, PROMPT, formatCurrentListings, searchLabel } from './telegram.format';
 
 // Refusal for both on-demand pollers (/check, which claims the slot, and the «Показать текущие»
 // button, which only peeks at it) — one wording so the two cannot drift. Worded for either
@@ -116,6 +116,7 @@ export class CheckHandlers {
         return true;
       }
       const { delivered, error, markSeenError } = await deliverAndMark({
+        search: searchLabel(sub),
         listings: outcome.listings,
         send: {
           card: (message) =>
