@@ -15,6 +15,7 @@ import { SEND_DELAY_MS } from '@/modules/telegram/bot/send-card';
 import { CARDS_PER_DELIVERY } from '@/modules/telegram/bot/telegram.format';
 import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
+import { SourceHealth } from '../source-health';
 import {
   JOB_NAME,
   MAX_CONSECUTIVE_FAILURES,
@@ -57,6 +58,7 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
   };
   const status = new WatchStatus();
   jest.spyOn(status, 'markRun');
+  const health = new SourceHealth();
   const registry = new SchedulerRegistry();
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
@@ -67,6 +69,7 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     telegram as unknown as TelegramService,
     metrics as unknown as WatchMetrics,
     status,
+    health,
   );
   return { subscriptions, watch, telegram, metrics, status, scheduler, registry };
 };
@@ -384,6 +387,27 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // The pair the owner actually needs: the second morning of an outage says nothing new, and the
+  // fix that lands is announced — otherwise nobody can tell whether the repair worked.
+  it('does not repeat the outage alert the next run, and announces the recovery', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2), sub(3, 3)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    await scheduler.runDaily();
+    telegram.notify.mockClear();
+
+    await scheduler.runDaily();
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('Источник'));
+
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    await scheduler.runDaily();
+    expect(telegram.notify).toHaveBeenCalledWith(
+      99,
+      expect.stringContaining('снова отдаёт данные'),
+    );
   });
 
   // A subscription that polled fine but threw in its bookkeeping must still count as an attempt.

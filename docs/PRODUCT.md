@@ -97,10 +97,14 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
   when the pings stop, the watchdog alerts the owner (setup — DEPLOY.md §4.3b).
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — otherwise every alert
-  would go nowhere silently) is told about each auto-pause (403 / dead link) and about a source
-  that failed all its polls in a run. That verdict needs at least three polls, so a source with
-  fewer subscriptions is neither reported nor given the reprieve above
-  (PRODUCT_PLAN.md § Технический бэклог).
+  would go nowhere silently) is told about each auto-pause (403 / dead link), and about a source's
+  **health changing**: once when every poll of it fails, a reminder a week later if it is still
+  failing, and a line when it answers again, with how long it was silent. Repeating the same alert
+  every run is how an alert channel stops being read; the recovery line is how the owner learns a
+  fix worked. Recovery needs a successful poll, not merely the absence of a failure verdict — that
+  verdict needs at least three polls, so a source with fewer subscriptions is neither reported nor
+  given the reprieve above (PRODUCT_PLAN.md § Технический бэклог). The state lives in the
+  process, so a restart re-announces an ongoing outage as new.
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture

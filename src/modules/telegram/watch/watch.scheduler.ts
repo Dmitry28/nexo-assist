@@ -18,8 +18,9 @@ import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
 
+import { SourceHealth } from './source-health';
+import type { SourceSignal } from './source-health';
 import { SourceTally } from './source-tally';
-import type { SourceOutage } from './source-tally';
 import { pace } from './watch.pacing';
 import { WatchStatus } from './watch.status';
 
@@ -61,6 +62,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly telegram: TelegramService,
     private readonly metrics: WatchMetrics,
     private readonly status: WatchStatus,
+    private readonly health: SourceHealth,
   ) {}
 
   onModuleInit(): void {
@@ -159,18 +161,31 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       }
     }
     const outages = tally.failedSources();
-    await this.alertFailedSources(outages);
+    await this.alertSourceSignals(
+      this.health.update({ down: outages, succeeded: tally.succeededSources() }),
+    );
     await this.pauseDead(dead, new Set(outages.map(({ source }) => source)), blockedUsers);
     // Last on purpose: the gauges must count the subscriptions this run just paused as paused.
     await this.recordTotals();
   }
 
-  /** Alert the admin about any source whose polls all failed this run (likely a broken adapter). */
-  private async alertFailedSources(outages: SourceOutage[]): Promise<void> {
-    for (const { source, attempts } of outages) {
-      await this.notifyAdmin(
-        `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${attempts}) — возможно, сломан адаптер.`,
-      );
+  /**
+   * Tell the owner what changed about a source's health — not what its state is.
+   *
+   * Repeating «источник лежит» every run is how an alert channel stops being read, and a fix
+   * that lands silently leaves the owner guessing whether it worked. So: once when it breaks,
+   * a reminder only every OUTAGE_REMINDER_RUNS runs, and a line when it comes back.
+   */
+  private async alertSourceSignals(signals: SourceSignal[]): Promise<void> {
+    for (const signal of signals) {
+      const { source } = signal;
+      const text =
+        signal.kind === 'down'
+          ? `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${signal.attempts}) — возможно, сломан адаптер.`
+          : signal.kind === 'still-down'
+            ? `🚨 Источник «${source}» не отвечает уже ${signal.runs} прогонов с ошибкой.`
+            : `✅ Источник «${source}» снова отдаёт данные — молчал ${signal.runs} прогонов.`;
+      await this.notifyAdmin(text);
     }
   }
 
