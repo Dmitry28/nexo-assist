@@ -60,6 +60,8 @@ export function formatListTime(iso: string, now = new Date()): string {
 export interface CardPosition {
   index: number;
   total: number;
+  /** Which search this came from — a reader may be watching dozens (see `searchLabel`). */
+  search?: string;
 }
 
 /**
@@ -99,9 +101,19 @@ const escapeCard = (listing: Listing): CardText => ({
 /** The card's blocks, in reading order. */
 function compose(card: CardText, position?: CardPosition): string {
   const lines: string[] = [];
-  // A single card needs no counter: "1/1" is noise.
-  if (position !== undefined && position.total > 1) {
-    lines.push(`🆕 ${position.index}/${position.total}`);
+  // A single card needs no counter: "1/1" is noise. The search still earns its line — it is
+  // what tells the reader which of their watches just fired.
+  if (position !== undefined) {
+    const counter = position.total > 1 ? `🆕 ${position.index}/${position.total}` : '';
+    // Escaped here, like every other interpolated field: the label is built from a URL the user
+    // pasted, and a path decoding to `<b>` would make Telegram reject the card — forever, since
+    // an undelivered listing is rebuilt into the same broken message on every run. The digest
+    // path needs no escaping: it is sent without parse_mode.
+    const search = position.search === undefined ? undefined : escapeHtml(position.search);
+    const header = [counter, search].filter((part) => part !== undefined && part !== '');
+    // Em dash between the counter and the label: the label has its own `·` inside, and three
+    // identical separators read as three peers instead of "second of five, from this search".
+    if (header.length > 0) lines.push(header.join(' — '));
   }
   lines.push(`🏠 <b>${card.title}</b>`);
   if (card.description !== undefined) lines.push(`<i>${card.description}</i>`);

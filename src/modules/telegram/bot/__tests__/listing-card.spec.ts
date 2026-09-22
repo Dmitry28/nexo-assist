@@ -209,3 +209,39 @@ describe('listingCard — pathological input', () => {
     expect(card.length).toBeLessThanOrEqual(CAPTION_LIMIT_CHARS);
   });
 });
+
+describe('the search a card came from', () => {
+  it('names the search beside the counter', () => {
+    const text = listingCard(makeListing(1), MESSAGE_LIMIT_CHARS, {
+      index: 2,
+      total: 5,
+      search: 'kufar · grodno/kupit/dom',
+    });
+
+    expect(text.split('\n')[0]).toBe('🆕 2/5 — kufar · grodno/kupit/dom');
+  });
+
+  // The URL is pasted by the user, and a path can decode to markup. Unescaped, Telegram rejects
+  // the card with a 400 — and since nothing is marked seen until delivered, the same broken card
+  // is rebuilt on every run and the subscription never recovers.
+  it('escapes the label, which is built from a URL the user chose', () => {
+    const text = listingCard(makeListing(1), MESSAGE_LIMIT_CHARS, {
+      index: 1,
+      total: 1,
+      search: 'kufar · <b>hi</b>/kupit',
+    });
+
+    expect(text.split('\n')[0]).toBe('kufar · &lt;b&gt;hi&lt;/b&gt;/kupit');
+  });
+
+  // The counter is noise for a single card, but the search is not — it is the whole point.
+  it('keeps the search when a lone card has no counter', () => {
+    const text = listingCard(makeListing(1), MESSAGE_LIMIT_CHARS, {
+      index: 1,
+      total: 1,
+      search: 'realt · sale/plots',
+    });
+
+    expect(text.split('\n')[0]).toBe('realt · sale/plots');
+  });
+});

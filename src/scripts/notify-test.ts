@@ -151,7 +151,11 @@ async function main(): Promise<void> {
   for (const [i, listing] of MOCK_LISTINGS.entries()) {
     // Every card carries its position, exactly as `plan()` sends them. The one shape this does
     // not show is a lone listing, whose «1/1» the card suppresses (covered in listing-card.spec).
-    const message = listingMessage(listing, { index: i + 1, total: MOCK_LISTINGS.length });
+    const message = listingMessage(listing, {
+      index: i + 1,
+      total: MOCK_LISTINGS.length,
+      search: 'kufar · grodno/kupit/dom',
+    });
     console.info(
       `[${i + 1}/${MOCK_LISTINGS.length}] photos ${message.images.length}, ` +
         `pin ${message.coordinates ? 'yes' : 'no'}, caption ${message.caption.length} chars`,
