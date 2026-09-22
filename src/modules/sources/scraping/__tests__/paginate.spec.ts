@@ -27,7 +27,7 @@ describe('paginate', () => {
 
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(result.map((l) => l.externalId)).toEqual(['1', '2']);
+    expect(result.listings.map((l) => l.externalId)).toEqual(['1', '2']);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -40,7 +40,31 @@ describe('paginate', () => {
 
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(result.map((l) => l.externalId)).toEqual(['1', '2', '3']);
+    expect(result.listings.map((l) => l.externalId)).toEqual(['1', '2', '3']);
+  });
+
+  // What `complete` is for: page 1 keeps working, the run stays green, and without this the
+  // only trace of a search silently capped at one page is a warn nobody reads.
+  it('reports an incomplete walk when a later page fails', async () => {
+    const parsePage = jest
+      .fn()
+      .mockReturnValueOnce({ listings: [makeListing(1)], nextUrl: 'p2' })
+      .mockImplementationOnce(() => {
+        throw new Error('page 2 broke');
+      });
+
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+    expect(result.complete).toBe(false);
+    expect(result.listings).toHaveLength(1);
+  });
+
+  it('reports a complete walk when every page came back', async () => {
+    const parsePage = jest.fn().mockReturnValue({ listings: [makeListing(1)], nextUrl: null });
+
+    expect((await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).complete).toBe(
+      true,
+    );
   });
 
   it('stops at MAX_PAGES even if more pages are advertised', async () => {
@@ -50,16 +74,18 @@ describe('paginate', () => {
       .fn()
       .mockImplementation(() => ({ listings: [makeListing(++id)], nextUrl: 'next' }));
 
-    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+    const { listings } = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(result).toHaveLength(5); // MAX_PAGES
+    expect(listings).toHaveLength(5); // MAX_PAGES
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it('stops on an empty page', async () => {
     const parsePage = jest.fn().mockReturnValue({ listings: [], nextUrl: 'next' });
 
-    expect(await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).toEqual([]);
+    expect((await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).listings).toEqual(
+      [],
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -79,7 +105,7 @@ describe('paginate', () => {
 
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(result.map((l) => l.externalId)).toEqual(['1']);
+    expect(result.listings.map((l) => l.externalId)).toEqual(['1']);
   });
 
   it('throws when the first page fails to PARSE — a bot-wall must not look empty', async () => {
@@ -102,7 +128,7 @@ describe('paginate', () => {
 
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(result.map((l) => l.externalId)).toEqual(['1']);
+    expect(result.listings.map((l) => l.externalId)).toEqual(['1']);
   });
 
   it('passes the 1-based page number to parsePage', async () => {

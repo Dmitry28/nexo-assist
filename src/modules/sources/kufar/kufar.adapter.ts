@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { matchesHost, withParam, withoutParam } from '@/common/url';
 
 import { paginate } from '../scraping/paginate';
-import type { Listing, SourceAdapter, SourceId } from '../source-adapter';
+import type { FetchResult, SourceAdapter, SourceId } from '../source-adapter';
 
 import { HOST, extractPage, mapAd } from './kufar.parser';
 
@@ -21,7 +21,7 @@ export class KufarAdapter implements SourceAdapter {
     return matchesHost({ url, host: HOST });
   }
 
-  async fetch(url: string): Promise<Listing[]> {
+  async fetch(url: string): Promise<FetchResult> {
     // NOTE: Kufar paginates by a cursor token appended to the search URL. Strip a pasted
     // cursor (it would start mid-list and skip the newest pages) and pin newest-first.
     const base = withParam(withoutParam(url, 'cursor'), 'sort', SORT_NEWEST);

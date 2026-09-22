@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 
-import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
+import type { FetchResult, Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from './entities/subscription.entity';
@@ -51,11 +52,12 @@ export class WatchService {
    * fetch fails. Resolves to the number of listings seeded.
    */
   async baseline(sub: Subscription): Promise<number> {
-    const listings = await this.fetchListings(sub);
-    // NOTE: seed + mark-baselined in one transaction (seedBaseline). A later-page fetch
-    // failure yields a partial list (paginate keeps what it collected), so a partial
-    // baseline is still marked done — missed items surface as "new" later, bounded by the
-    // digest cap. Accepted until fetch reports completeness.
+    const { listings } = await this.fetchListings(sub);
+    // NOTE: seed + mark-baselined in one transaction (seedBaseline). A partial fetch is still
+    // marked done, deliberately: leaving it pending would re-baseline every run, and a source
+    // that always fails on page 2 would then never notify at all — silence is the worse of the
+    // two failures. What the missed items cost is one burst of "new" later, bounded by the
+    // digest cap; `complete` is reported so the cause is visible instead of guessed at.
     await this.subscriptions.seedBaseline(
       sub.id,
       listings.map((l) => l.externalId),
@@ -68,7 +70,7 @@ export class WatchService {
    * (getSeen only refreshes `seenAt` on already-delivered ids for the prune window).
    */
   async check(sub: Subscription): Promise<Listing[]> {
-    const listings = await this.fetchListings(sub);
+    const { listings } = await this.fetchListings(sub);
     const seen = await this.subscriptions.getSeen(
       sub.id,
       listings.map((l) => l.externalId),
@@ -77,8 +79,9 @@ export class WatchService {
   }
 
   /** Current listings for a subscription, read-only (does not touch the seen set). */
-  current(sub: Subscription): Promise<Listing[]> {
-    return this.fetchListings(sub);
+  async current(sub: Subscription): Promise<Listing[]> {
+    const { listings } = await this.fetchListings(sub);
+    return listings;
   }
 
   /** Mark listings as delivered so they are not sent again — call after a successful send. */
@@ -96,8 +99,21 @@ export class WatchService {
    * bigger pages breaks it silently: ids still on the page get pruned and re-delivered as
    * "new" every run. Warn at half the cap — exactly where the assumption sits today.
    */
-  private async fetchListings(sub: Subscription): Promise<Listing[]> {
-    const listings = await this.adapter(sub).fetch(sub.url);
+  private async fetchListings(sub: Subscription): Promise<FetchResult> {
+    const result = await this.adapter(sub).fetch(sub.url);
+    const { listings } = result;
+    // Reported here rather than in each caller: this is the one place every fetch passes
+    // through, and all three of them are hurt by a prefix — a baseline under-counts the search,
+    // a check leaves later-page ids un-refreshed and so prunable, and «показать текущие» shows
+    // a partial list as the whole one. Page 1 still works and the run stays green, so without
+    // this the breakage has no trace at all.
+    if (!result.complete) {
+      this.logger.warn(`${sub.source}: a later page failed for ${sub.url} — listings are partial`);
+      Sentry.withScope((scope) => {
+        scope.setContext('subscription', { id: sub.id, source: sub.source, url: sub.url });
+        Sentry.captureMessage(`Partial fetch for ${sub.source}`, 'warning');
+      });
+    }
     if (listings.length > MAX_SEEN_PER_SUBSCRIPTION / 2) {
       this.logger.warn(
         `${sub.source} returned ${listings.length} listings for one search — over half of ` +
@@ -105,7 +121,7 @@ export class WatchService {
           `page window reaches it, or pruned listings start coming back as new.`,
       );
     }
-    return listings;
+    return result;
   }
 
   private adapter(sub: Subscription): SourceAdapter {

@@ -121,10 +121,10 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     });
     const fetch = jest.spyOn(kufar, 'fetch');
 
-    fetch.mockResolvedValueOnce([listing(1)]);
+    fetch.mockResolvedValueOnce({ listings: [listing(1)], complete: true });
     expect(await watch.baseline(sub)).toBe(1);
 
-    fetch.mockResolvedValueOnce([listing(1), listing(2)]);
+    fetch.mockResolvedValueOnce({ listings: [listing(1), listing(2)], complete: true });
     const fresh = await watch.check(sub);
     expect(fresh.map((l) => l.externalId)).toEqual(['2']);
   });

@@ -32,6 +32,11 @@ npm run check:dead-code # knip — unused files/exports/dependencies
 
 Before claiming a change is done, run: `npm run lint && npm run typecheck && npm test`.
 
+**Changed an exported signature or return type? Add `npm run test:e2e`.** `npm test` does not
+include it, and typecheck does not catch it: `expect(aNumber).toEqual({…})` is legal TypeScript,
+so a stale e2e assertion sails through both and fails only in CI. It needs Postgres — `docker
+compose up -d` first.
+
 ## Key Files
 
 Full `src/` layout and layer rules → [rules/architecture.md](rules/architecture.md#project-structure).
