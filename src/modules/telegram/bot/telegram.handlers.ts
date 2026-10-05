@@ -149,27 +149,28 @@ export class TelegramHandlers {
     }
 
     // NOTE: catch only the baseline — a failed message edit must fall through to bot.catch.
-    // On failure the subscription is kept; the daily run baselines it silently.
-    const count = await this.watch.baseline(sub).catch((err: unknown) => {
+    // On failure the subscription is kept (except a rewritten search, below); the daily run
+    // baselines it silently.
+    const baseline = await this.watch.baseline(sub).catch((err: unknown) => {
       if (err instanceof SearchRewrittenError) return err;
       this.logger.warn({ err }, `Baseline failed for ${sub.url}`);
       reportUserFacing(err, { userId: candidate.userId, action: 'subscribe', url: sub.url });
       return null;
     });
 
-    if (count instanceof SearchRewrittenError) {
+    if (baseline instanceof SearchRewrittenError) {
       // Not kept: every poll would hit the same redirect, and the search behind it is not the
       // one the user chose. Removed before the message says so. If `add` revived the user's
       // paused subscription to this URL, that one goes too — it is just as broken.
       // No Sentry: the link is the user's input, not our defect; the log keeps a trace.
-      this.logger.log(`Rejected a rewritten search: ${count.from} → ${count.to}`);
+      this.logger.log(`Rejected a rewritten search: ${baseline.from} → ${baseline.to}`);
       await this.subscriptions.remove(sub.id, candidate.userId);
-      await ctx.editMessageText(searchRewrittenNotice(count.to), {
+      await ctx.editMessageText(searchRewrittenNotice({ from: candidate.url, to: baseline.to }), {
         link_preview_options: NO_LINK_PREVIEW,
       });
       return;
     }
-    if (count === null) {
+    if (baseline === null) {
       await ctx.editMessageText(
         `Готово ✅ Сайт сейчас не отвечает — загружу текущие объявления при следующей проверке.\n${sub.url}`,
         { link_preview_options: NO_LINK_PREVIEW },
@@ -177,6 +178,7 @@ export class TelegramHandlers {
       return;
     }
     // Offer the current listings on demand — baseline already counted them.
+    const count = baseline;
     const showCurrent =
       count > 0
         ? new InlineKeyboard().text(`Показать текущие (${count})`, `show:${sub.id}`)

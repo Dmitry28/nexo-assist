@@ -89,6 +89,8 @@ async function fetchFollowingHost({
     }
     // Against the ORIGINAL path, not the previous hop's, so a chain of benign-looking hops cannot
     // walk away from it. A trailing slash is not a different search (realt 308s to add one).
+    // NOTE: the path only, not the query — every rewrite measured changed the path, while query
+    // normalization is routine and would make a query check fire on healthy searches.
     if (pinPath && searchPath(next) !== searchPath(url)) throw new SearchRewrittenError(url, next);
     currentUrl = next;
   }

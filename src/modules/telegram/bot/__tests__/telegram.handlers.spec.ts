@@ -206,6 +206,7 @@ describe('TelegramHandlers', () => {
 
   // The search behind the redirect is not the one the user chose, and every poll would hit it.
   it('drops the subscription and says why when the site rewrites the search', async () => {
+    // Only realt pins its path in production; here the baseline is mocked, so the URLs are data.
     watch.baseline.mockRejectedValue(
       new SearchRewrittenError('https://re.kufar.by/l/minsk', 'https://re.kufar.by/l/belarus'),
     );
@@ -215,10 +216,9 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton(`subscribe:${nonce}`, 5);
 
     expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
-    expect(ctx.editMessageText).toHaveBeenCalledWith(
-      expect.stringContaining('https://re.kufar.by/l/belarus'),
-      expect.anything(),
-    );
+    const [text] = ctx.editMessageText.mock.calls[0] as [string];
+    expect(text).toContain('https://re.kufar.by/l/minsk'); // what they sent
+    expect(text).toContain('https://re.kufar.by/l/belarus'); // where the site took it
     // The link is user input, not our defect — nothing for Sentry.
     expect(sentryCapture()).not.toHaveBeenCalled();
   });

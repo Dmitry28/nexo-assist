@@ -183,9 +183,9 @@ export function searchLabel({ source, url }: { source: string; url: string }): s
 }
 
 /** The site swapped the pasted search for another one, so it cannot be watched (realt `addressV2`). */
-export const searchRewrittenNotice = (to: string): string =>
-  'Не могу следить за этой ссылкой: сайт подменяет её другим, более широким поиском:\n' +
-  `${to}\n\n` +
+export const searchRewrittenNotice = ({ from, to }: { from: string; to: string }): string =>
+  `Не могу следить за этой ссылкой:\n${from}\n\n` +
+  `Сайт подменяет её другим, более широким поиском:\n${to}\n\n` +
   'Обычно так делает фильтр адреса. Выберите город или район в самом разделе сайта (не в ' +
   'фильтре), откройте поиск и пришлите ссылку снова.';
 
