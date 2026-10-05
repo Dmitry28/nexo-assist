@@ -7,11 +7,11 @@ import type { FetchResult, SourceAdapter, SourceId } from '../source-adapter';
 
 import { HOST, extractPage, mapAd } from './kufar.parser';
 
-// Pin newest-first ordering — the page-cap model relies on new listings being on page 1
+// Pin newest-first ordering — the window (MAX_LISTINGS newest) relies on new listings coming first
 // (verified live: sort=lst.d orders by list_time desc).
 const SORT_NEWEST = 'lst.d';
 
-/** Kufar source adapter — fetches a search newest-first, up to the page cap. */
+/** Kufar source adapter — fetches a search newest-first, up to the window. */
 @Injectable()
 export class KufarAdapter implements SourceAdapter {
   readonly id: SourceId = 'kufar';

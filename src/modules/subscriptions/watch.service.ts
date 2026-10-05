@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 
+import { MAX_LISTINGS } from '@/modules/sources/source-adapter';
 import type { FetchResult, Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
@@ -116,9 +117,9 @@ export class WatchService {
   /**
    * Fetch a subscription's current listings — the single door to a source, and so the only
    * place that can notice the seen-set cap being outgrown. That cap is safe only while one
-   * fetch returns fewer ids than it stores (page window ≈ 150 against 300). An adapter with
-   * bigger pages breaks it silently: ids still on the page get pruned and re-delivered as
-   * "new" every run. Warn at half the cap — exactly where the assumption sits today.
+   * fetch returns fewer ids than it stores (MAX_LISTINGS against 300). `paginate` enforces the
+   * window, so this is the backstop for an adapter that does not go through it: past the window,
+   * ids still on the page get pruned and re-delivered as "new" every run.
    */
   private async fetchListings(sub: Subscription): Promise<FetchResult> {
     const result = await this.adapter(sub).fetch(sub.url);
@@ -129,11 +130,11 @@ export class WatchService {
     // a partial list as the whole one. Page 1 still works and the run stays green, so without
     // this the breakage has no trace at all.
     if (!result.complete) this.warn(sub, `Partial fetch for ${sub.source}`);
-    if (listings.length > MAX_SEEN_PER_SUBSCRIPTION / 2) {
+    if (listings.length > MAX_LISTINGS) {
       this.logger.warn(
-        `${sub.source} returned ${listings.length} listings for one search — over half of ` +
-          `MAX_SEEN_PER_SUBSCRIPTION (${MAX_SEEN_PER_SUBSCRIPTION}). Raise the cap before the ` +
-          `page window reaches it, or pruned listings start coming back as new.`,
+        `${sub.source} returned ${listings.length} listings for one search — over the ` +
+          `${MAX_LISTINGS} window MAX_SEEN_PER_SUBSCRIPTION (${MAX_SEEN_PER_SUBSCRIPTION}) is ` +
+          `sized for. Bound the adapter by it, or pruned listings start coming back as new.`,
       );
     }
     return result;

@@ -1,11 +1,13 @@
 import type { Logger } from '@nestjs/common';
 
+import { MAX_LISTINGS } from '../source-adapter';
 import type { FetchResult, Listing } from '../source-adapter';
 
 import { fetchHtml } from './http';
 
-// NOTE: page-cap bound (not a time window) — deterministic and enough for daily volumes
-// (e.g. 5 × ~30 = 150 listings). A lookback window can be added later if it proves wasteful.
+// NOTE: a count bound (MAX_LISTINGS newest, at most MAX_PAGES requests), not a time window —
+// deterministic and enough for daily volumes. A lookback window can be added later if it proves
+// wasteful.
 // Outgrowing it is observable: the walk reports `capped`, and WatchService warns on overflow.
 //
 // The cap is also what lets pages be fetched back-to-back with no pause: kufar rate-limits
@@ -51,7 +53,7 @@ export async function paginate({
   let complete = true;
   let capped = false;
   let url: string | null = firstUrl;
-  for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
+  for (let page = 1; url !== null && page <= MAX_PAGES && byId.size < MAX_LISTINGS; page++) {
     let parsed: ParsedPage;
     try {
       parsed = parsePage(await fetchHtml({ url, host, useProxy, pinPath }), page);
@@ -73,7 +75,9 @@ export async function paginate({
     }
     url = nextUrl;
     // Set here, not from `url` after the loop: an empty-page break leaves `url` non-null too.
-    if (page === MAX_PAGES && nextUrl !== null) capped = true;
+    if ((page === MAX_PAGES || byId.size >= MAX_LISTINGS) && nextUrl !== null) capped = true;
   }
-  return { listings: [...byId.values()], complete, capped };
+  // More than the window arrived (one big page can overshoot it): keep the newest, say so.
+  if (byId.size > MAX_LISTINGS) capped = true;
+  return { listings: [...byId.values()].slice(0, MAX_LISTINGS), complete, capped };
 }
