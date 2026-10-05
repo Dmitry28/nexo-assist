@@ -11,6 +11,7 @@ import { AddNormalizedUrl1783187484846 } from '@/database/migrations/17831874848
 import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
 import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
 import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
+import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -51,6 +52,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             AddPausedAt1783195101942,
             AddConsecutiveFailures1783196783018,
             EnableRowLevelSecurity1785920305000,
+            AddLastNotifiedAt1791244800000,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -156,6 +158,27 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     await subscriptions.markSeen(sub.id, ['2', '3']); // '2' already seen — ignored, no error
 
     expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4']))].sort()).toEqual(['2', '3']);
+  });
+
+  // The quiet report counts from this stamp, against the real users table.
+  it('markNotified stamps the user as just notified', async () => {
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+    const stamp = async () =>
+      (
+        await dataSource.query<{ lastNotifiedAt: Date | null }[]>(
+          `SELECT "lastNotifiedAt" FROM users WHERE id = $1`,
+          [sub.userId],
+        )
+      )[0].lastNotifiedAt;
+    expect(await stamp()).toBeNull();
+
+    await subscriptions.markNotified(sub.userId);
+
+    expect(await stamp()).toBeInstanceOf(Date);
   });
 
   it('getSeen refreshes seenAt for in-window ids — pruning never drops still-visible listings', async () => {

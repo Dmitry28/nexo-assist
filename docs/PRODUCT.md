@@ -22,6 +22,10 @@ start; more frequent once throttling/dedupe land).
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
   Messages are paced one per second. A refused photo falls back to the text card; a refused pin
   is ignored — the listing already arrived.
+- **A week of silence is confirmed:** a user who received nothing for 7 days gets one
+  message — «🔕 Новых объявлений пока нет…» and the list of their searches (one per user, not
+  per search). Only searches that polled fine that run are listed — a source that did not answer is
+  never reported as «nothing new».
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Logs and code stay
   English; per-profile language is Phase 7.
 - Buttons: Следить / Отмена / Показать текущие, and in `/list` ❌ remove / ▶️ resume. A «Следить»

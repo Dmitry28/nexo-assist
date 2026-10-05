@@ -216,11 +216,26 @@ export const HELP_MESSAGE = [
   'Команды:',
   ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),
   '',
+  'Если неделю нового нет, пришлю короткое «пока нет» — чтобы было видно, что я работаю.',
+  '',
   'В /list: ❌ — удалить поиск, ⏸ — он на паузе (не отвечал), ▶️ — вернуть его в работу.',
   '',
   'Данные: храню ваш telegram-id, имя, @username, язык интерфейса и ссылки, за которыми ' +
     'слежу, — только чтобы присылать уведомления. Хотите удалить — напишите владельцу бота.',
 ].join('\n');
+
+/**
+ * The weekly «still watching» note for a user who heard nothing for a while (watch.scheduler.ts
+ * § reportQuiet). No «за неделю»: the gap can be a month, or a search added two days ago.
+ * Plain text, like the digest.
+ */
+export const quietReport = (subs: { source: string; url: string }[]): string =>
+  [
+    '🔕 Новых объявлений пока нет. Проверяю каждый день — напишу, как только появятся.',
+    '',
+    'Слежу за:',
+    ...subs.map((s) => `• ${searchLabel(s)}`),
+  ].join('\n');
 
 /** Admin `/stats` snapshot. */
 export const formatStats = (stats: {

@@ -94,12 +94,23 @@ export class WatchService {
     return listings;
   }
 
-  /** Mark listings as delivered so they are not sent again — call after a successful send. */
-  markSeen(sub: Subscription, listings: Listing[]): Promise<void> {
-    return this.subscriptions.markSeen(
+  /**
+   * Mark listings as delivered so they are not sent again — call after a successful send.
+   *
+   * Also stamps the user as just notified: every unsolicited delivery (the daily run and /check)
+   * ends here, so this is the one writer the quiet report can count from. «Показать текущие»
+   * does not come through here — the user asked for that look, it proves nothing about the bot.
+   * NOTE: a failed stamp after the insert only brings the next quiet report forward — not worth
+   * a transaction around what was already delivered.
+   */
+  async markSeen(sub: Subscription, listings: Listing[]): Promise<void> {
+    // NOTE: nothing delivered → no stamp; insertSeen's own empty guard does not cover the stamp.
+    if (listings.length === 0) return;
+    await this.subscriptions.markSeen(
       sub.id,
       listings.map((l) => l.externalId),
     );
+    await this.subscriptions.markNotified(sub.userId);
   }
 
   /**

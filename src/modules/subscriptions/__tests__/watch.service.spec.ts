@@ -25,6 +25,7 @@ const build = (fetched: Listing[] = [], complete = true, capped = false) => {
     seedBaseline: jest.fn().mockResolvedValue(undefined),
     getSeen: jest.fn().mockResolvedValue(new Set<string>()),
     markSeen: jest.fn().mockResolvedValue(undefined),
+    markNotified: jest.fn().mockResolvedValue(undefined),
   };
   // A real registry over a stub adapter — resolving the adapter is part of what is tested.
   const registry = new SourceRegistry([adapter]);
@@ -159,6 +160,17 @@ describe('WatchService — the rest of the contract', () => {
     await watch.markSeen(sub(), [listing(7), listing(9)]);
 
     expect(subscriptions.markSeen).toHaveBeenCalledWith('sub-1', ['7', '9']);
+  });
+
+  // The quiet report counts from this stamp; an empty markSeen delivered nothing.
+  it('stamps the user as notified after a delivery, and not when nothing was delivered', async () => {
+    const { subscriptions, watch } = build();
+
+    await watch.markSeen(sub(), []);
+    expect(subscriptions.markNotified).not.toHaveBeenCalled();
+
+    await watch.markSeen(sub(), [listing(7)]);
+    expect(subscriptions.markNotified).toHaveBeenCalledWith('user-1');
   });
 
   it('current reads listings without touching the seen set', async () => {
