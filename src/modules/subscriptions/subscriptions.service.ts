@@ -228,6 +228,11 @@ export class SubscriptionsService {
     return this.insertSeen({ manager: this.seen.manager, subscriptionId, externalIds });
   }
 
+  /** Stamp that the user was just sent something — what the quiet report counts from. */
+  async markNotified(userId: string): Promise<void> {
+    await this.users.update({ id: userId }, { lastNotifiedAt: new Date() });
+  }
+
   /**
    * Seed the seen set and flag the subscription baselined atomically — a crash must not
    * leave a half-seeded baseline marked done (it would then never re-seed).

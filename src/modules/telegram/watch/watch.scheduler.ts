@@ -13,7 +13,11 @@ import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import { isBotBlocked } from '@/modules/telegram/bot/send-card';
 import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
-import { deadSubscriptionNotice, searchLabel } from '@/modules/telegram/bot/telegram.format';
+import {
+  deadSubscriptionNotice,
+  quietReport,
+  searchLabel,
+} from '@/modules/telegram/bot/telegram.format';
 import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
@@ -36,9 +40,17 @@ export const MAX_CONSECUTIVE_FAILURES = 5;
 // before the subscription is retired anyway.
 export const MAX_REPRIEVE_FAILURES = MAX_CONSECUTIVE_FAILURES * 3;
 
-// Outcome of processing one subscription — drives the source tally, the 403 pause and the
-// deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out).
-type ProcessResult = { state: 'ok' | 'blocked' } | { state: 'poll-failed'; dead: boolean };
+// Days a user may hear nothing before the quiet report tells them the bot is still watching.
+export const QUIET_REPORT_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Outcome of processing one subscription — drives the source tally, the 403 pause, the
+// deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out) and
+// the quiet report (`poll`: what a successful poll found).
+type ProcessResult =
+  | { state: 'ok'; poll: PollOutcome['kind'] }
+  | { state: 'blocked' }
+  | { state: 'poll-failed'; dead: boolean };
 
 /**
  * The failure streak as of this run. Subscription rows are loaded before the bump, so the row in
@@ -135,6 +147,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Subscriptions whose failure streak ran out this run. Paused only after the loop: whether
     // the source itself is down is not known until every poll is in (see pauseDead).
     const dead: Subscription[] = [];
+    // Polled fine with nothing new — the quiet report's candidates — and the users something
+    // was sent to this run, who must not then be told «нового нет».
+    const quiet: Subscription[] = [];
+    const heard = new Set<string>();
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
@@ -155,6 +171,8 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       }
       tally.record({ source: sub.source, failed: result.state === 'poll-failed' });
       if (result.state === 'poll-failed' && result.dead) dead.push(sub);
+      if (result.state === 'ok' && result.poll === 'nothing') quiet.push(sub);
+      if (result.state === 'ok' && result.poll === 'fresh') heard.add(sub.userId);
       if (result.state === 'blocked') {
         blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
         await this.pauseUser(sub.userId);
@@ -165,6 +183,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       this.health.update({ down: outages, succeeded: tally.succeededSources() }),
     );
     await this.pauseDead(dead, new Set(outages.map(({ source }) => source)), blockedUsers);
+    await this.reportQuiet({ quiet, heard, blockedUsers });
     // Last on purpose: the gauges must count the subscriptions this run just paused as paused.
     await this.recordTotals();
   }
@@ -242,8 +261,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
     if (sub.consecutiveFailures > 0) await this.subscriptions.resetFailures(sub.id);
     // A pending baseline was just seeded silently — deliver only fresh listings.
-    if (outcome.kind !== 'fresh') return { state: 'ok' };
-    return { state: (await this.deliverFresh(sub, outcome.listings)) ? 'blocked' : 'ok' };
+    if (outcome.kind !== 'fresh') return { state: 'ok', poll: outcome.kind };
+    return (await this.deliverFresh(sub, outcome.listings))
+      ? { state: 'blocked' }
+      : { state: 'ok', poll: 'fresh' };
   }
 
   /** Send the fresh digest. Returns true if the user blocked us; other send failures are
@@ -292,6 +313,60 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       details: { delivered: delivered.length, failures },
     });
     return false;
+  }
+
+  /**
+   * Tell a user who has heard nothing for QUIET_REPORT_DAYS that the bot is still watching —
+   * otherwise a quiet market and a broken bot look the same to them.
+   *
+   * Per user, not per subscription: any delivery already proves the bot alive, and per-search
+   * timers drift apart until someone with many searches hears «нового нет» almost daily. Lists
+   * only searches polled fine this run: «нового нет» for a source that did not answer is false.
+   * A failed send stamps nothing, so it is retried next run.
+   */
+  private async reportQuiet({
+    quiet,
+    heard,
+    blockedUsers,
+  }: {
+    quiet: Subscription[];
+    heard: Set<string>;
+    blockedUsers: Set<string>;
+  }): Promise<void> {
+    // Half a day of slack: the stamp is taken at the end of a run, and a run that ends a minute
+    // sooner than last week's would otherwise push the «weekly» note to day eight.
+    const dueBefore = Date.now() - QUIET_REPORT_DAYS * DAY_MS + DAY_MS / 2;
+    const byUser = new Map<string, Subscription[]>();
+    for (const sub of quiet) {
+      if (heard.has(sub.userId) || blockedUsers.has(sub.userId)) continue;
+      const { lastNotifiedAt, createdAt } = sub.user;
+      if ((lastNotifiedAt ?? createdAt).getTime() > dueBefore) continue;
+      byUser.set(sub.userId, [...(byUser.get(sub.userId) ?? []), sub]);
+    }
+    // TODO [L]: a subscription removed mid-run still polls as «nothing» and gets listed here.
+    let sent = 0;
+    for (const [userId, subs] of byUser) {
+      const { telegramId } = subs[0].user;
+      try {
+        await this.telegram.notify(telegramId, quietReport(subs));
+      } catch (err) {
+        if (isBotBlocked(err)) {
+          blockedUsers.add(userId);
+          await this.pauseUser(userId);
+          continue;
+        }
+        this.logger.error({ err }, `Quiet report failed for user ${userId}`);
+        reportUserFacing(err, { userId: telegramId, action: 'daily', op: 'quiet-report' });
+        continue;
+      }
+      sent++;
+      // Delivered either way; a failed stamp only means the same note again next run.
+      await this.subscriptions.markNotified(userId).catch((err: unknown) => {
+        this.logger.error({ err }, `Quiet report sent but not stamped for user ${userId}`);
+        reportUserFacing(err, { userId: telegramId, action: 'daily', op: 'quiet-report' });
+      });
+    }
+    if (byUser.size > 0) this.logger.log(`Quiet report sent to ${sent}/${byUser.size} user(s)`);
   }
 
   /** Report a swallowed per-subscription failure — same who/where for every operation. */

@@ -20,6 +20,7 @@ import {
   JOB_NAME,
   MAX_CONSECUTIVE_FAILURES,
   MAX_REPRIEVE_FAILURES,
+  QUIET_REPORT_DAYS,
   WatchScheduler,
 } from '../watch.scheduler';
 import { POLL_STUCK_AFTER_MS, WatchStatus } from '../watch.status';
@@ -44,6 +45,7 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     resetFailures: jest.fn().mockResolvedValue(undefined),
     countUsers: jest.fn().mockResolvedValue(0),
     countActive: jest.fn().mockResolvedValue(0),
+    markNotified: jest.fn().mockResolvedValue(undefined),
   };
   const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
   const telegram = {
@@ -631,6 +633,171 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(timeout).toHaveBeenCalledTimes(2); // between 3 polls, not before the first
+  });
+});
+
+// What the quiet report is for: a month of silence must not look like a broken bot.
+describe('WatchScheduler.runDaily — quiet report', () => {
+  const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // A subscription of user 7 who last heard from us `heardDaysAgo` days ago.
+  const quietSub = (id: number, heardDaysAgo = QUIET_REPORT_DAYS + 1): Subscription =>
+    makeSubscription({
+      id: String(id),
+      userId: '7',
+      user: { telegramId: 7, lastNotifiedAt: daysAgo(heardDaysAgo) },
+      url: `https://kufar.by/l/search-${id}`,
+    });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sends one message per user, listing the quiet searches, and stamps it', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1), quietSub(2)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    const [chat, text] = telegram.notify.mock.calls[0] as [number, string];
+    expect(chat).toBe(7);
+    expect(text).toContain('search-1');
+    expect(text).toContain('search-2');
+    expect(subscriptions.markNotified).toHaveBeenCalledWith('7');
+  });
+
+  // The stamp is taken at the end of a run, so «exactly a week ago» is a few minutes short.
+  it("reports on day seven, not day eight, when last week's run ended a little later", async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    const almostAWeek = QUIET_REPORT_DAYS - 10 / (24 * 60); // seven days minus ten minutes
+    subscriptions.listActive.mockResolvedValue([quietSub(1, almostAWeek)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failed stamp after a delivered note without failing the run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    subscriptions.markNotified.mockRejectedValue(new Error('db'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await expect(scheduler.runDaily()).resolves.toBeUndefined();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    expect(sentryCapture()).toHaveBeenCalled();
+  });
+
+  it('stays quiet while the user heard from us recently', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1, QUIET_REPORT_DAYS - 1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalled();
+  });
+
+  it('counts from signup for a user who was never sent anything', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([
+      makeSubscription({
+        userId: '7',
+        user: { telegramId: 7, lastNotifiedAt: null, createdAt: daysAgo(QUIET_REPORT_DAYS + 1) },
+      }),
+    ]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not tell a user «нового нет» right after delivering them listings', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1), quietSub(2)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      Promise.resolve(
+        s.id === '1' ? { kind: 'fresh', listings: [listing(1)] } : { kind: 'nothing' },
+      ),
+    );
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalled();
+  });
+
+  // «Нового нет» for a source that did not answer would be a lie.
+  it('leaves out a search whose poll failed this run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1), quietSub(2)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1' ? Promise.reject(new Error('down')) : Promise.resolve({ kind: 'nothing' }),
+    );
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    const [, text] = telegram.notify.mock.calls[0] as [number, string];
+    expect(text).not.toContain('search-1');
+    expect(text).toContain('search-2');
+  });
+
+  it('stamps nothing when the send fails, so it is retried next run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    telegram.notify.mockRejectedValue(new Error('network'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.markNotified).not.toHaveBeenCalled();
+    expect(sentryCapture()).toHaveBeenCalled();
+  });
+
+  it('does not send the note to a user who blocked the bot earlier in the same run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    // The quiet search is polled first, then the fresh one hits the 403.
+    subscriptions.listActive.mockResolvedValue([quietSub(2), quietSub(1)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      Promise.resolve(
+        s.id === '1' ? { kind: 'fresh', listings: [listing(1)] } : { kind: 'nothing' },
+      ),
+    );
+    telegram.notifyCard.mockRejectedValue(
+      new GrammyError(
+        'Forbidden',
+        { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' },
+        'sendPhoto',
+        {},
+      ),
+    );
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(7, expect.stringContaining('🔕'));
+  });
+
+  it('pauses a user who blocked the bot, as the delivery path does', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    telegram.notify.mockRejectedValue(
+      new GrammyError(
+        'Forbidden',
+        { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' },
+        'sendMessage',
+        {},
+      ),
+    );
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('7');
+    expect(subscriptions.markNotified).not.toHaveBeenCalled();
   });
 });
 
