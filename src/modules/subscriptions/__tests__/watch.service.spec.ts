@@ -3,11 +3,11 @@ import { Logger } from '@nestjs/common';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryMessage } from '@/__tests__/helpers/sentry';
 import { makeSubscription as sub } from '@/__tests__/helpers/subscription';
+import { MAX_LISTINGS } from '@/modules/sources/source-adapter';
 import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from '../entities/subscription.entity';
-import { MAX_SEEN_PER_SUBSCRIPTION } from '../subscriptions.service';
 import type { SubscriptionsService } from '../subscriptions.service';
 import { WatchService } from '../watch.service';
 
@@ -205,8 +205,8 @@ describe('WatchService — the seen-set cap assumption', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('warns once a single fetch crosses half the cap', async () => {
-    const many = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION / 2 + 1 }, (_, i) => listing(i));
+  it('warns when a fetch exceeds the MAX_LISTINGS window', async () => {
+    const many = Array.from({ length: MAX_LISTINGS + 1 }, (_, i) => listing(i));
     const { watch } = build(many);
 
     await watch.check(baselined());

@@ -12,8 +12,10 @@ start; more frequent once throttling/dedupe land).
 
 ## Status now (implemented)
 
-- Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first,
-  up to 5 pages (~150 listings) — a pasted sort or page number is overridden.
+- Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first, and
+  a run looks at its **newest 150 listings** (up to 5 pages) — a pasted sort or page number is
+  overridden. A search that gains more than that between two runs loses the rest (the owner is
+  told via Sentry).
 - Events: **new only**, delivered as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies, address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's

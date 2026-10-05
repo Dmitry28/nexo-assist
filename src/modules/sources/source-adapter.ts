@@ -48,6 +48,14 @@ export class SearchRewrittenError extends SourceUnavailableError {
 }
 
 /**
+ * The window: a fetch returns at most this many newest listings, however the source sizes its
+ * pages (`paginate` enforces it). MAX_SEEN_PER_SUBSCRIPTION is sized against it: a window wider
+ * than the seen cap gets its own ids pruned and re-delivered as "new" every run — which is what
+ * page-sized windows did on realt (see realt.adapter). 150 is what kufar's 5 × 30 always yields.
+ */
+export const MAX_LISTINGS = 150;
+
+/**
  * What one `fetch` collected, and whether anything was lost along the way.
  *
  * `complete: false` means a page after the first failed to load or parse, so these listings are a
@@ -56,10 +64,10 @@ export class SearchRewrittenError extends SourceUnavailableError {
  * treats a fetch as an inventory (the baseline) and to whoever needs to hear that a source
  * started breaking on page two while page one still works.
  *
- * A walk that stops at the page cap is still `complete: true` — every page we meant to read came
- * back. That is what `capped` says instead: the source advertised more, and the window may not
- * have held everything published since the last run. Not a loss by itself; WatchService calls it
- * one only when nothing in the window was seen before. Conflating the two flags would make
+ * A walk that stops at the window or the page cap is still `complete: true` — every page we meant
+ * to read came back. That is what `capped` says instead: the source advertised more, and the window
+ * may not have held everything published since the last run. Not a loss by itself; WatchService
+ * calls it one only when nothing in the window was seen before. Conflating the two flags would make
  * `complete` fire on every large search and mean nothing.
  */
 export interface FetchResult {

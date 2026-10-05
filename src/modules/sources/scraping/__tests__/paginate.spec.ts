@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { makeListing } from '@/__tests__/helpers/listing';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
+import { MAX_LISTINGS } from '../../source-adapter';
 import { paginate } from '../paginate';
 import type { ParsedPage } from '../paginate';
 
@@ -112,6 +113,67 @@ describe('paginate', () => {
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
     expect(result).toMatchObject({ complete: false, capped: false });
+  });
+
+  // Why the window exists: see MAX_LISTINGS.
+  describe('listing window', () => {
+    const page = (from: number, n: number, nextUrl: string | null): ParsedPage => ({
+      listings: Array.from({ length: n }, (_, i) => makeListing(from + i)),
+      nextUrl,
+    });
+
+    it('keeps the first MAX_LISTINGS of one oversized page and reports the overflow', async () => {
+      const parsePage = jest.fn().mockReturnValue(page(1, 360, 'next'));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result.listings).toHaveLength(MAX_LISTINGS);
+      expect(result.listings[0].externalId).toBe('1'); // newest first, as served
+      expect(result).toMatchObject({ complete: true, capped: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops at the window across pages', async () => {
+      const parsePage = jest
+        .fn()
+        .mockReturnValueOnce(page(1, 120, 'p2'))
+        .mockReturnValueOnce(page(121, 60, 'p3'));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result.listings).toHaveLength(MAX_LISTINGS);
+      expect(result.capped).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports a full window when exactly MAX_LISTINGS arrived and more pages exist', async () => {
+      const parsePage = jest.fn().mockReturnValue(page(1, MAX_LISTINGS, 'p2'));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result.capped).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    // A source can hand its whole result over in one page (realt bundles pages): no next page,
+    // yet more than the window — what was cut off must still be reported.
+    it('reports an oversized last page as capped, though it advertises no next', async () => {
+      const parsePage = jest.fn().mockReturnValue(page(1, 360, null));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result.listings).toHaveLength(MAX_LISTINGS);
+      expect(result.capped).toBe(true);
+    });
+
+    it('is not capped when the search holds exactly the window and no more', async () => {
+      const parsePage = jest.fn().mockReturnValue(page(1, MAX_LISTINGS, null));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result).toMatchObject({ complete: true, capped: false });
+      expect(result.listings).toHaveLength(MAX_LISTINGS);
+    });
   });
 
   it('stops on an empty page', async () => {

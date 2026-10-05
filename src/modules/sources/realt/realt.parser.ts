@@ -45,7 +45,6 @@ const CURRENCY_USD = '840';
 const CURRENCY_BYN = '933';
 
 interface RawPagination {
-  pageSize: number;
   totalCount: number;
 }
 
@@ -89,7 +88,7 @@ export function extractPage(html: string): RealtPage {
     objects: objects ?? [],
     linkPath: linkPath(pageProps),
     // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
-    // reads two numbers off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
+    // reads `totalCount` off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
 }

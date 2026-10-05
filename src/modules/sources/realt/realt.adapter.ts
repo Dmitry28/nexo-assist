@@ -9,11 +9,11 @@ import type { FetchResult, SourceAdapter, SourceId } from '../source-adapter';
 import { extractPage, mapObject } from './realt.parser';
 
 const HOST = 'realt.by';
-// Pin newest-first ordering — the page-cap model relies on new listings being on page 1
+// Pin newest-first ordering — the window (MAX_LISTINGS newest) relies on new listings coming first
 // (verified live: sortType=createdAt orders by createdAt desc).
 const SORT_NEWEST = 'createdAt';
 
-/** realt.by source adapter — fetches a search newest-first, up to the page cap. */
+/** realt.by source adapter — fetches a search newest-first, up to the window. */
 @Injectable()
 export class RealtAdapter implements SourceAdapter {
   readonly id: SourceId = 'realt';
@@ -26,7 +26,12 @@ export class RealtAdapter implements SourceAdapter {
   async fetch(url: string): Promise<FetchResult> {
     const fromUrl = this.linkPath(url);
     // NOTE: realt paginates by ?page=N. Pin newest-first and the start to page 1 (a pasted
-    // URL may carry its own sort/page), then advance until pageSize × page covers totalCount.
+    // URL may carry its own sort/page), then advance while fewer objects arrived than totalCount.
+    // A running count, not `page × pageSize`: realt bundles its first k pages into page 1 (pageSize
+    // 30…360, measured) and then serves `?page=2` as its page k+1, so our page number and its page
+    // size do not multiply. A page past the end is served as page 1 again — the old formula
+    // overshot into exactly that. Per call, not a field: the adapter is shared by concurrent polls.
+    let received = 0;
     const base = withParam(url, 'sortType', SORT_NEWEST);
     return paginate({
       firstUrl: withParam(base, 'page', '1'),
@@ -42,7 +47,8 @@ export class RealtAdapter implements SourceAdapter {
         if (slug === null) {
           throw new SourceUnavailableError(`realt: no object-URL slug for ${url}`);
         }
-        const hasMore = pagination !== null && page * pagination.pageSize < pagination.totalCount;
+        received += objects.length;
+        const hasMore = pagination !== null && received < pagination.totalCount;
         const nextUrl = hasMore ? withParam(base, 'page', String(page + 1)) : null;
         return { listings: objects.map((obj) => mapObject(obj, slug)), nextUrl };
       },
