@@ -44,14 +44,14 @@ interface DeliveryStep {
  * The messages one delivery consists of: a full card for the first CARDS_PER_DELIVERY listings,
  * then the rest as digest messages. Everything found goes out in the same run.
  */
-function plan(fresh: Listing[], send: DeliveryTargets): DeliveryStep[] {
+function plan(fresh: Listing[], send: DeliveryTargets, search?: string): DeliveryStep[] {
   const cards = fresh.slice(0, CARDS_PER_DELIVERY);
   return [
     ...cards.map((listing, i) => ({
       listings: [listing],
-      send: () => send.card(listingMessage(listing, { index: i + 1, total: cards.length })),
+      send: () => send.card(listingMessage(listing, { index: i + 1, total: cards.length, search })),
     })),
-    ...tailBatches(fresh.slice(CARDS_PER_DELIVERY)).map((batch) => ({
+    ...tailBatches(fresh.slice(CARDS_PER_DELIVERY), search).map((batch) => ({
       listings: batch.listings,
       send: () => send.digest(batch.text),
     })),
@@ -78,13 +78,14 @@ function plan(fresh: Listing[], send: DeliveryTargets): DeliveryStep[] {
 export async function deliverListings(
   fresh: Listing[],
   send: DeliveryTargets,
+  search?: string,
 ): Promise<DeliveryResult> {
   const delivered: Listing[] = [];
   let failure: unknown;
   let failures = 0;
   let streak = 0;
 
-  for (const [i, step] of plan(fresh, send).entries()) {
+  for (const [i, step] of plan(fresh, send, search).entries()) {
     if (i > 0) await wait(SEND_DELAY_MS);
     try {
       await step.send();
@@ -115,12 +116,15 @@ export async function deliverAndMark({
   listings,
   send,
   markSeen,
+  search,
 }: {
   listings: Listing[];
   send: DeliveryTargets;
   markSeen: (delivered: Listing[]) => Promise<void>;
+  /** Which search these came from, shown in every header (see `searchLabel`). */
+  search?: string;
 }): Promise<DeliveryResult> {
-  const result = await deliverListings(listings, send);
+  const result = await deliverListings(listings, send, search);
 
   // Persist whatever reached the user, even if a later message failed — otherwise the whole
   // digest would be re-sent next run.

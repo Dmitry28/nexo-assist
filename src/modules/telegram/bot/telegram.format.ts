@@ -124,11 +124,12 @@ export interface DigestBatch {
  *
  * Callers must markSeen only the batches that were actually sent.
  */
-export function tailBatches(listings: Listing[]): DigestBatch[] {
+export function tailBatches(listings: Listing[], search?: string): DigestBatch[] {
+  const label = search === undefined ? '' : `\n${search}`;
   const chunks: Listing[][] = [];
   let rest = listings;
   while (rest.length > 0) {
-    // Reserve room for the header, which is added after chunking — otherwise the measured
+    // Reserve room for the header (counter line plus the search label), added after chunking — otherwise the measured
     // string is not the string sent, and an oversized message fails on every retry.
     const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS);
     chunks.push(chunk);
@@ -138,10 +139,47 @@ export function tailBatches(listings: Listing[]): DigestBatch[] {
   return chunks.map((chunk, i) => {
     const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
     return {
-      text: compose(`🆕 Ещё объявлений: ${listings.length}${part}`, chunk),
+      text: compose(`🆕 Ещё объявлений: ${listings.length}${part}${label}`, chunk),
       listings: chunk,
     };
   });
+}
+
+/** Longest path a label will show. In a card the header shares the caption budget with the
+ *  listing itself; in a digest it is a line of its own. */
+export const MAX_LABEL_CHARS = 40;
+
+/**
+ * A short name for the search a delivery came from, e.g. «kufar · grodno/kupit/dom».
+ *
+ * A reader can hold up to MAX_SUBSCRIPTIONS_PER_USER searches, and until now a card said only
+ * what was found, never which search found it. The path is the cheapest honest answer: it is
+ * what the reader picked on the site, in their own words, and it needs no knowledge of any
+ * particular source. Single-character segments are dropped — kufar's `/l/` prefix and its like
+ * carry nothing for a reader. Naming a subscription by hand is the natural upgrade and would
+ * replace this (PRODUCT_PLAN.md § Фаза 7).
+ */
+export function searchLabel({ source, url }: { source: string; url: string }): string {
+  let path: string;
+  try {
+    path = new URL(url).pathname
+      .split('/')
+      .filter((segment) => segment.length > 1)
+      // Percent-decoded for readability (Cyrillic paths arrive encoded). Inside the try on
+      // purpose: `decodeURIComponent` throws URIError on a lone `%`, which realt paths really
+      // can carry, and that would abort the delivery of a subscription that polled just fine.
+      .map(decodeURIComponent)
+      .join('/');
+  } catch {
+    // A stored URL that no longer parses — or decodes — is not worth failing a delivery over:
+    // the source name alone still tells the reader more than nothing.
+    return source;
+  }
+  if (path === '') return source;
+  // `truncate` always appends the ellipsis — deciding there is something to cut is the caller's
+  // job (see its docblock), so a path that fits must not go through it.
+  const shown = path.length > MAX_LABEL_CHARS ? truncate(path, MAX_LABEL_CHARS) : path;
+  return `${source} · ${shown}`;
 }
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */

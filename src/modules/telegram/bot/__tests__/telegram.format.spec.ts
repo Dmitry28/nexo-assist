@@ -4,8 +4,10 @@ import {
   BOT_COMMANDS,
   DIGEST_LIMIT,
   HELP_MESSAGE,
+  MAX_LABEL_CHARS,
   MAX_LINE_CHARS,
   formatCurrentListings,
+  searchLabel,
   tailBatches,
 } from '../telegram.format';
 
@@ -137,5 +139,57 @@ describe('HELP_MESSAGE', () => {
   it('says what is stored and how to have it deleted', () => {
     expect(HELP_MESSAGE).toContain('telegram-id');
     expect(HELP_MESSAGE).toContain('удалить');
+  });
+});
+
+describe('searchLabel', () => {
+  // A reader can be watching dozens of searches; until now a card said what was found and never
+  // which search found it.
+  it('names the search by the part of the URL the reader chose', () => {
+    expect(
+      searchLabel({ source: 'kufar', url: 'https://re.kufar.by/l/grodno/kupit/dom?cur=USD' }),
+    ).toBe('kufar · grodno/kupit/dom');
+  });
+
+  // `/l/` and its like are routing, not meaning — dropping single-character segments keeps the
+  // helper free of any one source's URL shape.
+  it('drops single-character path segments', () => {
+    expect(searchLabel({ source: 'realt', url: 'https://realt.by/sale/plots/' })).toBe(
+      'realt · sale/plots',
+    );
+  });
+
+  it('falls back to the source name when the path carries nothing', () => {
+    expect(searchLabel({ source: 'kufar', url: 'https://re.kufar.by/' })).toBe('kufar');
+  });
+
+  it('keeps a stored URL that no longer parses from failing the delivery', () => {
+    expect(searchLabel({ source: 'kufar', url: 'not a url' })).toBe('kufar');
+  });
+
+  // A lone `%` in a path is real (realt has them) and decodeURIComponent throws on it. The label
+  // is built before the delivery starts, so a throw here would abort a subscription that polled
+  // fine — every run, forever.
+  it('survives a path that cannot be percent-decoded', () => {
+    expect(searchLabel({ source: 'realt', url: 'https://realt.by/sale/100%/x' })).toBe('realt');
+  });
+
+  it('puts the label in the digest header too', () => {
+    const [batch] = tailBatches([listing(1)], 'kufar · grodno/kupit/dom');
+
+    expect(batch.text).toContain('kufar · grodno/kupit/dom');
+  });
+
+  it('cuts a long path, and only a long one', () => {
+    const long = searchLabel({
+      source: 'kufar',
+      url: 'https://re.kufar.by/l/r~brestskaya-oblast/kupit/uchastok-pod-stroitelstvo-doma',
+    });
+
+    expect(long.endsWith('…')).toBe(true);
+    expect(long.length).toBeLessThanOrEqual('kufar · '.length + MAX_LABEL_CHARS);
+    expect(searchLabel({ source: 'realt', url: 'https://realt.by/sale/plots/' })).not.toContain(
+      '…',
+    );
   });
 });

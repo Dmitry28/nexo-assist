@@ -226,3 +226,21 @@ describe('deliverAndMark', () => {
     expect(markSeenError).toBeUndefined();
   });
 });
+
+// The helper and the composer are covered on their own; this is the wiring between them — a
+// dropped argument in `plan` would leave every header unlabelled with the suite still green.
+describe('the search label reaches the messages', () => {
+  it('puts it in both the card header and the digest header', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    const fresh = CARDS_PER_DELIVERY + 1;
+
+    const run = deliverListings(many(fresh), send, 'kufar · grodno/kupit/dom');
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * (fresh + 1));
+    await run;
+
+    const [card] = send.card.mock.calls[0] as [{ caption: string }];
+    expect(card.caption).toContain('kufar · grodno/kupit/dom');
+    expect(send.digest.mock.calls[0][0]).toContain('kufar · grodno/kupit/dom');
+  });
+});

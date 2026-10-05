@@ -13,7 +13,7 @@ import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import { isBotBlocked } from '@/modules/telegram/bot/send-card';
 import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
-import { deadSubscriptionNotice } from '@/modules/telegram/bot/telegram.format';
+import { deadSubscriptionNotice, searchLabel } from '@/modules/telegram/bot/telegram.format';
 import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
@@ -250,6 +250,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
    *  logged and retried next run (markSeen only after a successful send). */
   private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
     const { delivered, error, failures, markSeenError } = await deliverAndMark({
+      search: searchLabel(sub),
       listings,
       send: {
         card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),
