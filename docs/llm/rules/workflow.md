@@ -6,9 +6,10 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 - Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps ("where is X", "what calls Y", "how does Z work across modules") go to a subagent.
 - Describe the solution; for complex tasks add non-goals, milestones, acceptance criteria.
-- **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs?
+- **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs? Does it work right for both the user and the admin?
 - For complex tasks, document key architectural decisions: what was chosen vs. rejected and why (prevents re-deliberation).
 - For medium/complex tasks a written plan is mandatory before code. "Too simple to need a plan" → scale the plan down, don't skip it.
+- **Review the written plan** (medium/complex) with a fresh, non-fork subagent that gets only the task and the plan, not your reasoning, and checks it against [logic-review.md § Task alignment](logic-review.md#task-alignment) and [Self-Check](development-philosophy.md#self-check). Fix what holds up, say which findings you rejected and why.
 - Get user confirmation before implementing anything non-trivial.
 
 ## 2. Implement
@@ -54,7 +55,7 @@ _(Repeat steps 2–4 for each milestone)_
 1. Cover critical logic with tests if not yet covered — only what matters.
 2. Update every doc the change affects (ENTRY_POINT § Keep docs current).
 3. Run `/verify-task-result` with full checks.
-4. Run `/logic-review` (behavior vs the task) **and** `/review-code` (rules, patterns, whether it's the best version) — **launch both at once**: they are independent and read-only, so sequencing them only costs wall-clock. Steps 1–2 come first so the tests and docs are inside what gets reviewed.
+4. Run `/logic-review` (behavior vs the task) **and** `/review-code` (rules, patterns, whether it's the best version) — **launch both at once**: they are independent and read-only, so sequencing them only costs wall-clock. Steps 1–2 come first so the tests and docs are inside what gets reviewed. Both run as isolated forks that see only the diff, so pass `/logic-review` the task and the agreed plan (or the issue number) as its argument; without them it checks the code against itself.
 5. Read both before acting: a finding can be wrong, and the two can contradict each other. Verify each against the code and say out loud which you reject and why.
 6. Fix what survives — **`[H]` only** (ENTRY_POINT § Core Rules); everything else gets a `TODO` or a backlog entry. A finding is reported once but usually lives in more than one place — check for siblings before calling it fixed. Touched behavior or fixed an `[H]`? Re-run the review — applying a fix is where the next defect appears.
 7. Sweep the issues you noticed along the way — pre-existing inconsistencies, dead code, edge cases — and apply **fix it or log it** (ENTRY_POINT § Core Rules).
