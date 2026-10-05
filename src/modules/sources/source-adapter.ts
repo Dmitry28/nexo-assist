@@ -37,13 +37,16 @@ export class SourceUnavailableError extends Error {
  * treats a fetch as an inventory (the baseline) and to whoever needs to hear that a source
  * started breaking on page two while page one still works.
  *
- * A walk that stops at the page cap is still `complete: true`. The cap is our decision, not a
- * loss — every page we meant to read came back. Conflating the two would make the flag fire on
- * every large search and mean nothing.
+ * A walk that stops at the page cap is still `complete: true` — every page we meant to read came
+ * back. That is what `capped` says instead: the source advertised more, and the window may not
+ * have held everything published since the last run. Not a loss by itself; WatchService calls it
+ * one only when nothing in the window was seen before. Conflating the two flags would make
+ * `complete` fire on every large search and mean nothing.
  */
 export interface FetchResult {
   listings: Listing[];
   complete: boolean;
+  capped: boolean;
 }
 
 /** A map pin: latitude/longitude as the source published them. */

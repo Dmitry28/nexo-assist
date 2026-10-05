@@ -70,12 +70,22 @@ export class WatchService {
    * (getSeen only refreshes `seenAt` on already-delivered ids for the prune window).
    */
   async check(sub: Subscription): Promise<Listing[]> {
-    const { listings } = await this.fetchListings(sub);
+    const { listings, capped } = await this.fetchListings(sub);
     const seen = await this.subscriptions.getSeen(
       sub.id,
       listings.map((l) => l.externalId),
     );
-    return listings.filter((l) => !seen.has(l.externalId));
+    const fresh = listings.filter((l) => !seen.has(l.externalId));
+    // The whole window turned over since the last run: the source had more pages, and not one
+    // listing in it was seen before — so whatever was published between it and the last
+    // run's window was never fetched. Lost for good; this makes the loss visible (backlog,
+    // «Больше 150 новых за сутки…»). A bumped old listing can mask it — fine for a cheap signal.
+    // TODO [L]: a subscription removed mid-fetch has no seen rows left, so a capped walk warns for
+    // a sub that is gone (`poll` re-checks `has` only after this). Rare; partial-fetch shares it.
+    if (capped && fresh.length === listings.length) {
+      this.warn(sub, `Page window overflowed for ${sub.source}`);
+    }
+    return fresh;
   }
 
   /** Current listings for a subscription, read-only (does not touch the seen set). */
@@ -107,13 +117,7 @@ export class WatchService {
     // a check leaves later-page ids un-refreshed and so prunable, and «показать текущие» shows
     // a partial list as the whole one. Page 1 still works and the run stays green, so without
     // this the breakage has no trace at all.
-    if (!result.complete) {
-      this.logger.warn(`${sub.source}: a later page failed for ${sub.url} — listings are partial`);
-      Sentry.withScope((scope) => {
-        scope.setContext('subscription', { id: sub.id, source: sub.source, url: sub.url });
-        Sentry.captureMessage(`Partial fetch for ${sub.source}`, 'warning');
-      });
-    }
+    if (!result.complete) this.warn(sub, `Partial fetch for ${sub.source}`);
     if (listings.length > MAX_SEEN_PER_SUBSCRIPTION / 2) {
       this.logger.warn(
         `${sub.source} returned ${listings.length} listings for one search — over half of ` +
@@ -122,6 +126,15 @@ export class WatchService {
       );
     }
     return result;
+  }
+
+  /** A per-subscription anomaly the run survives: logged, and a Sentry warning with its context. */
+  private warn(sub: Subscription, message: string): void {
+    this.logger.warn(`${message}: ${sub.url}`);
+    Sentry.withScope((scope) => {
+      scope.setContext('subscription', { id: sub.id, source: sub.source, url: sub.url });
+      Sentry.captureMessage(message, 'warning');
+    });
   }
 
   private adapter(sub: Subscription): SourceAdapter {
