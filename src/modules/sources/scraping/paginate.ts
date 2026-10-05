@@ -6,6 +6,7 @@ import { fetchHtml } from './http';
 
 // NOTE: page-cap bound (not a time window) — deterministic and enough for daily volumes
 // (e.g. 5 × ~30 = 150 listings). A lookback window can be added later if it proves wasteful.
+// Outgrowing it is observable: the walk reports `capped`, and WatchService warns on overflow.
 //
 // The cap is also what lets pages be fetched back-to-back with no pause: kufar rate-limits
 // sustained pagination, and the prototype measured HTTP 429 on page 12 of a feed walked
@@ -45,6 +46,7 @@ export async function paginate({
 }): Promise<FetchResult> {
   const byId = new Map<string, Listing>();
   let complete = true;
+  let capped = false;
   let url: string | null = firstUrl;
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
     let parsed: ParsedPage;
@@ -67,6 +69,8 @@ export async function paginate({
       if (!byId.has(listing.externalId)) byId.set(listing.externalId, listing);
     }
     url = nextUrl;
+    // Set here, not from `url` after the loop: an empty-page break leaves `url` non-null too.
+    if (page === MAX_PAGES && nextUrl !== null) capped = true;
   }
-  return { listings: [...byId.values()], complete };
+  return { listings: [...byId.values()], complete, capped };
 }

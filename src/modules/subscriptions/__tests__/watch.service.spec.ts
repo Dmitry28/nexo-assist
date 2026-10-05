@@ -14,11 +14,11 @@ import { WatchService } from '../watch.service';
 const baselined = (over: Partial<Subscription> = {}): Subscription =>
   sub({ baselinedAt: new Date(), ...over });
 
-const build = (fetched: Listing[] = [], complete = true) => {
+const build = (fetched: Listing[] = [], complete = true, capped = false) => {
   const adapter: SourceAdapter = {
     id: 'kufar',
     matches: () => true,
-    fetch: jest.fn().mockResolvedValue({ listings: fetched, complete }),
+    fetch: jest.fn().mockResolvedValue({ listings: fetched, complete, capped }),
   };
   const subscriptions = {
     has: jest.fn().mockResolvedValue(true),
@@ -42,7 +42,7 @@ describe('WatchService.poll — first run (baseline)', () => {
 
     await expect(watch.poll(sub())).resolves.toEqual({ kind: 'baselined', count: 1 });
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('partial'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Partial fetch'));
     expect(sentryMessage()).toHaveBeenCalledWith(
       expect.stringContaining('Partial fetch'),
       'warning',
@@ -97,6 +97,45 @@ describe('WatchService.poll — later runs (diff)', () => {
     await watch.poll(baselined());
 
     expect(subscriptions.markSeen).not.toHaveBeenCalled();
+  });
+});
+
+// What `capped` is for: listings published past the page window between two runs are never
+// fetched, and nothing else would ever say so (backlog, «Больше 150 новых за сутки…»).
+describe('WatchService.poll — page window overflow', () => {
+  const overflowed = () =>
+    expect(sentryMessage()).toHaveBeenCalledWith(
+      expect.stringContaining('Page window overflowed'),
+      'warning',
+    );
+
+  beforeEach(() => jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined));
+
+  it('warns when the source had more pages and none of the window was seen before', async () => {
+    const { watch } = build([listing(1), listing(2)], true, true);
+
+    const outcome = await watch.poll(baselined());
+
+    // Still delivered as usual — the signal reports the loss, it does not change delivery.
+    expect(outcome).toEqual({ kind: 'fresh', listings: [listing(1), listing(2)] });
+    overflowed();
+  });
+
+  it('stays quiet when the window still overlaps what was delivered', async () => {
+    const { subscriptions, watch } = build([listing(1), listing(2)], true, true);
+    subscriptions.getSeen.mockResolvedValue(new Set(['2']));
+
+    await watch.poll(baselined());
+
+    expect(sentryMessage()).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet when the source ran out of pages — everything new was fetched', async () => {
+    const { watch } = build([listing(1), listing(2)], true, false);
+
+    await watch.poll(baselined());
+
+    expect(sentryMessage()).not.toHaveBeenCalled();
   });
 });
 

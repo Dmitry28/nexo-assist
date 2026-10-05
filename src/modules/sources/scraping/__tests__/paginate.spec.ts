@@ -74,10 +74,44 @@ describe('paginate', () => {
       .fn()
       .mockImplementation(() => ({ listings: [makeListing(++id)], nextUrl: 'next' }));
 
-    const { listings } = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(listings).toHaveLength(5); // MAX_PAGES
+    expect(result.listings).toHaveLength(5); // MAX_PAGES
     expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(result).toMatchObject({ complete: true, capped: true });
+  });
+
+  it('is not capped when the source runs out of pages first', async () => {
+    const parsePage = jest.fn().mockReturnValue({ listings: [makeListing(1)], nextUrl: null });
+
+    expect((await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).capped).toBe(
+      false,
+    );
+  });
+
+  // The trap: an empty-page break also leaves a next URL behind — it must not read as the cap.
+  it('is not capped when an empty page ends the walk early', async () => {
+    const parsePage = jest
+      .fn()
+      .mockReturnValueOnce({ listings: [makeListing(1)], nextUrl: 'p2' })
+      .mockReturnValueOnce({ listings: [], nextUrl: 'p3' });
+
+    expect((await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger })).capped).toBe(
+      false,
+    );
+  });
+
+  // A failed last page is a loss (`complete`), not a full window (`capped`) — never both.
+  it('is not capped when the last page fails', async () => {
+    let id = 0;
+    const parsePage = jest.fn().mockImplementation((_html: string, page: number) => {
+      if (page === 5) throw new Error('page 5 broke');
+      return { listings: [makeListing(++id)], nextUrl: 'next' };
+    });
+
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+    expect(result).toMatchObject({ complete: false, capped: false });
   });
 
   it('stops on an empty page', async () => {
