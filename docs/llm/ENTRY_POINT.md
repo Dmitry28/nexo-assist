@@ -57,8 +57,9 @@ What isn't visible from the tree:
 - **Talk plainly.** Concise, facts only, no filler; mark assumptions and anything unverified. Narrate **every step, not just the whole task**: before it, what you're doing and _why_; after it, _what_ changed, _why_, and how you verified — in language a non-implementer follows, never a diff dump.
 - **Teach as you go.** The owner is new to DevOps/infra, so every infra, deploy, k8s, network or security step comes with the **concept in simple words** (what it is, why we need it, what breaks without it), and every diagnosis shows the reasoning (symptom → what it means → fix). Plain analogies over jargon; if an explanation didn't land, re-explain simpler. Durable versions live in [DEPLOY.md](../DEPLOY.md).
 - **Never commit or merge without the owner's review** — show the diff + a plain summary, then
-  wait. Code, manifests, configs, docs all count. Push and open the PR freely; never
-  auto-merge. Why, and where the line falls: [rules/github.md § Approval](rules/github.md#approval).
+  wait. Code, manifests, configs, docs all count. Commit locally (each commit approved) and **push once,
+  right before opening the PR**; opening it needs no approval. Never auto-merge. Why, and where the
+  line falls: [rules/github.md § Approval](rules/github.md#approval).
 - Reviewing a PR or changes → `/logic-review` **and** `/review-code` (the skills, launched together), not a manual pass. **Both only report** — they never edit; applying a finding is a normal change you show for review.
 - Repo-specific lessons (conventions, patterns, gotchas) belong in `docs/llm/` — not personal memory.
 - **Keep docs current:** update **every** doc a change affects, in the same change — see the Project Docs table above for which is which: [PRODUCT.md](../PRODUCT.md) (behavior), [PRODUCT_PLAN.md](../PRODUCT_PLAN.md) (roadmap/decisions), [PRODUCT_TECH.md](../PRODUCT_TECH.md) (infra/runtime reality), [DEPLOY.md](../DEPLOY.md) (deploy steps + lessons), [README.md](../../README.md) (scripts, setup, commands, stack), and the relevant `docs/llm/` rule when a convention changes.

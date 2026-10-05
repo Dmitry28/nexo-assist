@@ -49,8 +49,14 @@
 
 ## PR Lifecycle
 
-1. Push the branch, open the PR against `dev` (`gh pr create --base dev`).
-2. Wait for required CI checks (`gh pr checks <n> --watch`).
+1. When the branch is finished and reviewed
+   ([workflow.md § Post-completion checklist](workflow.md#post-completion-checklist)), push it
+   **once** and open the PR against `dev` (`gh pr create --base dev`).
+2. Wait for required CI checks (`gh pr checks <n> --watch`). Then re-read the PR title and body
+   against the final diff ([format rules](../commands/git/rules/changes-message-format-rules.md)
+   § 2), and treat every PR comment and review as a review finding
+   ([workflow.md § Post-completion checklist](workflow.md#post-completion-checklist) steps 5–6):
+   fix `[H]`, log the rest, reply with the verdict.
 3. Merge and delete the branch (`gh pr merge <n> --merge --delete-branch`).
 4. **Release** (separate approval): test the change locally against `dev`, then promote —
    `gh pr create --base main --head dev` → merge. That push to `main` is what deploys.
@@ -58,11 +64,12 @@
 ## Approval
 
 Wait for explicit approval to **commit** and, separately, to **merge**. A broad "do what you
-think is right" is not either one. Between them, **push and open the PR freely** — that is
+think is right" is not either one. Between them, opening the PR needs no approval — that is
 where the owner reads the diff ([../commands/git/commit-local-changes.md](../commands/git/commit-local-changes.md)).
 
-**Push once, at the end.** Owner's instruction, 2026-09-09: through a multi-part task, commit
-locally as you go and push a single time when the whole thing is done — not after each commit.
+**Push once, at the end.** Owner's instruction, 2026-09-09, repeated 2026-10-06: commit locally
+as you go and push a single time, right before opening the PR — not after each commit. Fixes after
+the PR is open are committed together and pushed once too.
 It keeps the PR from being read while it is still growing, and it avoids the failure noted above:
 five same-day PRs pushed one at a time raced with their own merges twice, each time re-creating a
 deleted branch that then had to be rebased and cleaned up.

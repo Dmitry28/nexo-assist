@@ -30,6 +30,8 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 - Behavior matches what a real caller does, not just the happy path.
 - **Nothing left half-done** — the awkward parts of the task too, not only the easy ones.
 - **Nothing broken** — behavior that worked before still works on every path this change touches.
+- **Right for both sides** — the user (what they see, receive, can do) and the admin (alerts,
+  logs, recovery).
 - **The agreed plan was followed** — where it was not, the deviation is stated, not silent.
   (Process compliance belongs to [code-review.md](code-review.md) § Process Checks: this review
   runs from inside that checklist, so it can't certify it.)
