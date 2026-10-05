@@ -11,7 +11,7 @@ import { Subscription } from './entities/subscription.entity';
 import { User } from './entities/user.entity';
 
 // Cap on stored seen rows per subscription. Kept well above the window one fetch can return
-// (MAX_LISTINGS = 150, see paginate.ts) so ids still reachable are never pruned.
+// (MAX_LISTINGS, sources/source-adapter.ts) so ids still reachable are never pruned.
 // NOTE: "fell out of the window" is not "gone for good" — kufar sorts by list_time, which a
 // seller's bump moves, so a listing bumped back after its row was pruned arrives as "new"
 // again. Accepted for now; see the «Технический бэклог» in docs/PRODUCT_PLAN.md.

@@ -116,10 +116,8 @@ export class WatchService {
 
   /**
    * Fetch a subscription's current listings — the single door to a source, and so the only
-   * place that can notice the seen-set cap being outgrown. That cap is safe only while one
-   * fetch returns fewer ids than it stores (MAX_LISTINGS against 300). `paginate` enforces the
-   * window, so this is the backstop for an adapter that does not go through it: past the window,
-   * ids still on the page get pruned and re-delivered as "new" every run.
+   * place that can notice the window (MAX_LISTINGS) being outgrown. `paginate` enforces it, so
+   * this is the backstop for an adapter that does not go through `paginate`.
    */
   private async fetchListings(sub: Subscription): Promise<FetchResult> {
     const result = await this.adapter(sub).fetch(sub.url);

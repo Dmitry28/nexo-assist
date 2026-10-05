@@ -23,10 +23,10 @@ export interface ParsedPage {
 }
 
 /**
- * Fetch pages newest-first via `parsePage` until there is no next page, a page is
- * empty, or MAX_PAGES is reached. Fetches are pinned to `host` (redirects must not
- * leave it). De-duplicates by externalId across pages (a listing can shift between
- * page fetches); seen-dedup happens in WatchService.
+ * Fetch pages newest-first via `parsePage` until there is no next page, a page is empty, MAX_PAGES
+ * is reached or MAX_LISTINGS are collected (the result is trimmed to it). Fetches are pinned to
+ * `host` (redirects must not leave it). De-duplicates by externalId across pages (a listing can
+ * shift between page fetches); seen-dedup happens in WatchService.
  *
  * A failed FIRST page — fetch or parse — throws: an outage, bot-wall or layout
  * change must not look like an empty search. A failure on a later page returns
@@ -75,7 +75,8 @@ export async function paginate({
     }
     url = nextUrl;
     // Set here, not from `url` after the loop: an empty-page break leaves `url` non-null too.
-    if ((page === MAX_PAGES || byId.size >= MAX_LISTINGS) && nextUrl !== null) capped = true;
+    const stopsHere = page === MAX_PAGES || byId.size >= MAX_LISTINGS;
+    if (stopsHere && nextUrl !== null) capped = true;
   }
   // More than the window arrived (one big page can overshoot it): keep the newest, say so.
   if (byId.size > MAX_LISTINGS) capped = true;

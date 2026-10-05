@@ -3,7 +3,7 @@
 The per-step loop when the user asks to work "step by step" (e.g. a phase). One step at a time;
 the full-task loop is in [workflow.md](workflow.md).
 
-1. **Describe** the step plainly — what & why, not diff-level how → wait for approval. Never implement before approval. A few short lines: the problem, what you will do, what it costs. Internals, measurements and review notes stay out unless asked — the owner corrected long step descriptions repeatedly.
+1. **Describe** the step plainly — what & why, not diff-level how → wait for approval. Never implement before approval. A few short lines: the problem, what you will do, what it costs. Internals, measurements and review notes stay out unless asked.
 2. **Implement** the approved step — focused and atomic.
 3. **Verify** — `/verify-task-result` (lint / typecheck / tests); for behavioral changes exercise the path.
 4. **Review** — `/logic-review` and `/review-code` (launched together) on this step's changes. Fix `[H]` only; log the rest (ENTRY_POINT § Core Rules) — chasing `[M]`/`[L]` here is what turns one step into five review rounds. Re-review only if a fix changed behavior.

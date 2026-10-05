@@ -115,8 +115,7 @@ describe('paginate', () => {
     expect(result).toMatchObject({ complete: false, capped: false });
   });
 
-  // The window the seen cap is sized for (MAX_SEEN_PER_SUBSCRIPTION): wider, and its own ids
-  // get pruned and come back as "new" every run.
+  // Why the window exists: see MAX_LISTINGS.
   describe('listing window', () => {
     const page = (from: number, n: number, nextUrl: string | null): ParsedPage => ({
       listings: Array.from({ length: n }, (_, i) => makeListing(from + i)),
@@ -145,6 +144,26 @@ describe('paginate', () => {
       expect(result.listings).toHaveLength(MAX_LISTINGS);
       expect(result.capped).toBe(true);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports a full window when exactly MAX_LISTINGS arrived and more pages exist', async () => {
+      const parsePage = jest.fn().mockReturnValue(page(1, MAX_LISTINGS, 'p2'));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result.capped).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    // A source can hand its whole result over in one page (realt bundles pages): no next page,
+    // yet more than the window — what was cut off must still be reported.
+    it('reports an oversized last page as capped, though it advertises no next', async () => {
+      const parsePage = jest.fn().mockReturnValue(page(1, 360, null));
+
+      const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+      expect(result.listings).toHaveLength(MAX_LISTINGS);
+      expect(result.capped).toBe(true);
     });
 
     it('is not capped when the search holds exactly the window and no more', async () => {
