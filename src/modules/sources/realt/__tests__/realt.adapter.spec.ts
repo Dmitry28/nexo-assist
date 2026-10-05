@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
+import { SearchRewrittenError } from '../../source-adapter';
 import { RealtAdapter } from '../realt.adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
@@ -34,6 +35,20 @@ describe('RealtAdapter', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  // Measured 2026-10-06: any `addressV2` makes realt 302 to a wider search, filters dropped.
+  it('refuses a search realt rewrites with a redirect, instead of following it', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: { location: 'https://realt.by/belarus/sale/cottages' },
+      }),
+    );
+
+    await expect(
+      adapter.fetch('https://realt.by/grodno-region/sale/cottages/taunhaus/?addressV2=x'),
+    ).rejects.toThrow(SearchRewrittenError);
   });
 
   describe('matches', () => {

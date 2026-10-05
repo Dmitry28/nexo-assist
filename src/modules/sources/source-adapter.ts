@@ -25,7 +25,26 @@ export const UNTITLED_LISTING = 'Объявление';
 export class SourceUnavailableError extends Error {
   // Without this the issue title in Sentry reads "Error: HTTP 503" — the class name is what
   // makes the list scannable; the `kind` tag only helps once you are already filtering.
-  override readonly name = 'SourceUnavailableError';
+  // `: string`, not the literal — a subclass names itself (SearchRewrittenError).
+  override readonly name: string = 'SourceUnavailableError';
+}
+
+/**
+ * The site answered a different search than the one asked for: it redirected to another path.
+ * realt does this to any URL carrying `addressV2` — the filter is dropped and the search widens
+ * (17 listings became 1324, measured), which a silent redirect would hand to the user as theirs.
+ * A SourceUnavailableError, since we got no usable page for that search; `to` is where it went,
+ * so the user can be told what changed.
+ */
+export class SearchRewrittenError extends SourceUnavailableError {
+  override readonly name = 'SearchRewrittenError';
+
+  constructor(
+    readonly from: string,
+    readonly to: string,
+  ) {
+    super(`Search rewritten by a redirect: ${from} → ${to}`);
+  }
 }
 
 /**

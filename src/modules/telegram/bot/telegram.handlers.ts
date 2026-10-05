@@ -5,6 +5,7 @@ import type { Bot, Context } from 'grammy';
 import { extractUrl } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { SearchRewrittenError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
@@ -27,6 +28,7 @@ import {
   NO_LINK_PREVIEW,
   PROMPT,
   formatStats,
+  searchRewrittenNotice,
 } from './telegram.format';
 
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
@@ -149,11 +151,24 @@ export class TelegramHandlers {
     // NOTE: catch only the baseline — a failed message edit must fall through to bot.catch.
     // On failure the subscription is kept; the daily run baselines it silently.
     const count = await this.watch.baseline(sub).catch((err: unknown) => {
+      if (err instanceof SearchRewrittenError) return err;
       this.logger.warn({ err }, `Baseline failed for ${sub.url}`);
       reportUserFacing(err, { userId: candidate.userId, action: 'subscribe', url: sub.url });
       return null;
     });
 
+    if (count instanceof SearchRewrittenError) {
+      // Not kept: every poll would hit the same redirect, and the search behind it is not the
+      // one the user chose. Removed before the message says so. If `add` revived the user's
+      // paused subscription to this URL, that one goes too — it is just as broken.
+      // No Sentry: the link is the user's input, not our defect; the log keeps a trace.
+      this.logger.log(`Rejected a rewritten search: ${count.from} → ${count.to}`);
+      await this.subscriptions.remove(sub.id, candidate.userId);
+      await ctx.editMessageText(searchRewrittenNotice(count.to), {
+        link_preview_options: NO_LINK_PREVIEW,
+      });
+      return;
+    }
     if (count === null) {
       await ctx.editMessageText(
         `Готово ✅ Сайт сейчас не отвечает — загружу текущие объявления при следующей проверке.\n${sub.url}`,
