@@ -11,8 +11,10 @@ import { Subscription } from './entities/subscription.entity';
 import { User } from './entities/user.entity';
 
 // Cap on stored seen rows per subscription. Kept above the source page-cap window
-// (MAX_PAGES × page size ≈ 150, see paginate.ts) so ids still reachable are never
-// pruned — anything older has fallen out of the window and can't reappear as "new".
+// (MAX_PAGES × page size ≈ 150, see paginate.ts) so ids still reachable are never pruned.
+// NOTE: "fell out of the window" is not "gone for good" — kufar sorts by list_time, which a
+// seller's bump moves, so a listing bumped back after its row was pruned arrives as "new"
+// again. Accepted for now; see the «Технический бэклог» in docs/PRODUCT_PLAN.md.
 export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).

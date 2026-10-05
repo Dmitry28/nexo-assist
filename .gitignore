@@ -30,9 +30,11 @@ yarn-error.log*
 !/.vscode/extensions.json
 
 # dotenv environment variable files
+# NOTE: every .env variant is ignored, not just *.local — the repo is public, and a stray
+# .env.production must never ride along with `git add -A`. Only the template is tracked.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Temp
 *.tsbuildinfo
