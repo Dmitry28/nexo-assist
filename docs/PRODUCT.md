@@ -22,6 +22,9 @@ start; more frequent once throttling/dedupe land).
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
   Messages are paced one per second. A refused photo falls back to the text card; a refused pin
   is ignored — the listing already arrived.
+- A realt link the site **rewrites with a redirect** (any `addressV2` address filter is sent to a
+  much wider search) is refused on subscribe, with the reason and how to fix the link —
+  following it would hand the user someone else's search as theirs.
 - **A week of silence is confirmed:** a user who received nothing for 7 days gets one
   message — «🔕 Новых объявлений пока нет…» and the list of their searches (one per user, not
   per search). Only searches that polled fine that run are listed — a source that did not answer is
