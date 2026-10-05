@@ -31,6 +31,8 @@ export class RealtAdapter implements SourceAdapter {
     return paginate({
       firstUrl: withParam(base, 'page', '1'),
       host: HOST,
+      // realt redirects a search it rewrites (e.g. any `addressV2` filter) to a wider one.
+      pinPath: true,
       parsePage: (html, page) => {
         const { objects, pagination, linkPath } = extractPage(html);
         // The search URL first, the page's own declaration second: `seoPayload.parentUrl` reads

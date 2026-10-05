@@ -2,8 +2,10 @@ import { Logger } from '@nestjs/common';
 import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
+import { sentryCapture } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
+import { SearchRewrittenError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
@@ -200,6 +202,25 @@ describe('TelegramHandlers', () => {
       expect.stringContaining('Сайт сейчас не отвечает'),
       expect.anything(),
     );
+  });
+
+  // The search behind the redirect is not the one the user chose, and every poll would hit it.
+  it('drops the subscription and says why when the site rewrites the search', async () => {
+    // Only realt pins its path in production; here the baseline is mocked, so the URLs are data.
+    watch.baseline.mockRejectedValue(
+      new SearchRewrittenError('https://re.kufar.by/l/minsk', 'https://re.kufar.by/l/belarus'),
+    );
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk', 5);
+
+    const ctx = await pressButton(`subscribe:${nonce}`, 5);
+
+    expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
+    const [text] = ctx.editMessageText.mock.calls[0] as [string];
+    expect(text).toContain('https://re.kufar.by/l/minsk'); // what they sent
+    expect(text).toContain('https://re.kufar.by/l/belarus'); // where the site took it
+    // The link is user input, not our defect — nothing for Sentry.
+    expect(sentryCapture()).not.toHaveBeenCalled();
   });
 
   it("ignores another user's cancel tap — the owner's prompt stays subscribable", async () => {

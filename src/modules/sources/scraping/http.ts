@@ -3,7 +3,7 @@ import type { Dispatcher, RequestInit, Response } from 'undici';
 
 import { matchesHost } from '@/common/url';
 
-import { SourceUnavailableError } from '../source-adapter';
+import { SearchRewrittenError, SourceUnavailableError } from '../source-adapter';
 
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
@@ -38,6 +38,9 @@ function proxyAgent(): ProxyAgent | undefined {
   return proxyAgentCache.agent;
 }
 
+/** A URL's path with any trailing slash dropped — the part of a search a redirect may not change. */
+const searchPath = (url: string): string => new URL(url).pathname.replace(/\/+$/, '');
+
 /**
  * Fetch following redirects manually, validating every hop against `host` *before* it is
  * requested. The default `redirect: 'follow'` issues each intermediate request first and only
@@ -50,11 +53,13 @@ async function fetchFollowingHost({
   host,
   signal,
   useProxy,
+  pinPath,
 }: {
   url: string;
   host: string;
   signal: AbortSignal;
   useProxy: boolean;
+  pinPath: boolean;
 }): Promise<Response> {
   // `dispatcher` is undici's per-request transport hook — set only when this source is proxied.
   const init: RequestInit & { dispatcher?: Dispatcher } = {
@@ -82,6 +87,11 @@ async function fetchFollowingHost({
     if (!matchesHost({ url: next, host })) {
       throw new Error(`Redirected off ${host} (${next}) for ${url}`);
     }
+    // Against the ORIGINAL path, not the previous hop's, so a chain of benign-looking hops cannot
+    // walk away from it. A trailing slash is not a different search (realt 308s to add one).
+    // NOTE: the path only, not the query — every rewrite measured changed the path, while query
+    // normalization is routine and would make a query check fire on healthy searches.
+    if (pinPath && searchPath(next) !== searchPath(url)) throw new SearchRewrittenError(url, next);
     currentUrl = next;
   }
 }
@@ -93,20 +103,32 @@ async function fetchFollowingHost({
  *
  * `useProxy` routes the request through SCRAPE_PROXY_URL (for sources that block
  * datacenter IPs). No proxy configured → the request goes out directly.
+ *
+ * `pinPath` turns a redirect to another path into SearchRewrittenError — for sources whose
+ * redirects mean "not your search" (realt). Opt-in: kufar legitimately redirects
+ * `www.kufar.by/l/…` to `re.kufar.by/listings?…`, a different path for the same search.
  */
 export async function fetchHtml({
   url,
   host,
   useProxy = false,
+  pinPath = false,
 }: {
   url: string;
   host: string;
   useProxy?: boolean;
+  pinPath?: boolean;
 }): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchFollowingHost({ url, host, signal: controller.signal, useProxy });
+    const res = await fetchFollowingHost({
+      url,
+      host,
+      signal: controller.signal,
+      useProxy,
+      pinPath,
+    });
     if (!res.ok) {
       throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
     }

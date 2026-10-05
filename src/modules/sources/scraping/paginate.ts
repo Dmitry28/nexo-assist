@@ -36,6 +36,7 @@ export async function paginate({
   parsePage,
   logger,
   useProxy,
+  pinPath,
 }: {
   firstUrl: string;
   host: string;
@@ -43,6 +44,8 @@ export async function paginate({
   logger: Logger;
   /** Route fetches through SCRAPE_PROXY_URL — for sources that block datacenter IPs. */
   useProxy?: boolean;
+  /** Fail on a redirect to another path — see fetchHtml. */
+  pinPath?: boolean;
 }): Promise<FetchResult> {
   const byId = new Map<string, Listing>();
   let complete = true;
@@ -51,7 +54,7 @@ export async function paginate({
   for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
     let parsed: ParsedPage;
     try {
-      parsed = parsePage(await fetchHtml({ url, host, useProxy }), page);
+      parsed = parsePage(await fetchHtml({ url, host, useProxy, pinPath }), page);
     } catch (err) {
       if (page === 1) throw err;
       // A prefix, not a failure — see FetchResult for what `complete` is for.
