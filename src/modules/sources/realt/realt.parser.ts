@@ -93,7 +93,7 @@ export function extractPage(html: string): RealtPage {
     objects: withIds(objects ?? [], (obj) => obj.code, 'realt'),
     received: objects?.length ?? 0,
     linkPath: linkPath(pageProps),
-    // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
+    // Left a plain cast, unlike `objects`: nothing dereferences this block, parsePage only
     // reads `totalCount` off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
@@ -168,10 +168,10 @@ function levels(obj: RawRealtObject): number | undefined {
  * Why this matters at all: an object of a plots search lives at `/sale-plots/object/<code>/`, and
  * a *wrong* slug is worse than no link — `realt.by/sale/object/<code>/` answers 301 to the
  * `/sale/` search page (measured), so the reader lands on an unrelated list while the listing is
- * already marked seen. That is why the adapter fails the poll rather than guessing.
+ * already marked seen. That is why parsePage fails the poll rather than guessing.
  *
  * This is the fallback, not the primary source: `parentUrl` reads `/` on region-prefixed pages
- * (measured on /grodno-region/sale/cottages/), so it is only useful for search URLs the adapter's
+ * (measured on /grodno-region/sale/cottages/), so it is only useful for search URLs slugFromSearch's
  * own regex cannot read. The shape check is deliberately narrow for the same reason — a slug of
  * one segment is exactly the 301 case above.
  */
