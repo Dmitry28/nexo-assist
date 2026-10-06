@@ -76,6 +76,17 @@ describe('extractPage', () => {
     expect(() => extractPage(noAds)).toThrow('listing.ads');
     expect(() => extractPage(noAds)).toThrow(SourceUnavailableError);
   });
+
+  // The parsers share the rule (withIds); this pins that kufar's page goes through it.
+  it('drops an ad without an id, and fails a page where no ad has one', () => {
+    const page = (ads: unknown[]): string =>
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { initialState: { listing: { ads } } } } }) +
+      '</script>';
+
+    expect(extractPage(page([{ ad_id: 1 }, { adId: 2 }])).ads).toEqual([{ ad_id: 1 }]);
+    expect(() => extractPage(page([{ adId: 2 }]))).toThrow(SourceUnavailableError);
+  });
 });
 
 describe('mapAd', () => {

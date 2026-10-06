@@ -39,7 +39,7 @@ export class RealtAdapter implements SourceAdapter {
       // realt redirects a search it rewrites (e.g. any `addressV2` filter) to a wider one.
       pinPath: true,
       parsePage: (html, page) => {
-        const { objects, pagination, linkPath } = extractPage(html);
+        const { objects, received: sent, pagination, linkPath } = extractPage(html);
         // The search URL first, the page's own declaration second: `seoPayload.parentUrl` reads
         // `/` on region-prefixed pages (measured on /grodno-region/sale/cottages/), so it is the
         // weaker source of the two. Without either, see the linkPath docblock in realt.parser.
@@ -47,7 +47,7 @@ export class RealtAdapter implements SourceAdapter {
         if (slug === null) {
           throw new SourceUnavailableError(`realt: no object-URL slug for ${url}`);
         }
-        received += objects.length;
+        received += sent;
         const hasMore = pagination !== null && received < pagination.totalCount;
         const nextUrl = hasMore ? withParam(base, 'page', String(page + 1)) : null;
         return { listings: objects.map((obj) => mapObject(obj, slug)), nextUrl };

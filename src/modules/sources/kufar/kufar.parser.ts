@@ -5,11 +5,15 @@ import {
   asArray,
   asCoordinates,
   asPositiveNumber,
+  asPrice,
   asRecord,
   asText,
-  parseNextData,
+  asTexts,
+  requireArray,
+  requireNextData,
+  withIds,
 } from '../scraping/next-data';
-import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
+import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
 /**
@@ -26,7 +30,7 @@ interface RawKufarAd {
   price_byn?: string;
   price_usd?: string;
   list_time: string;
-  images?: Array<{ path: string }>;
+  images?: unknown;
   ad_parameters?: RawParam[];
   account_parameters?: RawParam[];
 }
@@ -68,16 +72,17 @@ export interface KufarPage {
  * read as an empty search (verified live: a zero-result search still has `ads: []`).
  */
 export function extractPage(html: string): KufarPage {
-  const data = parseNextData(html);
-  if (!data) throw new SourceUnavailableError('kufar: __NEXT_DATA__ missing or unparseable');
-
+  const data = requireNextData(html, 'kufar');
   const props = asRecord(data.props);
   const pageProps = asRecord(props?.pageProps);
   // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
   const initialState = asRecord(pageProps?.initialState ?? props?.initialState);
   const listing = asRecord(initialState?.listing);
-  const ads = asArray<RawKufarAd>(listing?.ads);
-  if (!ads) throw new SourceUnavailableError('kufar: listing.ads missing — page layout changed?');
+  const ads = withIds(
+    requireArray<RawKufarAd>(listing?.ads, 'kufar', 'listing.ads'),
+    (ad) => ad.ad_id,
+    'kufar',
+  );
   // No pagination block, or one of another shape, simply means no next page — unlike `ads`,
   // whose absence is the signal that the page is not a search result at all.
   const pagination = asArray<RawPagination>(listing?.pagination) ?? [];
@@ -94,11 +99,14 @@ export function mapAd(ad: RawKufarAd): Listing {
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
     description: preview(ad.body_short),
-    priceByn: toPrice(ad.price_byn),
-    priceUsd: toPrice(ad.price_usd),
+    // Kufar counts in 1/100 of the currency (1385000 → 13850 BYN).
+    priceByn: asPrice(ad.price_byn, { minorUnits: true }),
+    priceUsd: asPrice(ad.price_usd, { minorUnits: true }),
     address: asText(param(ad.account_parameters, 'address')),
     listTime: ad.list_time,
-    images: (ad.images ?? []).map((image) => `${IMAGE_CDN_BASE}/${image.path}`),
+    images: asTexts(asArray<unknown>(ad.images)?.map((image) => asRecord(image)?.path)).map(
+      (path) => `${IMAGE_CDN_BASE}/${path}`,
+    ),
     coordinates: asCoordinates(param(ad.ad_parameters, 'coordinates')),
     seller: asText(param(ad.account_parameters, 'name')),
     // Order is the card's reading order — what identifies the object first, extras last.
@@ -131,14 +139,6 @@ function link(ad: RawKufarAd): string {
   return published !== undefined && matchesHost({ url: published, host: HOST })
     ? published
     : `https://re.kufar.by/vi/${ad.ad_id}`;
-}
-
-// NOTE: Kufar stores prices as integers in 1/100 of the currency unit (1385000 → 13850 BYN).
-// The positivity check comes AFTER the conversion: a raw value under 50 rounds to 0, and a
-// `priceByn` of 0 is not a price — the digest would print "0 BYN" rather than "цена не указана".
-function toPrice(raw: string | undefined): number | undefined {
-  const value = Math.round(parseInt(raw ?? '', 10) / 100);
-  return value > 0 ? value : undefined;
 }
 
 /** One parameter by key, taking its raw value (`v`) or its display label (`vl`). */
@@ -190,7 +190,6 @@ function facilities(ad: RawKufarAd): Array<ReturnType<typeof detail>> {
   return FACILITY_LABELS.map(([key, label]) => {
     const value = param(ad.ad_parameters, key, 'vl');
     // A label can be a single string or a list (a garage has several) — both become one line.
-    const labels = (asArray<unknown>(value) ?? [value]).map(asText).filter((l) => l !== undefined);
-    return detail(label, labels.join(', '));
+    return detail(label, asTexts(value).join(', '));
   });
 }

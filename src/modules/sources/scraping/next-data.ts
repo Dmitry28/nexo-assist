@@ -1,4 +1,5 @@
-import type { Coordinates } from '../source-adapter';
+import { SourceUnavailableError } from '../source-adapter';
+import type { Coordinates, SourceId } from '../source-adapter';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -28,6 +29,14 @@ export function asArray<T>(value: unknown): T[] | undefined {
  */
 export function asText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Every usable text in a value that may be a list or a single item — the shape sources use for
+ * image URLs and multi-choice labels. Non-text entries are dropped, not passed on to a card.
+ */
+export function asTexts(value: unknown): string[] {
+  return (asArray<unknown>(value) ?? [value]).map(asText).filter((text) => text !== undefined);
 }
 
 /**
@@ -85,6 +94,60 @@ export function parseNextData(html: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * `parseNextData`, or a SourceUnavailableError: a page without the blob is a bot-wall or a
+ * redesign, never an empty search.
+ */
+export function requireNextData(html: string, source: SourceId): Record<string, unknown> {
+  const data = parseNextData(html);
+  if (!data) throw new SourceUnavailableError(`${source}: __NEXT_DATA__ missing or unparseable`);
+  return data;
+}
+
+/**
+ * The listing array a search page must carry, or a SourceUnavailableError. For sources whose
+ * zero-result page still has the key (`[]`, measured), so its absence means the layout changed.
+ */
+export function requireArray<T>(value: unknown, source: SourceId, what: string): T[] {
+  const items = asArray<T>(value);
+  if (!items) throw new SourceUnavailableError(`${source}: ${what} missing — page layout changed?`);
+  return items;
+}
+
+/**
+ * The items that carry a usable id (a finite number or non-blank text) — or a
+ * SourceUnavailableError when a non-empty page has none. The id is the dedup key: read blindly
+ * (the caller's `String(id)`), a renamed field turns every listing into "undefined", the walk merges them
+ * into one and the seen set swallows the rest without a sound. One malformed item is dropped, not
+ * fatal — the rest of the page is still good.
+ */
+// TODO [L]: a partial drop leaves no trace — return the count so the adapter can warn once.
+export function withIds<T>(items: T[], idOf: (item: T) => unknown, source: SourceId): T[] {
+  const kept = items.filter((item) => {
+    const id = idOf(item);
+    return typeof id === 'number' ? Number.isFinite(id) : asText(id) !== undefined;
+  });
+  if (items.length > 0 && kept.length === 0) {
+    throw new SourceUnavailableError(`${source}: no listing carries an id — page layout changed?`);
+  }
+  return kept;
+}
+
+/**
+ * A price as a whole currency amount, or undefined. `minorUnits`: the source counts in 1/100 of
+ * the unit (kufar does — 1385000 → 13850). Positivity is checked AFTER rounding: a raw minor
+ * value under 50 rounds to 0, and a price of 0 prints "0 BYN" instead of "цена не указана".
+ */
+export function asPrice(
+  value: unknown,
+  { minorUnits }: { minorUnits: boolean },
+): number | undefined {
+  const raw = asPositiveNumber(value);
+  if (raw === undefined) return undefined;
+  const price = Math.round(minorUnits ? raw / 100 : raw);
+  return price > 0 ? price : undefined;
 }
 
 /**

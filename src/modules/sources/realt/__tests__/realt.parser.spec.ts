@@ -46,6 +46,17 @@ describe('extractPage', () => {
     expect(() => extractPage(oddObjects)).toThrow('not an array');
   });
 
+  it('drops an object without a code but still counts it as received', () => {
+    const html =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { objects: [{ code: 1 }, { id: 2 }] } } }) +
+      '</script>';
+
+    const { objects, received } = extractPage(html);
+    expect(objects).toEqual([{ code: 1 }]);
+    expect(received).toBe(2);
+  });
+
   it('treats an explicit objects: null as empty — that reads as "no results", not a new layout', () => {
     // The distinction the guard above turns on: JSON carries no `undefined`, so `null` is the
     // shape a zero-result page can legitimately take. Calling it a layout change would alert on
@@ -55,7 +66,12 @@ describe('extractPage', () => {
       JSON.stringify({ props: { pageProps: { objects: null } } }) +
       '</script>';
 
-    expect(extractPage(nullObjects)).toEqual({ objects: [], pagination: null, linkPath: null });
+    expect(extractPage(nullObjects)).toEqual({
+      objects: [],
+      received: 0,
+      pagination: null,
+      linkPath: null,
+    });
   });
 
   it('treats pageProps without an objects array as empty — realt renders some zero-result pages so', () => {
@@ -64,7 +80,12 @@ describe('extractPage', () => {
       JSON.stringify({ props: { pageProps: { apolloState: {} } } }) +
       '</script>';
 
-    expect(extractPage(noObjects)).toEqual({ objects: [], pagination: null, linkPath: null });
+    expect(extractPage(noObjects)).toEqual({
+      objects: [],
+      received: 0,
+      pagination: null,
+      linkPath: null,
+    });
   });
 
   // The slug the object links are built from. Read from the payload rather than guessed from the
