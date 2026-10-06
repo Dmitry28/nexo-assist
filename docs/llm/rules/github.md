@@ -46,15 +46,18 @@
 
 ## PR Lifecycle
 
-1. When the branch is finished and reviewed
-   ([workflow.md § Post-completion checklist](workflow.md#post-completion-checklist)), push it
-   **once** and open the PR against `dev` (`gh pr create --base dev`).
+1. **Full pre-PR review** over the whole branch (`dev..HEAD`), not the last step only —
+   [workflow.md § Post-completion checklist](workflow.md#post-completion-checklist) step 4, with
+   `/logic-review` given the task and plan. Fix findings, then push **once** and open the PR
+   against `dev` (`gh pr create --base dev`).
 2. Wait for required CI checks (`gh pr checks <n> --watch`). Then re-read the PR title and body
    against the final diff ([format rules](../commands/git/rules/changes-message-format-rules.md)
    § 2), and treat every PR comment and review as a review finding
    ([workflow.md § Post-completion checklist](workflow.md#post-completion-checklist) steps 5–6):
    fix `[H]`, log the rest, reply with the verdict.
-3. After merge approval (§ Approval), merge and delete the branch (`gh pr merge <n> --merge --delete-branch`).
+3. **Give the owner the PR link and wait for the merge approval** (§ Approval) — owner's rule,
+   2026-10-06: the link comes before every merge, even under a standing "merge after review".
+   Then merge and delete the branch (`gh pr merge <n> --merge --delete-branch`).
 4. **Release** (separate approval): test the change locally against `dev`, then promote —
    `gh pr create --base main --head dev` → merge. That push to `main` is what deploys.
 
