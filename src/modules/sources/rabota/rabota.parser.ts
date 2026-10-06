@@ -1,8 +1,8 @@
 import { parse } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
-import { NO_SALARY, salaryText } from '../listing-text';
-import type { PayPeriod } from '../listing-text';
+import { NO_SALARY, asPayPeriod, salaryText } from '../listing-text';
+import { asCurrency } from '../scraping/currency';
 import {
   asCoordinates,
   asNumber,
@@ -95,19 +95,14 @@ function toListing(raw: RawVacancy): Listing {
   };
 }
 
-// hh's codes onto the shared ones: it still names the ruble by its pre-2016 codes, and a salary
-// without a code is assumed to be rubles (not seen live — every one measured carried a code).
-const CURRENCY: Record<string, string> = { BYR: 'BYN', RUR: 'RUB' };
-// TODO [L]: hh may have more modes (seen live: MONTH, HOUR, SHIFT only); unknown reads as a month.
-const PERIOD: Record<string, PayPeriod> = { HOUR: 'hour', SHIFT: 'shift' };
-
+// A salary without a currency code is assumed to be rubles — not seen live; every one measured
+// carried a code.
 function salary(raw: RawVacancy['compensation']): string | undefined {
-  const code = asText(raw?.currencyCode) ?? 'BYR';
   return salaryText({
     from: asNumber(raw?.from),
     to: asNumber(raw?.to),
-    currency: CURRENCY[code] ?? code,
-    period: PERIOD[asText(raw?.mode) ?? ''],
+    currency: asCurrency(raw?.currencyCode) ?? 'BYN',
+    period: asPayPeriod(raw?.mode),
     gross: raw?.gross === true,
   });
 }

@@ -13,6 +13,17 @@ export type PayPeriod = 'month' | 'hour' | 'shift';
 const PER: Record<PayPeriod, string> = { month: '', hour: ' в час', shift: ' за смену' };
 
 /**
+ * A site's pay-period word («HOUR», «hourly», «в час», «SHIFT»…) as a PayPeriod; anything else —
+ * including nothing — is a month, the default every job site measured uses.
+ */
+export function asPayPeriod(value: unknown): PayPeriod {
+  const word = typeof value === 'string' ? value.toLowerCase() : '';
+  if (/hour|час/.test(word)) return 'hour';
+  if (/shift|смен/.test(word)) return 'shift';
+  return 'month';
+}
+
+/**
  * «1500 – 2000 руб.», «от 15 руб. в час, до вычета налогов» — or undefined with neither bound.
  * `gross`: before tax, which job sites mark and a reader needs to compare offers.
  */
@@ -47,6 +58,14 @@ export function preview(text: string | undefined): string | undefined {
   return text !== undefined && text.length > PREVIEW_CHARS
     ? `${text.slice(0, PREVIEW_CHARS).trimEnd()}…`
     : text;
+}
+
+/**
+ * A preview the SITE already cut at `cutAt` characters, marked as cut — otherwise it just stops
+ * mid-word. Text of that length or more is taken to be cut.
+ */
+export function markCut(text: string | undefined, cutAt: number): string | undefined {
+  return text !== undefined && text.length >= cutAt ? `${text}…` : text;
 }
 
 /** «5.0 (8 отз.)» — or undefined without reviews: a score nobody gave is noise, not a rating. */

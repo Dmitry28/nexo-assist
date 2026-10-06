@@ -1,4 +1,4 @@
-import { preview, ratingText, salaryText } from '../listing-text';
+import { asPayPeriod, markCut, preview, ratingText, salaryText } from '../listing-text';
 
 describe('salaryText', () => {
   it.each([
@@ -26,5 +26,24 @@ describe('ratingText', () => {
   it('shows a score with its review count, nothing without reviews', () => {
     expect(ratingText('5.0', 8)).toBe('5.0 (8 отз.)');
     expect(ratingText('0.0', undefined)).toBeUndefined();
+  });
+});
+
+describe('asPayPeriod', () => {
+  it.each([
+    ['HOUR', 'hour'],
+    ['в час', 'hour'],
+    ['SHIFT', 'shift'],
+    ['MONTH', 'month'],
+    [undefined, 'month'],
+  ])('%p → %s', (value, expected) => {
+    expect(asPayPeriod(value)).toBe(expected);
+  });
+});
+
+describe('markCut', () => {
+  it('marks text the site cut at its length, leaves shorter text alone', () => {
+    expect(markCut('a'.repeat(150), 150)).toBe(`${'a'.repeat(150)}…`);
+    expect(markCut('short', 150)).toBe('short');
   });
 });
