@@ -30,12 +30,9 @@ npm run test:e2e        # e2e tests
 npm run check:dead-code # knip — unused files/exports/dependencies
 ```
 
-Before claiming a change is done, run: `npm run lint && npm run typecheck && npm test`.
-
-**Changed an exported signature or return type? Add `npm run test:e2e`.** `npm test` does not
-include it, and typecheck does not catch it: `expect(aNumber).toEqual({…})` is legal TypeScript,
-so a stale e2e assertion sails through both and fails only in CI. It needs Postgres — `docker
-compose up -d` first.
+Before claiming a task done, run the full checks of
+[/verify-task-result](commands/check/verify-task-result.md#step-2--full-checks) — e2e included:
+`npm test` skips it, and typecheck does not catch a stale e2e assertion.
 
 ## Key Files
 

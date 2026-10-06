@@ -18,8 +18,8 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 - When the user asks to work **step by step**, follow [step-by-step-flow.md](step-by-step-flow.md) — it adds a per-step review before each commit.
 - **Show a milestone for review only when it is finished** — implemented _and_ verified (§ 3). A half-done diff costs a review pass that has to be repeated.
 - **No new tests while implementing** — run the existing suite to catch regressions; new tests come once, at [post-completion step 1](#post-completion-checklist). A test written against one milestone gets rewritten by the next and bloats every diff the user reviews on the way.
-- Implement → verify → report, **leaving all changes uncommitted**; the two approval gates are in
-  [github.md § Approval](github.md#approval).
+- Implement → verify → report; commit only once the owner approves the diff
+  ([github.md § Approval](github.md#approval)).
 - After opening a PR, surface the URL so the user can review.
 - Reflect on what was learned — if new findings affect the solution, address them before moving on.
 - If you hit ambiguity or a blocking decision mid-task — **surface it immediately instead of guessing.**
@@ -27,7 +27,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 ## Git Workflow
 
 - Branch flow, language, and PR lifecycle → [github.md](github.md).
-- Pre-commit hook (husky + lint-staged) runs ESLint + Prettier on staged TS files.
+- Pre-commit hook (husky + lint-staged): ESLint `--fix` + Prettier on staged `.ts`, Prettier on staged docs/configs (globs: `lint-staged` in `package.json`).
 
 ## 3. Verify
 
@@ -65,7 +65,7 @@ _(Repeat steps 2–4 for each milestone)_
 
 9. Changed anything in steps 6–8? Re-run `/review-code` over the final diff — otherwise the last edits ship as the only unreviewed part of the change.
 10. **Read the checklist back** — one line per step, done or skipped and why. A step nobody can name is a step that was skipped.
-11. **Stop with everything uncommitted.** Summarize the changes and wait for the user to review the local diff — committing is a separate, explicitly approved step (see Implement).
+11. **Stop before committing.** Summarize the changes and wait for the owner to approve the local diff (see Implement).
 
 ---
 
