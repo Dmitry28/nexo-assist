@@ -1,14 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
-
-import { RabotaAdapter } from '../rabota.adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/rabota-search.html'), 'utf8');
 const lastPage = readFileSync(join(__dirname, 'fixtures/rabota-empty.html'), 'utf8');
 
-describe('RabotaAdapter', () => {
+describe('rabota source', () => {
   const fetchMock = undiciFetchMock();
 
   it.each([
@@ -17,7 +16,7 @@ describe('RabotaAdapter', () => {
     ['https://rabota.by/search/vacancy/advanced', false],
     ['https://rabota.by/vacancy/138190032', false],
   ])('matches(%s) → %s', (url, expected) => {
-    expect(new RabotaAdapter().matches(url)).toBe(expected);
+    expect(sourceAdapter('rabota').matches(url)).toBe(expected);
   });
 
   // hh counts pages from 0: our first request is its page 0, the next its page 1.
@@ -26,7 +25,7 @@ describe('RabotaAdapter', () => {
       .mockResolvedValueOnce(new Response(fixture))
       .mockResolvedValueOnce(new Response(lastPage));
 
-    await new RabotaAdapter().fetch(
+    await sourceAdapter('rabota').fetch(
       'https://rabota.by/search/vacancy?area=2302&order_by=salary_desc&items_on_page=20&page=3',
     );
 

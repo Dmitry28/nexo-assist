@@ -3,10 +3,11 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
+import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
 import { SearchRewrittenError } from '../../source-adapter';
-import { RealtAdapter } from '../realt.adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
 
@@ -23,12 +24,12 @@ const realtPage = (codes: number[], totalCount: number): string =>
   }) +
   '</script>';
 
-describe('RealtAdapter', () => {
+describe('realt source', () => {
   const fetchMock = undiciFetchMock();
-  let adapter: RealtAdapter;
+  let adapter: SourceAdapter;
 
   beforeEach(() => {
-    adapter = new RealtAdapter();
+    adapter = sourceAdapter('realt');
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
   });

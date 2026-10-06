@@ -15,6 +15,7 @@ import {
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { SearchPage } from '../source-definition';
 
 /** rabota.by — hh.ru's Belarusian site. */
 export const HOST = 'rabota.by';
@@ -42,19 +43,13 @@ interface RawVacancy {
   address?: { displayName?: unknown; marker?: { '@lat'?: unknown; '@lng'?: unknown } };
 }
 
-/** One page of a rabota search: its vacancies and whether a later page exists. */
-export interface RabotaPage {
-  listings: Listing[];
-  hasMore: boolean;
-}
-
 /**
  * Parse a rabota search page. hh renders the search into JSON inside
  * `<template id="HH-Lux-InitialState">` (entity-encoded; the parser decodes it). An anti-bot page
  * has no such template — the prototype met one in production — so a missing or unreadable state
  * is a SourceUnavailableError, never an empty search; a real zero-result page carries `[]`.
  */
-export function extractPage(html: string): RabotaPage {
+export function parsePage(html: string): SearchPage<boolean> {
   const template = parse(html).querySelector('template#HH-Lux-InitialState');
   const result = asRecord(asRecord(parseJson(template?.textContent))?.vacancySearchResult);
   if (!result) {
@@ -70,10 +65,10 @@ export function extractPage(html: string): RabotaPage {
     (v) => v.publicationTime?.$,
   );
   // `paging` is absent on a single page; `next.disabled` marks the last one (measured).
-  const next = asRecord(asRecord(result.paging)?.next);
+  const pager = asRecord(asRecord(result.paging)?.next);
   return {
     listings: vacancies.map(toListing),
-    hasMore: next !== undefined && next.disabled !== true,
+    next: pager !== undefined && pager.disabled !== true,
   };
 }
 

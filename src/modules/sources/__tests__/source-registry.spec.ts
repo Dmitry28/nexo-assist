@@ -1,12 +1,12 @@
 import { Test } from '@nestjs/testing';
 
-import { KufarAdapter } from '../kufar/kufar.adapter';
-import { RealtAdapter } from '../realt/realt.adapter';
+import { sourceAdapter } from '@/__tests__/helpers/sources';
+
 import { SourceRegistry } from '../source-registry';
 import { ADAPTERS, SourcesModule } from '../sources.module';
 
 describe('SourceRegistry', () => {
-  const registry = new SourceRegistry([new KufarAdapter(), new RealtAdapter()]);
+  const registry = new SourceRegistry([sourceAdapter('kufar'), sourceAdapter('realt')]);
 
   it('matches a URL to its adapter', () => {
     expect(registry.match('https://re.kufar.by/l/minsk')?.id).toBe('kufar');
@@ -20,7 +20,7 @@ describe('SourceRegistry', () => {
   // The dedup key of every stored subscription is built with this list — a change here changes
   // `normalizedUrl` under existing rows. Grow it only with a key a new adapter really sets.
   it('pins the duplicate-check params of all registered adapters', () => {
-    const all = new SourceRegistry(ADAPTERS.map((Adapter) => new Adapter()));
+    const all = new SourceRegistry(ADAPTERS);
 
     expect(all.volatileParams().sort()).toEqual([
       'cursor',
@@ -43,16 +43,14 @@ describe('SourceRegistry', () => {
   });
 });
 
-// The specs above build the registry by hand, so they say nothing about the wiring. A source
-// that is provided but never reaches SOURCE_ADAPTERS resolves to no adapter — which the user
-// sees as "we don't support that link", with nothing failing anywhere.
+// The specs above build the registry by hand, so they say nothing about the wiring: a source
+// missing from SOURCE_ADAPTERS reads to the user as "we don't support that link".
 describe('SourcesModule wiring', () => {
   it('registers every adapter it provides', async () => {
     const moduleRef = await Test.createTestingModule({ imports: [SourcesModule] }).compile();
 
     const wired = moduleRef.get(SourceRegistry);
 
-    expect(wired.get('kufar')).toBeInstanceOf(KufarAdapter);
-    expect(wired.get('realt')).toBeInstanceOf(RealtAdapter);
+    expect(ADAPTERS.map((adapter) => wired.get(adapter.id))).toEqual(ADAPTERS);
   });
 });

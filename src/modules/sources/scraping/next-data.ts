@@ -67,7 +67,7 @@ export function asNumber(value: unknown): number | undefined {
 /**
  * As `asNumber`, but zero and negatives count as absent — which is how these sources spell "not
  * filled in" for an area, a room count or a year. Fields where zero is a real value (a mileage,
- * say) take `asNumber` instead; the adapter knows which it is.
+ * say) take `asNumber` instead; the parser knows which it is.
  */
 export function asPositiveNumber(value: unknown): number | undefined {
   const parsed = asNumber(value);
@@ -128,7 +128,7 @@ export function requireArray<T>(value: unknown, source: SourceId, what: string):
  * into one and the seen set swallows the rest without a sound. One malformed item is dropped, not
  * fatal — the rest of the page is still good.
  */
-// TODO [L]: a partial drop leaves no trace — return the count so the adapter can warn once.
+// TODO [L]: a partial drop leaves no trace — return the count so the walk can warn once.
 export function withIds<T>(items: T[], idOf: (item: T) => unknown, source: SourceId): T[] {
   const kept = items.filter((item) => {
     const id = idOf(item);

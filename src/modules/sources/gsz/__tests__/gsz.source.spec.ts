@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
-
-import { GszAdapter } from '../gsz.adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/gsz-search.html'), 'utf8');
 
-describe('GszAdapter', () => {
+describe('gsz source', () => {
   const fetchMock = undiciFetchMock();
 
   it.each([
@@ -15,7 +14,7 @@ describe('GszAdapter', () => {
     ['https://gsz.gov.by/registration/employer/vacancy/x/detail-public/', false],
     ['https://gsz.gov.by/', false],
   ])('matches(%s) → %s', (url, expected) => {
-    expect(new GszAdapter().matches(url)).toBe(expected);
+    expect(sourceAdapter('gsz').matches(url)).toBe(expected);
   });
 
   it('pins newest-first, 50 per page and page 1, then follows the pager', async () => {
@@ -23,7 +22,7 @@ describe('GszAdapter', () => {
       .mockResolvedValueOnce(new Response(fixture))
       .mockResolvedValueOnce(new Response(fixture.replace(/page-link/g, 'x')));
 
-    const { listings } = await new GszAdapter().fetch(
+    const { listings } = await sourceAdapter('gsz').fetch(
       'https://gsz.gov.by/registration/vacancy-search/?district=14712&sort_by=salary_asc&page=4',
     );
 

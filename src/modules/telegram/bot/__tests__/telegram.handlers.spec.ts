@@ -3,8 +3,8 @@ import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { sentryCapture } from '@/__tests__/helpers/sentry';
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
-import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SearchRewrittenError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -67,7 +67,7 @@ describe('TelegramHandlers', () => {
       config,
       subscriptions as unknown as SubscriptionsService,
       watch as unknown as WatchService,
-      new SourceRegistry([new KufarAdapter()]),
+      new SourceRegistry([sourceAdapter('kufar')]),
       status,
       check as unknown as CheckHandlers,
     );

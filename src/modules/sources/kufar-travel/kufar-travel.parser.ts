@@ -15,6 +15,7 @@ import {
 } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { SearchPage } from '../source-definition';
 
 /** travel.kufar.by — kufar's short-term (per-night) rentals: its own app and payload. */
 export const HOST = 'travel.kufar.by';
@@ -83,6 +84,12 @@ export function extractPage(html: string): KufarTravelPage {
     (o) => o.listTime,
   );
   return { objects, hasMore };
+}
+
+/** A search page as the shared walk reads it: listings and whether another page follows. */
+export function parsePage(html: string): SearchPage<boolean> {
+  const { objects, hasMore } = extractPage(html);
+  return { listings: objects.map(mapRentalObject), next: hasMore };
 }
 
 /** Map a raw rental object to a normalized listing. */

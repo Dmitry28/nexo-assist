@@ -30,11 +30,12 @@ src/
     ├── sources/        # Source-plugin layer (specialized module)
     │   ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
     │   ├── source-registry.ts  # Resolves an adapter by URL/id
-    │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
+    │   ├── source-definition.ts # SourceDefinition → SourceAdapter (shared matching, paging)
+    │   ├── listing-details.ts  # Builds the labelled detail lines parsers fill
     │   ├── listing-text.ts     # Shared wording: salary, preview, rating
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared reading: fetch, paginate, JSON/HTML/text helpers
-    │   └── <site>/             # One adapter per site (kufar, kufar-travel, realt, gsz, rabota) + parser
+    │   └── <site>/             # One folder per site: its parser + its SourceDefinition
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root
@@ -114,17 +115,26 @@ data sits, which keys and codes it uses, its quirks. Code that is not about one 
 field (`listing-text.ts`), reading text, HTML or JSON (`scraping/`), paging, page checks — lives in
 those shared modules from the start: that is placement, not a premature abstraction.
 
-Mirror `sources/kufar-travel/` (parser + adapter + `__tests__/` with a trimmed live fixture). What
-is ours:
+A source is a folder `sources/<site>/` — mirror `rabota/`:
 
-- The parser owns the site: `HOST`, raw types, `extractPage`, the mapper — built on the
-  `scraping/next-data.ts` helpers, so a missing key fails the poll instead of reading as empty.
-- The adapter wires `paginate` (newest-first sort pinned, paging, `useProxy`/`pinPath`) plus any
-  state only the search URL carries, and declares the params it sets as `volatileParams`.
-- Register: the `SourceId` union, `ADAPTERS` in `sources.module.ts`, a sample search in
-  `__tests__/adapters.contract.spec.ts` (it then checks host overlap, outages, `volatileParams`),
-  and the site in the bot's `SITES` line (`telegram.format.ts`).
-- Taking over a host another adapter matched? Its stored subscriptions need a data migration
+- `<site>.parser.ts` — the site: `HOST`, raw types, the mapper, and `parsePage(html, ctx)` — the
+  one function the definition points at. Built on the shared helpers (`requireArray`, `withIds`,
+  `withoutStalePromos`, `asPrice`…), so a missing key fails the poll instead of reading as empty.
+- `<site>.source.ts` — a `SourceDefinition` (`source-definition.ts`): host, optional search path,
+  pinned params (newest-first sort, page size), page or cursor paging, noise params, `parse`;
+  `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)). Matching,
+  pinning, paging and the duplicate-check params come from `createSourceAdapters`.
+- `__tests__/` — parser specs on a trimmed live fixture `fixtures/<id>-search.html` (that name
+  is what the contract spec loads; redacted — the repo is public).
+- Register: the `SourceId` union, the definition list in `sources.module.ts`, a sample search on
+  the source's own host and path in `__tests__/adapters.contract.spec.ts` (it checks every source
+  for host overlap, outages, a data-less page and its fixture's listings), and the site in the
+  bot's `SITES` line. A new pinned or paging key also extends the pinned list in
+  `source-registry.spec.ts` — it changes the duplicate check of every source (PRODUCT_PLAN.md, tech
+  backlog).
+- The source's own spec covers only what is its own — `matches` cases and quirks (realt's slug,
+  rabota's page 0); shared paging and pinning are tested once, in `source-definition.spec.ts`.
+- Taking over a host another source matched? Its stored subscriptions need a data migration
   (precedent: `MoveTravelSubscriptions`).
 - The source's measured gotchas also go into its entry in PRODUCT_PLAN.md.
 

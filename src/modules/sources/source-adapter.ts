@@ -2,7 +2,7 @@ export type SourceId = 'kufar' | 'kufar-travel' | 'realt' | 'gsz' | 'rabota';
 
 /**
  * Shown when a source gives no usable title. Part of the contract, not of one parser: `title` is
- * required, so every adapter needs the same answer to "the site sent none" — and the digest
+ * required, so every source needs the same answer to "the site sent none" — and the digest
  * dereferences it (telegram.format.ts), so an absent title is a crash, not a blank line.
  */
 export const UNTITLED_LISTING = 'Объявление';
@@ -18,7 +18,7 @@ export const UNTITLED_LISTING = 'Объявление';
  * party exactly when a source breaks for everyone.
  *
  * One caveat that follows from that: a site REDESIGN also lands here, and it is ours to fix —
- * the adapter needs updating — even though the tag says `source`. Those are the ones whose
+ * the source's parser needs updating — even though the tag says `source`. Those are the ones whose
  * message reads "page layout changed?"; `kind: source` means "the site did not hand us a usable
  * page", never "nothing to do".
  */
@@ -51,7 +51,7 @@ export class SearchRewrittenError extends SourceUnavailableError {
  * The window: a fetch returns at most this many newest listings, however the source sizes its
  * pages (`paginate` enforces it). MAX_SEEN_PER_SUBSCRIPTION is sized against it: a window wider
  * than the seen cap gets its own ids pruned and re-delivered as "new" every run — which is what
- * page-sized windows did on realt (see realt.adapter). 150 is what kufar's 5 × 30 always yields.
+ * page-sized windows did on realt (see realt.parser parsePage). 150 is what kufar's 5 × 30 always yields.
  */
 export const MAX_LISTINGS = 150;
 
@@ -83,7 +83,7 @@ export interface Coordinates {
 }
 
 /**
- * One labelled fact about a listing, in display order. The adapter owns the wording and the
+ * One labelled fact about a listing, in display order. The source's parser owns the wording and the
  * unit — it is the only place that knows «Участок 12 сот.» from «Пробег 120 000 км», so the
  * card can render any vertical without learning its vocabulary (build them with
  * `listing-details.ts`).
@@ -93,7 +93,7 @@ export interface ListingDetail {
   value: string;
 }
 
-/** A normalized listing — the shared shape every adapter produces. */
+/** A normalized listing — the shared shape every source produces. */
 export interface Listing {
   /** Stable per-source id — the diff/dedup key. */
   externalId: string;

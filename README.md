@@ -126,7 +126,7 @@ src/
 ├── health/                  # Liveness + readiness probes (Terminus) + the watchdog heartbeat
 ├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
-    ├── sources/             # Source plugins: SourceAdapter registry + kufar/kufar-travel/realt scrapers
+    ├── sources/             # Source plugins: one parser + declarative definition per site
     ├── subscriptions/       # Domain: subscription store + watch (baseline/diff) logic
     └── telegram/            # Bot + daily watch run, split into bot/ and watch/ subfolders
 

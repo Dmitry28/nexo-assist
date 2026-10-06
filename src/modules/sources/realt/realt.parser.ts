@@ -13,6 +13,10 @@ import {
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { PageContext, SearchPage } from '../source-definition';
+
+/** The site's host — every search and every listing link is on it. */
+export const HOST = 'realt.by';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
 interface RawRealtObject {
@@ -89,10 +93,32 @@ export function extractPage(html: string): RealtPage {
     objects: withIds(objects ?? [], (obj) => obj.code, 'realt'),
     received: objects?.length ?? 0,
     linkPath: linkPath(pageProps),
-    // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
+    // Left a plain cast, unlike `objects`: nothing dereferences this block, parsePage only
     // reads `totalCount` off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
+}
+
+/** A search page as the shared walk reads it — the object-URL slug comes from the search URL. */
+export function parsePage(html: string, { url, sent }: PageContext): SearchPage<boolean> {
+  const { objects, received, pagination, linkPath } = extractPage(html);
+  // The search URL first, the page's own declaration second: `seoPayload.parentUrl` reads `/`
+  // on region-prefixed pages (measured on /grodno-region/sale/cottages/).
+  const slug = slugFromSearch(url) ?? linkPath;
+  if (slug === null) throw new SourceUnavailableError(`realt: no object-URL slug for ${url}`);
+  // A running count, not `page × pageSize`: realt bundles its first k pages into page 1
+  // (pageSize 30…360, measured) and then serves `?page=2` as its page k+1, so our page number
+  // and its page size do not multiply. A page past the end is served as page 1 again.
+  const more = pagination !== null && sent + received < pagination.totalCount;
+  return { listings: objects.map((obj) => mapObject(obj, slug)), next: more, sent: received };
+}
+
+// NOTE: object URLs are https://realt.by/<sale|rent>-<type>/object/<code>/. Most search URLs
+// carry a /<sale|rent>/<type>/ segment to derive it from; null when they don't (see the linkPath
+// docblock below for why a guess is worse than a failure).
+function slugFromSearch(url: string): string | null {
+  const match = new URL(url).pathname.match(/\/(sale|rent)\/([a-z-]+)/);
+  return match ? `${match[1]}-${match[2]}` : null;
 }
 
 /**
@@ -106,7 +132,7 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
 
   return {
     externalId: String(obj.code),
-    link: `https://realt.by/${linkPath}/object/${obj.code}/`,
+    link: `https://${HOST}/${linkPath}/object/${obj.code}/`,
     title,
     description: asText(obj.headline) ?? asText(obj.description),
     priceByn: asPrice(obj.priceRates?.[ISO_NUMERIC.BYN], { minorUnits: false }),
@@ -142,10 +168,10 @@ function levels(obj: RawRealtObject): number | undefined {
  * Why this matters at all: an object of a plots search lives at `/sale-plots/object/<code>/`, and
  * a *wrong* slug is worse than no link — `realt.by/sale/object/<code>/` answers 301 to the
  * `/sale/` search page (measured), so the reader lands on an unrelated list while the listing is
- * already marked seen. That is why the adapter fails the poll rather than guessing.
+ * already marked seen. That is why parsePage fails the poll rather than guessing.
  *
  * This is the fallback, not the primary source: `parentUrl` reads `/` on region-prefixed pages
- * (measured on /grodno-region/sale/cottages/), so it is only useful for search URLs the adapter's
+ * (measured on /grodno-region/sale/cottages/), so it is only useful for search URLs slugFromSearch's
  * own regex cannot read. The shape check is deliberately narrow for the same reason — a slug of
  * one segment is exactly the 301 case above.
  */

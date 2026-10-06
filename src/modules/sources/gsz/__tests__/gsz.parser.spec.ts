@@ -8,11 +8,11 @@ const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures
 const NOW = new Date('2026-10-06T12:00:00Z');
 
 describe('extractPage', () => {
-  const { listings, hasMore } = extractPage(fixture('gsz-search.html'), 1, NOW);
+  const { listings, next } = extractPage(fixture('gsz-search.html'), 1, NOW);
 
   it('reads every card and sees the next page in the pager', () => {
     expect(listings).toHaveLength(3);
-    expect(hasMore).toBe(true);
+    expect(next).toBe(true);
   });
 
   // «Обновлено 5 часов назад» on the card, against the fixed NOW.
@@ -58,13 +58,13 @@ describe('extractPage', () => {
   });
 
   it('reports no later page when the pager has no link to it', () => {
-    expect(extractPage(fixture('gsz-search.html'), 13, NOW).hasMore).toBe(false);
+    expect(extractPage(fixture('gsz-search.html'), 13, NOW).next).toBe(false);
   });
 
   it('reads the «nothing found» page as an empty search', () => {
     expect(extractPage(fixture('gsz-empty.html'), 1, NOW)).toEqual({
       listings: [],
-      hasMore: false,
+      next: false,
     });
   });
 
