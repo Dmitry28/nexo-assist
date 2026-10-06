@@ -117,6 +117,12 @@ export interface Listing {
 /** A source plugin — the only place that knows about a specific site. */
 export interface SourceAdapter {
   readonly id: SourceId;
+  /**
+   * Query params this adapter sets or strips itself (sort, paging). They do not name a search, so
+   * the duplicate check drops them (SourceRegistry.volatileParams); the contract spec checks the
+   * list covers what the adapter sends.
+   */
+  readonly volatileParams: readonly string[];
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /** Fetch + parse the URL into normalized listings. */

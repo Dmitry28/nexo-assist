@@ -2,6 +2,7 @@ import { In, IsNull } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
 import { makeSubscription } from '@/__tests__/helpers/subscription';
+import type { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { SeenListing } from '../entities/seen-listing.entity';
 import { Subscription } from '../entities/subscription.entity';
@@ -82,6 +83,7 @@ const build = () => {
     subs as unknown as Repository<Subscription>,
     seen as unknown as Repository<SeenListing>,
     users as unknown as Repository<User>,
+    { volatileParams: () => ['page', 'sort'] } as unknown as SourceRegistry,
   );
   return { subs, users, seen, manager, txManager, insert, txInsert, service };
 };

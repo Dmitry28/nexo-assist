@@ -17,6 +17,7 @@ const baselined = (over: Partial<Subscription> = {}): Subscription =>
 const build = (fetched: Listing[] = [], complete = true, capped = false) => {
   const adapter: SourceAdapter = {
     id: 'kufar',
+    volatileParams: [],
     matches: () => true,
     fetch: jest.fn().mockResolvedValue({ listings: fetched, complete, capped }),
   };

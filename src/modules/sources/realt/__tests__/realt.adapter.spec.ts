@@ -188,11 +188,5 @@ describe('RealtAdapter', () => {
       expect(firstUrl).toContain('page=1');
       expect(firstUrl).toContain('sortType=createdAt');
     });
-
-    it('rejects on a non-OK response — an outage must not look like an empty search', async () => {
-      fetchMock.mockResolvedValue(new Response('', { status: 404 }));
-
-      await expect(adapter.fetch('https://realt.by/x')).rejects.toThrow('HTTP 404');
-    });
   });
 });

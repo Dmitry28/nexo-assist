@@ -5,6 +5,7 @@ import type { EntityManager, Repository } from 'typeorm';
 
 import { normalizeUrl } from '@/common/url';
 import type { SourceId } from '@/modules/sources/source-adapter';
+import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import { SeenListing } from './entities/seen-listing.entity';
 import { Subscription } from './entities/subscription.entity';
@@ -40,6 +41,7 @@ export class SubscriptionsService {
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
     @InjectRepository(SeenListing) private readonly seen: Repository<SeenListing>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly sources: SourceRegistry,
   ) {}
 
   async add(input: {
@@ -50,7 +52,7 @@ export class SubscriptionsService {
     const user = await this.upsertUser(input.user);
     // Dedup on the normalized URL (a unique index backs it); the bot flow is sequential,
     // so the check-then-insert TOCTOU race is negligible.
-    const normalizedUrl = normalizeUrl(input.url);
+    const normalizedUrl = normalizeUrl(input.url, this.sources.volatileParams());
     const existing = await this.subs.findOneBy({ userId: user.id, normalizedUrl });
     // Re-sending a URL you already watch revives it if it was auto-paused (dead link /
     // blocked); an active one is a real duplicate.

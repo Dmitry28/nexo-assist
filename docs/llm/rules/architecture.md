@@ -106,6 +106,21 @@ Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What
 - Throw Nest HTTP exceptions; the global `AllExceptionsFilter` shapes the response.
 - Schema changes only via a generated migration (see below).
 
+## Adding a Source
+
+Mirror `sources/kufar-travel/` (parser + adapter + `__tests__/` with a trimmed live fixture). What
+is ours:
+
+- The parser owns the site: `HOST`, raw types, `extractPage`, the mapper — built on the
+  `scraping/next-data.ts` helpers, so a missing key fails the poll instead of reading as empty.
+- The adapter wires `paginate` (newest-first sort pinned, paging, `useProxy`/`pinPath`) plus any
+  state only the search URL carries, and declares the params it sets as `volatileParams`.
+- Register: the `SourceId` union, `ADAPTERS` in `sources.module.ts`, a sample search in
+  `__tests__/adapters.contract.spec.ts` — which then checks host overlap, outages, `volatileParams`.
+- Taking over a host another adapter matched? Its stored subscriptions need a data migration
+  (precedent: `MoveTravelSubscriptions`).
+- The source's measured gotchas also go into its entry in PRODUCT_PLAN.md.
+
 ## Database & migrations
 
 Postgres via TypeORM. `TypeOrmModule.forRootAsync` (in `app.module.ts`) wires the app;
