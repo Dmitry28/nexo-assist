@@ -33,6 +33,7 @@ export const truncate = (text: string, max: number, dropTrailing?: RegExp): stri
 // One currency keeps the compact line short; the grouping matches the cards in the same delivery
 // (listing-card.ts formatPrice), which otherwise print the same number two ways.
 function price(listing: Listing): string {
+  if (listing.priceText !== undefined) return listing.priceText;
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd.toLocaleString(LOCALE)}`;
   if (listing.priceByn !== undefined) return `${listing.priceByn.toLocaleString(LOCALE)} BYN`;
   return 'цена не указана';
@@ -196,8 +197,11 @@ export const deadSubscriptionNotice = ({ source, url }: { source: string; url: s
 
 // NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
 // Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
-export const PROMPT =
-  'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
+// The sites a link can come from, as a reader names them. Grows with ADAPTERS (sources.module.ts)
+// — a step of docs/llm/rules/architecture.md § Adding a Source.
+const SITES = 'kufar.by (продажа, аренда, посуточно), realt.by, gsz.gov.by (вакансии)';
+
+export const PROMPT = `Пришлите ссылку на поиск с ${SITES} — буду следить за новыми объявлениями.`;
 
 /**
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:
@@ -211,13 +215,11 @@ export const BOT_COMMANDS = [
 
 /** `/help` — built from BOT_COMMANDS so the menu and the text cannot drift apart. */
 export const HELP_MESSAGE = [
-  // TODO [L]: the source list is hardcoded here and in PROMPT — a third adapter would
-  // leave both wrong. Derive it from SourceRegistry when that adapter lands.
-  '🔎 Слежу за поиском на kufar.by и realt.by и присылаю новые объявления.',
+  `🔎 Слежу за поиском на ${SITES} и присылаю новые объявления.`,
   '',
   'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
     '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +
-    `проверки: карточкой с фото на каждое объявление, а если их больше ${CARDS_PER_DELIVERY} — ` +
+    `проверки: карточкой на каждое объявление (с фото, если они есть), а если их больше ${CARDS_PER_DELIVERY} — ` +
     'остальные компактным списком.',
   '',
   'Команды:',

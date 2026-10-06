@@ -11,6 +11,7 @@ const SAMPLES: Record<SourceId, string> = {
   kufar: 'https://re.kufar.by/l/grodno/kupit/dom',
   'kufar-travel': 'https://travel.kufar.by/l/grodno/arendovat',
   realt: 'https://realt.by/grodno-region/sale/plots/',
+  gsz: 'https://gsz.gov.by/registration/vacancy-search/?region=12380&district=14712',
 };
 
 // What every registered adapter owes the core — checked once here, not per adapter.

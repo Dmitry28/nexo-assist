@@ -27,7 +27,7 @@ describe('listingCard', () => {
       ],
     });
 
-    expect(text).toContain('🏠 <b>Дом в Гродно</b>');
+    expect(text).toContain('📌 <b>Дом в Гродно</b>');
     expect(text).toContain('<i>кирпичный, с участком</i>');
     expect(text).toContain('📍 Гродно, Калиновского 14');
     expect(text).toContain('Площадь: 70.1 м²');
@@ -52,12 +52,15 @@ describe('listingCard', () => {
       description: '5 < 10',
       address: 'ул. "Тихая"',
       details: [{ label: 'Тип', value: '<Дача>' }],
+      priceText: 'от 1 000 < 2 000 руб.',
     });
 
-    expect(text).toContain('🏠 <b>Дом &lt;b&gt;дёшево&lt;/b&gt; &amp; быстро</b>');
+    expect(text).toContain('📌 <b>Дом &lt;b&gt;дёшево&lt;/b&gt; &amp; быстро</b>');
     expect(text).toContain('<i>5 &lt; 10</i>');
     expect(text).toContain('📍 ул. &quot;Тихая&quot;');
     expect(text).toContain('Тип: &lt;Дача&gt;');
+    // priceText is scraped too (a salary range), unlike the numbers formatPrice builds.
+    expect(text).toContain('💰 от 1 000 &lt; 2 000 руб.');
   });
 
   it('escapes the link too — it comes from the source, not from us', () => {
@@ -75,7 +78,7 @@ describe('listingCard', () => {
       expect(text.length).toBeLessThanOrEqual(CAPTION_LIMIT_CHARS);
       expect(text).toContain('…</i>');
       expect(text).toContain('🔗 Подробнее');
-      expect(text).toContain('🏠 <b>t1</b>');
+      expect(text).toContain('📌 <b>t1</b>');
     });
 
     it('drops the description rather than shipping a bare ellipsis', () => {

@@ -1,4 +1,4 @@
-export type SourceId = 'kufar' | 'kufar-travel' | 'realt';
+export type SourceId = 'kufar' | 'kufar-travel' | 'realt' | 'gsz';
 
 /**
  * Shown when a source gives no usable title. Part of the contract, not of one parser: `title` is
@@ -102,6 +102,8 @@ export interface Listing {
   description?: string;
   priceByn?: number;
   priceUsd?: number;
+  /** A price the source states only as text (a salary range); when set, it wins over the numbers. */
+  priceText?: string;
   address?: string;
   /** ISO 8601 timestamp of the last update/bump. */
   listTime: string;

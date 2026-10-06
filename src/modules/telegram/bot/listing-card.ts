@@ -28,6 +28,7 @@ export const escapeHtml = (text: string): string =>
 
 /** Both currencies, because the sites quote in both and neither alone answers "is it cheap". */
 export function formatPrice(listing: Listing): string {
+  if (listing.priceText !== undefined) return listing.priceText;
   const parts: string[] = [];
   if (listing.priceByn !== undefined) parts.push(`${listing.priceByn.toLocaleString(LOCALE)} BYN`);
   if (listing.priceUsd !== undefined) parts.push(`$${listing.priceUsd.toLocaleString(LOCALE)}`);
@@ -75,7 +76,6 @@ interface CardText {
   address?: string;
   seller?: string;
   details: ListingDetail[];
-  /** Built from numbers, so nothing to escape. */
   price: string;
   listTime: string;
   link: string;
@@ -93,7 +93,8 @@ const escapeCard = (listing: Listing): CardText => ({
     label: escapeHtml(label),
     value: escapeHtml(value),
   })),
-  price: formatPrice(listing),
+  // Escaped like the rest: `priceText` is scraped text, not a number we formatted.
+  price: escapeHtml(formatPrice(listing)),
   listTime: formatListTime(listing.listTime),
   link: escapeHtml(listing.link),
 });
@@ -115,7 +116,7 @@ function compose(card: CardText, position?: CardPosition): string {
     // identical separators read as three peers instead of "second of five, from this search".
     if (header.length > 0) lines.push(header.join(' — '));
   }
-  lines.push(`🏠 <b>${card.title}</b>`);
+  lines.push(`📌 <b>${card.title}</b>`);
   if (card.description !== undefined) lines.push(`<i>${card.description}</i>`);
   lines.push('');
   if (card.address !== undefined) lines.push(`📍 ${card.address}`);

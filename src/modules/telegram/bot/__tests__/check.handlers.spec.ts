@@ -131,7 +131,7 @@ describe('CheckHandlers', () => {
     await handlers.onCheck(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('🏠'),
+      expect.stringContaining('📌'),
       expect.objectContaining({ parse_mode: 'HTML' }),
     );
     expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
