@@ -17,6 +17,4 @@ a _list_ of findings approves no fix in it: each one is proposed with its verdic
 Track steps in a lean scratch file (table + current step) so progress survives context
 compression. One PR per phase bundles the step-commits ([github.md](github.md)).
 
-**Before opening the phase PR**: the full pre-PR review ([github.md § PR Lifecycle](github.md#pr-lifecycle)
-step 1) over the whole branch, not just the last step — it catches cross-step integration issues
-the per-step reviews miss.
+**Before opening the phase PR**: the full pre-PR review ([github.md § PR Lifecycle](github.md#pr-lifecycle) step 1).

@@ -79,5 +79,6 @@ const rate = (cardText: string): string | undefined => /Ставка:\s*([\d.,]+
  * on the card only (dedup is by id); text we cannot read leaves it empty rather than invent «now».
  */
 function updatedAt(cardText: string, now: Date): string {
-  return timeAgo(cardText, now)?.toISOString() ?? '';
+  // Only the «Обновлено …» phrase — a title or address may say «… назад» too.
+  return timeAgo(/Обновлено[^\n<]*/.exec(cardText)?.[0] ?? '', now)?.toISOString() ?? '';
 }

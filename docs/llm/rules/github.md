@@ -46,10 +46,10 @@
 
 ## PR Lifecycle
 
-1. **Full pre-PR review** over the whole branch (`dev..HEAD`), not the last step only —
-   [workflow.md § Post-completion checklist](workflow.md#post-completion-checklist) step 4, with
-   `/logic-review` given the task and plan. Fix findings, then push **once** and open the PR
-   against `dev` (`gh pr create --base dev`).
+1. **Full pre-PR review**: the post-completion review
+   ([workflow.md](workflow.md#post-completion-checklist) steps 4–6) over the whole branch
+   (`dev..HEAD`) — it catches cross-step issues the per-step reviews miss. Then push **once** and
+   open the PR against `dev` (`gh pr create --base dev`).
 2. Wait for required CI checks (`gh pr checks <n> --watch`). Then re-read the PR title and body
    against the final diff ([format rules](../commands/git/rules/changes-message-format-rules.md)
    § 2), and treat every PR comment and review as a review finding

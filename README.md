@@ -8,7 +8,7 @@ health checks, and a full lint/format/test pipeline. Product spec:
 
 ## Using the bot
 
-Send the bot a search link from **kufar.by**, **realt.by** or **gsz.gov.by** / **rabota.by** (vacancies) with your
+Send the bot a search link from **kufar.by**, **realt.by** or **gsz.gov.by** or **rabota.by** (vacancies) with your
 filters already applied;
 it offers a "Следить" button and, from then on, sends the listings that appeared since the
 last check, once a day — a card per listing with its photos, price in both currencies, the

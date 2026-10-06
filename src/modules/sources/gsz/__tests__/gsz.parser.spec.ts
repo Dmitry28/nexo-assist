@@ -20,6 +20,12 @@ describe('extractPage', () => {
     expect(listings[0].listTime).toBe('2026-10-06T07:00:00.000Z');
   });
 
+  it('leaves the time empty when the card has no readable «… назад»', () => {
+    const html = fixture('gsz-search.html').replace(/Обновлено[^<]*/g, 'Обновлено недавно');
+
+    expect(extractPage(html, 1, NOW).listings[0].listTime).toBe('');
+  });
+
   it('maps a vacancy: the title uuid as id, salary as price text, employer as seller', () => {
     expect(listings[0]).toMatchObject({
       externalId: 'c4842bdc-e9ed-4ff1-b91a-afd02d105363',
