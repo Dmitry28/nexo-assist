@@ -152,10 +152,17 @@ describe('mapAd', () => {
     const listing = mapAd({
       ad_id: 1,
       list_time: '2026-01-01T00:00:00Z',
-      ad_parameters: [{ p: 'house_type_for_sell', v: '25', vl: 'Таунхаус' }],
+      ad_parameters: [
+        { p: 'house_type_for_sell', v: '25', vl: 'Таунхаус' },
+        // Live: a studio is rooms code "6" — reading `v` printed «Комнат: 6».
+        { p: 'rooms', v: '6', vl: 'Студия' },
+      ],
     });
 
-    expect(listing.details).toEqual([{ label: 'Тип', value: 'Таунхаус' }]);
+    expect(listing.details).toEqual([
+      { label: 'Тип', value: 'Таунхаус' },
+      { label: 'Комнат', value: 'Студия' },
+    ]);
   });
 
   it('takes the plot area from size_area and the building area from size', () => {
@@ -166,7 +173,7 @@ describe('mapAd', () => {
       ad_parameters: [
         { p: 'size', v: 98 },
         { p: 'size_area', v: 2 },
-        { p: 'rooms', v: '4' },
+        { p: 'rooms', v: '4', vl: '4' },
         { p: 'year_built', v: 2024 },
       ],
     });
