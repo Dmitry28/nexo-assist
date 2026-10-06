@@ -97,7 +97,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notifyCard).toHaveBeenCalledTimes(1);
     expect(telegram.notifyCard).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+      expect.objectContaining({ caption: expect.stringContaining('📌') }),
     );
     expect(watch.markSeen).toHaveBeenCalledTimes(1);
     expect(status.markRun).toHaveBeenCalledTimes(1); // run stamped for /stats
@@ -243,7 +243,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notifyCard).toHaveBeenCalledTimes(2); // user 2 still attempted
     expect(telegram.notifyCard).toHaveBeenLastCalledWith(
       2,
-      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+      expect.objectContaining({ caption: expect.stringContaining('📌') }),
     );
   });
 

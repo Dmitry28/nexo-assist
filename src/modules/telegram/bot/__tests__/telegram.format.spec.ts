@@ -15,6 +15,12 @@ import {
 const PRICE_5000 = '$5\u00A0000';
 
 describe('tailBatches', () => {
+  it('prints a price the source gave as text — a salary range', () => {
+    const [{ text }] = tailBatches([listing(1, { priceText: '1200 – 1500 руб.' })]);
+
+    expect(text).toContain('1200 – 1500 руб.');
+  });
+
   it('shows the count header and listing fields', () => {
     const [{ text }] = tailBatches([listing(1, { priceUsd: 5000 })]);
 

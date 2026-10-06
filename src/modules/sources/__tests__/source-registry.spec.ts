@@ -22,7 +22,14 @@ describe('SourceRegistry', () => {
   it('pins the duplicate-check params of all registered adapters', () => {
     const all = new SourceRegistry(ADAPTERS.map((Adapter) => new Adapter()));
 
-    expect(all.volatileParams().sort()).toEqual(['cursor', 'page', 'sort', 'sortType']);
+    expect(all.volatileParams().sort()).toEqual([
+      'cursor',
+      'page',
+      'paginate_by',
+      'sort',
+      'sortType',
+      'sort_by',
+    ]);
   });
 
   it('resolves an adapter by source id', () => {

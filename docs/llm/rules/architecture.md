@@ -33,7 +33,7 @@ src/
     │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
-    │   └── <site>/             # One adapter per site (kufar, kufar-travel, realt) + parser
+    │   └── <site>/             # One adapter per site (kufar, kufar-travel, realt, gsz) + parser
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root
@@ -116,7 +116,8 @@ is ours:
 - The adapter wires `paginate` (newest-first sort pinned, paging, `useProxy`/`pinPath`) plus any
   state only the search URL carries, and declares the params it sets as `volatileParams`.
 - Register: the `SourceId` union, `ADAPTERS` in `sources.module.ts`, a sample search in
-  `__tests__/adapters.contract.spec.ts` — which then checks host overlap, outages, `volatileParams`.
+  `__tests__/adapters.contract.spec.ts` (it then checks host overlap, outages, `volatileParams`),
+  and the site in the bot's `SITES` line (`telegram.format.ts`).
 - Taking over a host another adapter matched? Its stored subscriptions need a data migration
   (precedent: `MoveTravelSubscriptions`).
 - The source's measured gotchas also go into its entry in PRODUCT_PLAN.md.
