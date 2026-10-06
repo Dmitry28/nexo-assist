@@ -199,7 +199,7 @@ export const deadSubscriptionNotice = ({ source, url }: { source: string; url: s
 // Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
 // The sites a link can come from, as a reader names them. Grows with ADAPTERS (sources.module.ts)
 // — a step of docs/llm/rules/architecture.md § Adding a Source.
-const SITES = 'kufar.by (продажа, аренда, посуточно), realt.by, gsz.gov.by (вакансии)';
+const SITES = 'kufar.by (продажа, аренда, посуточно), realt.by, gsz.gov.by и rabota.by (вакансии)';
 
 export const PROMPT = `Пришлите ссылку на поиск с ${SITES} — буду следить за новыми объявлениями.`;
 

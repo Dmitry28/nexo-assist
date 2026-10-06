@@ -10,6 +10,7 @@ import {
   requireArray,
   requireNextData,
   withIds,
+  withoutStalePromos,
 } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
@@ -74,25 +75,13 @@ export function extractPage(html: string): KufarTravelPage {
   const page = asNumber(paginator?.page);
   const pages = asNumber(paginator?.pages);
   const hasMore = page !== undefined && pages !== undefined && page < pages;
-  return { objects: withoutPromotedHotels(all), hasMore };
-}
-
-/**
- * Drop the hotels travel splices into every page out of order: measured 2026-10-06, slots
- * 2/8/14/20/26 of a newest-first page held hotels listed weeks earlier. Outside the order they
- * break the window's premise, and a rotating promo pool would deliver an old hotel as "new". A
- * hotel listed inside the page's own span is in order, so it stays — a new hotel still arrives.
- * A page with no dated unit has no span to judge by, so it is kept whole.
- */
-function withoutPromotedHotels(objects: RawRentalObject[]): RawRentalObject[] {
-  const units = objects
-    .filter((o) => o.isHotel !== true)
-    .map((o) => Date.parse(o.listTime))
-    .filter((t) => !Number.isNaN(t));
-  if (units.length === 0) return objects;
-  const oldest = Math.min(...units);
-  // An undated hotel compares as NaN and is dropped: it cannot be placed in the order either.
-  return objects.filter((o) => o.isHotel !== true || Date.parse(o.listTime) >= oldest);
+  // Hotels sit in fixed slots (2/8/14/20/26, measured 2026-10-06) listed weeks earlier.
+  const objects = withoutStalePromos(
+    all,
+    (o) => o.isHotel === true,
+    (o) => o.listTime,
+  );
+  return { objects, hasMore };
 }
 
 /** Map a raw rental object to a normalized listing. */

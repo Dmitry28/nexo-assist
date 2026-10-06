@@ -12,6 +12,7 @@ import {
   requireArray,
   requireNextData,
   withIds,
+  withoutStalePromos,
 } from '../next-data';
 
 const wrap = (json: string): string =>
@@ -222,5 +223,31 @@ describe('asTexts', () => {
     [{}, []],
   ])('asTexts(%p) → %p', (value, expected) => {
     expect(asTexts(value)).toEqual(expected);
+  });
+});
+
+describe('withoutStalePromos', () => {
+  const item = (id: number, time: string | undefined, promo = false) => ({ id, time, promo });
+  const run = (items: ReturnType<typeof item>[]) =>
+    withoutStalePromos(
+      items,
+      (i) => i.promo,
+      (i) => i.time,
+    ).map((i) => i.id);
+
+  it('drops a promo older than the page, keeps one inside its span', () => {
+    expect(
+      run([
+        item(1, '2026-09-01T00:00:00Z', true),
+        item(2, '2026-10-06T10:00:00Z'),
+        item(3, '2026-10-06T09:00:00Z', true),
+        item(4, '2026-10-06T08:00:00Z'),
+      ]),
+    ).toEqual([2, 3, 4]);
+  });
+
+  it('keeps a page of only promos whole, and drops an undated promo', () => {
+    expect(run([item(1, '2026-09-01T00:00:00Z', true)])).toEqual([1]);
+    expect(run([item(1, undefined, true), item(2, '2026-10-06T10:00:00Z')])).toEqual([2]);
   });
 });

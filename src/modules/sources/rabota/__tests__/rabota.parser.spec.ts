@@ -1,0 +1,68 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { SourceUnavailableError } from '../../source-adapter';
+import { extractPage } from '../rabota.parser';
+
+const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
+
+const state = (vacancies: unknown[], paging: unknown = null): string =>
+  `<template id="HH-Lux-InitialState">${JSON.stringify({
+    vacancySearchResult: { vacancies, paging },
+  }).replace(/"/g, '&#34;')}</template>`;
+
+describe('extractPage', () => {
+  const { listings, hasMore } = extractPage(fixture('rabota-search.html'));
+
+  it('reads the vacancies, drops the promoted one, and sees the next page', () => {
+    expect(listings.map((l) => l.externalId)).toEqual(['100000001', '100000002']);
+    expect(hasMore).toBe(true);
+  });
+
+  it('maps a vacancy: canonical link, salary text, exact time, address and pin', () => {
+    expect(listings[0]).toMatchObject({
+      link: 'https://rabota.by/vacancy/100000001',
+      title: 'Токарь универсал',
+      priceText: '3000 – 5500 руб.',
+      listTime: '2026-10-06T23:25:08.995+03:00',
+      address: 'Минск, улица Примерная, 1',
+      coordinates: { lat: 53.9, lon: 27.56 },
+      seller: 'ИП Пример',
+      images: [],
+    });
+  });
+
+  it('says so when a vacancy shows no salary', () => {
+    expect(listings[1].priceText).toBe('зарплата не указана');
+  });
+
+  it.each([
+    [{ from: 1500, currencyCode: 'BYR' }, 'от 1500 руб.'],
+    [{ to: 900, currencyCode: 'USD' }, 'до 900 $'],
+    [{ from: 15, to: 15, currencyCode: 'BYR', mode: 'HOUR' }, '15 руб. в час'],
+    [
+      { from: 2000, to: 3000, currencyCode: 'RUR', gross: true },
+      '2000 – 3000 ₽, до вычета налогов',
+    ],
+  ])('words the salary %p as «%s»', (compensation, expected) => {
+    const [listing] = extractPage(state([{ vacancyId: 7, compensation }])).listings;
+
+    expect(listing.priceText).toBe(expected);
+  });
+
+  it('reports no later page when paging is absent or its next is disabled', () => {
+    expect(extractPage(state([{ vacancyId: 7 }])).hasMore).toBe(false);
+    expect(extractPage(state([{ vacancyId: 7 }], { next: { disabled: true } })).hasMore).toBe(
+      false,
+    );
+  });
+
+  it('reads a zero-result search as empty', () => {
+    expect(extractPage(fixture('rabota-empty.html'))).toEqual({ listings: [], hasMore: false });
+  });
+
+  // The anti-bot page the prototype met in production carries no search state.
+  it('throws on a page without the search state — never an empty search', () => {
+    expect(() => extractPage('<html><body>captcha</body></html>')).toThrow(SourceUnavailableError);
+  });
+});

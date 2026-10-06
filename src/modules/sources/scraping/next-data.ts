@@ -136,6 +136,28 @@ export function withIds<T>(items: T[], idOf: (item: T) => unknown, source: Sourc
 }
 
 /**
+ * Drop the promoted items a site splices into a newest-first page out of order — ones listed
+ * before the page's oldest regular item. Outside the order they break the window's premise, and a
+ * rotating promo pool would deliver an old item as "new". A promoted item inside the page's span
+ * is in order, so it stays: a fresh one still arrives. A page with no dated regular item has no
+ * span to judge by and is kept whole; an undated promoted item cannot be placed and is dropped.
+ */
+export function withoutStalePromos<T>(
+  items: T[],
+  isPromo: (item: T) => boolean,
+  timeOf: (item: T) => unknown,
+): T[] {
+  const time = (item: T): number => Date.parse(asText(timeOf(item)) ?? '');
+  const regular = items
+    .filter((item) => !isPromo(item))
+    .map(time)
+    .filter((t) => !Number.isNaN(t));
+  if (regular.length === 0) return items;
+  const oldest = Math.min(...regular);
+  return items.filter((item) => !isPromo(item) || time(item) >= oldest);
+}
+
+/**
  * A price as a whole currency amount, or undefined. `minorUnits`: the source counts in 1/100 of
  * the unit (kufar does — 1385000 → 13850). Positivity is checked AFTER rounding: a raw minor
  * value under 50 rounds to 0, and a price of 0 prints "0 BYN" instead of "цена не указана".
