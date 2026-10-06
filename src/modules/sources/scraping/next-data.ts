@@ -87,12 +87,17 @@ export function parseNextData(html: string): Record<string, unknown> | null {
   const end = html.indexOf('</script>', from);
   if (end === -1) return null;
 
+  // A blob that parses to a number or an array is not a page — asRecord rejects it and this
+  // returns null, which is what every caller already handles.
+  return asRecord(parseJson(html.slice(from, end))) ?? null;
+}
+
+/** JSON.parse that answers undefined instead of throwing — a page's embedded state is untrusted. */
+export function parseJson(text: string | undefined): unknown {
   try {
-    // A blob that parses to a number or an array is not a page — asRecord rejects it and this
-    // returns null, which is what every caller already handles.
-    return asRecord(JSON.parse(html.slice(from, end))) ?? null;
+    return text === undefined ? undefined : JSON.parse(text);
   } catch {
-    return null;
+    return undefined;
   }
 }
 

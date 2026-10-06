@@ -108,6 +108,11 @@ Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What
 
 ## Adding a Source
 
+Sources will number in the hundreds, so **a source holds only knowledge of its site**: where the
+data sits, which keys and codes it uses, its quirks. Everything that is not about one site —
+wording a field (`listing-text.ts`), reading text, HTML or JSON (`scraping/`), paging, checks —
+is shared; a helper a second source would copy belongs there first.
+
 Mirror `sources/kufar-travel/` (parser + adapter + `__tests__/` with a trimmed live fixture). What
 is ours:
 

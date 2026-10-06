@@ -1,11 +1,14 @@
 import { parse } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
+import { NO_SALARY, salaryText } from '../listing-text';
+import type { PayPeriod } from '../listing-text';
 import {
   asCoordinates,
   asNumber,
   asRecord,
   asText,
+  parseJson,
   requireArray,
   withIds,
   withoutStalePromos,
@@ -74,14 +77,6 @@ export function extractPage(html: string): RabotaPage {
   };
 }
 
-function parseJson(text: string | undefined): unknown {
-  try {
-    return text === undefined ? undefined : JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
 function toListing(raw: RawVacancy): Listing {
   return {
     externalId: String(raw.vacancyId),
@@ -89,7 +84,7 @@ function toListing(raw: RawVacancy): Listing {
     // answers 200 on rabota.by for every vacancy.
     link: `https://${HOST}/vacancy/${raw.vacancyId}`,
     title: asText(raw.name) ?? UNTITLED_LISTING,
-    priceText: salary(raw.compensation) ?? 'зарплата не указана',
+    priceText: salary(raw.compensation) ?? NO_SALARY,
     address: asText(raw.address?.displayName) ?? asText(raw.area?.name),
     listTime: asText(raw.publicationTime?.$) ?? '',
     images: [],
@@ -100,29 +95,19 @@ function toListing(raw: RawVacancy): Listing {
   };
 }
 
-const CURRENCIES: Record<string, string> = {
-  // hh still names the Belarusian ruble by its pre-2016 code.
-  BYR: 'руб.',
-  BYN: 'руб.',
-  RUR: '₽',
-  USD: '$',
-  EUR: '€',
-};
-// MONTH needs no suffix. TODO [L]: hh may have other modes (seen live: MONTH, HOUR, SHIFT only).
-const PER: Record<string, string> = { HOUR: ' в час', SHIFT: ' за смену' };
+// hh's codes onto the shared ones: it still names the ruble by its pre-2016 codes, and a salary
+// without a code is assumed to be rubles (not seen live — every one measured carried a code).
+const CURRENCY: Record<string, string> = { BYR: 'BYN', RUR: 'RUB' };
+// TODO [L]: hh may have more modes (seen live: MONTH, HOUR, SHIFT only); unknown reads as a month.
+const PERIOD: Record<string, PayPeriod> = { HOUR: 'hour', SHIFT: 'shift' };
 
-/** «1500 – 2000 руб.», «от 15 руб. в час, до вычета налогов» — or undefined when hh shows none. */
 function salary(raw: RawVacancy['compensation']): string | undefined {
-  const from = asNumber(raw?.from);
-  const to = asNumber(raw?.to);
-  // No code at all is assumed to be rubles — not seen live; every salary measured carried one.
   const code = asText(raw?.currencyCode) ?? 'BYR';
-  const unit = `${CURRENCIES[code] ?? code}${PER[asText(raw?.mode) ?? ''] ?? ''}`;
-  let amount: string;
-  if (from !== undefined && to !== undefined) {
-    amount = from === to ? `${from} ${unit}` : `${from} – ${to} ${unit}`;
-  } else if (from !== undefined) amount = `от ${from} ${unit}`;
-  else if (to !== undefined) amount = `до ${to} ${unit}`;
-  else return undefined;
-  return raw?.gross === true ? `${amount}, до вычета налогов` : amount;
+  return salaryText({
+    from: asNumber(raw?.from),
+    to: asNumber(raw?.to),
+    currency: CURRENCY[code] ?? code,
+    period: PERIOD[asText(raw?.mode) ?? ''],
+    gross: raw?.gross === true,
+  });
 }

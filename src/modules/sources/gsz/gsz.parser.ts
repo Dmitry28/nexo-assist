@@ -2,7 +2,9 @@ import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
-import { asText } from '../scraping/next-data';
+import { NO_SALARY } from '../listing-text';
+import { elementText } from '../scraping/html';
+import { timeAgo } from '../scraping/relative-time';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
@@ -56,43 +58,26 @@ function toListing(card: HTMLElement, now: Date): Listing | undefined {
   const id = href === undefined ? undefined : DETAIL_PATH.exec(href)?.[1];
   // Not a vacancy card (a promo block sharing the class): nothing to watch.
   if (href === undefined || id === undefined) return undefined;
-  const salary = text(card.querySelector('.salary'));
+  const salary = elementText(card.querySelector('.salary'));
   return {
     externalId: id,
     link: new URL(href, `https://${HOST}`).toString(),
-    title: text(anchor) ?? UNTITLED_LISTING,
-    priceText: salary ?? 'зарплата не указана',
-    address: text(card.querySelector('.address')),
+    title: elementText(anchor) ?? UNTITLED_LISTING,
+    priceText: salary ?? NO_SALARY,
+    address: elementText(card.querySelector('.address')),
     listTime: updatedAt(card.textContent, now),
     images: [],
-    seller: text(card.querySelector('.org a')),
+    seller: elementText(card.querySelector('.org a')),
     details: listingDetails(detail('Ставка', rate(card.textContent))),
   };
 }
 
-// The tags' text with entities decoded and whitespace collapsed — gsz pads every field.
-const text = (element: HTMLElement | null | undefined): string | undefined =>
-  asText(element?.textContent.replace(/\s+/g, ' '));
-
 const rate = (cardText: string): string | undefined => /Ставка:\s*([\d.,]+)/.exec(cardText)?.[1];
 
-const UNIT_MS: Array<[RegExp, number]> = [
-  [/^секунд/, 1000],
-  [/^минут/, 60_000],
-  [/^час/, 3_600_000],
-  [/^(дн|ден)/, 86_400_000],
-  [/^недел/, 7 * 86_400_000],
-  [/^месяц/, 30 * 86_400_000],
-  [/^(год|лет)/, 365 * 86_400_000],
-];
-
 /**
- * «Обновлено 5 дней назад» → an ISO time that far before `now`. Approximate by nature: the site
- * gives only this relative, coarse text (no date), and it is the last UPDATE, not publication.
- * Shown on the card only — dedup is by id. Text we cannot read falls back to `now`.
+ * gsz prints only «Обновлено N дней назад» — the last UPDATE, not publication, and no date. Shown
+ * on the card only (dedup is by id); text we cannot read leaves it empty rather than invent «now».
  */
-export function updatedAt(cardText: string, now: Date): string {
-  const match = /Обновлено\s+(\d+)\s+(\S+)\s+назад/.exec(cardText);
-  const unit = match && UNIT_MS.find(([re]) => re.test(match[2]))?.[1];
-  return new Date(now.getTime() - (unit ? Number(match[1]) * unit : 0)).toISOString();
+function updatedAt(cardText: string, now: Date): string {
+  return timeAgo(cardText, now)?.toISOString() ?? '';
 }

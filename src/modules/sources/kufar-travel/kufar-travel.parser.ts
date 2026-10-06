@@ -1,4 +1,5 @@
 import { detail, listingDetails } from '../listing-details';
+import { preview, ratingText } from '../listing-text';
 import {
   asCoordinates,
   asNumber,
@@ -86,15 +87,13 @@ export function extractPage(html: string): KufarTravelPage {
 
 /** Map a raw rental object to a normalized listing. */
 export function mapRentalObject(raw: RawRentalObject): Listing {
-  const rating = asText(raw.formattedRating);
-  const reviews = asPositiveNumber(raw.ratingScoresCount);
   const unit = raw.isHotel === true ? undefined : raw;
   return {
     externalId: String(raw.adId),
     // `selfUrl` is empty or carries the search's dates; the id link is stable (measured: 200).
     link: `https://${HOST}/hotel/${raw.adId}`,
     title: asText(raw.subject) ?? UNTITLED_LISTING,
-    description: preview(raw.body),
+    description: preview(asText(raw.body)),
     priceByn: asPrice(raw.price, { minorUnits: true }),
     priceUsd: asPrice(raw.priceConversions?.usd, { minorUnits: true }),
     address: asText(raw.address),
@@ -108,21 +107,10 @@ export function mapRentalObject(raw: RawRentalObject): Listing {
       detail('Площадь', asPositiveNumber(unit?.size), 'м²'),
       detail('Этаж', asPositiveNumber(unit?.floor)),
       detail('Гостей', asPositiveNumber(unit?.personsMax)),
-      // An object without reviews still carries a rating field; it is noise, not a score.
       detail(
         'Рейтинг',
-        rating === undefined || reviews === undefined ? undefined : `${rating} (${reviews} отз.)`,
+        ratingText(asText(raw.formattedRating), asPositiveNumber(raw.ratingScoresCount)),
       ),
     ),
   };
-}
-
-// The length kufar's sale ads arrive cut to (`body_short`), so cards read alike across sources.
-const PREVIEW_CHARS = 150;
-
-function preview(raw: unknown): string | undefined {
-  const text = asText(raw);
-  return text !== undefined && text.length > PREVIEW_CHARS
-    ? `${text.slice(0, PREVIEW_CHARS).trimEnd()}…`
-    : text;
 }

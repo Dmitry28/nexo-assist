@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SourceUnavailableError } from '../../source-adapter';
-import { extractPage, updatedAt } from '../gsz.parser';
+import { extractPage } from '../gsz.parser';
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
 const NOW = new Date('2026-10-06T12:00:00Z');
@@ -13,6 +13,11 @@ describe('extractPage', () => {
   it('reads every card and sees the next page in the pager', () => {
     expect(listings).toHaveLength(3);
     expect(hasMore).toBe(true);
+  });
+
+  // «Обновлено 5 часов назад» on the card, against the fixed NOW.
+  it('dates a vacancy by its relative «updated» text', () => {
+    expect(listings[0].listTime).toBe('2026-10-06T07:00:00.000Z');
   });
 
   it('maps a vacancy: the title uuid as id, salary as price text, employer as seller', () => {
@@ -61,18 +66,5 @@ describe('extractPage', () => {
     expect(() => extractPage('<html><body>Доступ ограничен</body></html>', 1, NOW)).toThrow(
       SourceUnavailableError,
     );
-  });
-});
-
-describe('updatedAt', () => {
-  it.each([
-    ['Обновлено 8 секунд назад', '2026-10-06T11:59:52.000Z'],
-    ['Обновлено 5 часов назад', '2026-10-06T07:00:00.000Z'],
-    ['Обновлено 1 дней назад', '2026-10-05T12:00:00.000Z'],
-    ['Обновлено 2 недели назад', '2026-09-22T12:00:00.000Z'],
-    ['Обновлено 1 месяц назад', '2026-09-06T12:00:00.000Z'],
-    ['Обновлено недавно', NOW.toISOString()],
-  ])('%s → %s', (text, expected) => {
-    expect(updatedAt(text, NOW)).toBe(expected);
   });
 });
