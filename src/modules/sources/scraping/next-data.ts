@@ -87,12 +87,17 @@ export function parseNextData(html: string): Record<string, unknown> | null {
   const end = html.indexOf('</script>', from);
   if (end === -1) return null;
 
+  // A blob that parses to a number or an array is not a page — asRecord rejects it and this
+  // returns null, which is what every caller already handles.
+  return asRecord(parseJson(html.slice(from, end))) ?? null;
+}
+
+/** JSON.parse that answers undefined instead of throwing — a page's embedded state is untrusted. */
+export function parseJson(text: string | undefined): unknown {
   try {
-    // A blob that parses to a number or an array is not a page — asRecord rejects it and this
-    // returns null, which is what every caller already handles.
-    return asRecord(JSON.parse(html.slice(from, end))) ?? null;
+    return text === undefined ? undefined : JSON.parse(text);
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -133,6 +138,28 @@ export function withIds<T>(items: T[], idOf: (item: T) => unknown, source: Sourc
     throw new SourceUnavailableError(`${source}: no listing carries an id — page layout changed?`);
   }
   return kept;
+}
+
+/**
+ * Drop the promoted items a site splices into a newest-first page out of order — ones listed
+ * before the page's oldest regular item. Outside the order they break the window's premise, and a
+ * rotating promo pool would deliver an old item as "new". A promoted item inside the page's span
+ * is in order, so it stays: a fresh one still arrives. A page with no dated regular item has no
+ * span to judge by and is kept whole; an undated promoted item cannot be placed and is dropped.
+ */
+export function withoutStalePromos<T>(
+  items: T[],
+  isPromo: (item: T) => boolean,
+  timeOf: (item: T) => unknown,
+): T[] {
+  const time = (item: T): number => Date.parse(asText(timeOf(item)) ?? '');
+  const regular = items
+    .filter((item) => !isPromo(item))
+    .map(time)
+    .filter((t) => !Number.isNaN(t));
+  if (regular.length === 0) return items;
+  const oldest = Math.min(...regular);
+  return items.filter((item) => !isPromo(item) || time(item) >= oldest);
 }
 
 /**

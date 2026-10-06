@@ -24,8 +24,13 @@ describe('SourceRegistry', () => {
 
     expect(all.volatileParams().sort()).toEqual([
       'cursor',
+      'hhtmFrom',
+      'hhtmFromLabel',
+      'items_on_page',
+      'order_by',
       'page',
       'paginate_by',
+      'search_session_id',
       'sort',
       'sortType',
       'sort_by',

@@ -1,4 +1,5 @@
 import { detail, listingDetails } from '../listing-details';
+import { ISO_NUMERIC } from '../scraping/currency';
 import {
   asArray,
   asCoordinates,
@@ -42,10 +43,6 @@ interface RawRealtObject {
   /** Pre-built CDN URLs. */
   images?: unknown;
 }
-
-// realt.by priceRates currency codes (ISO 4217 numeric).
-const CURRENCY_USD = '840';
-const CURRENCY_BYN = '933';
 
 interface RawPagination {
   totalCount: number;
@@ -112,8 +109,8 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
     link: `https://realt.by/${linkPath}/object/${obj.code}/`,
     title,
     description: asText(obj.headline) ?? asText(obj.description),
-    priceByn: asPrice(obj.priceRates?.[CURRENCY_BYN], { minorUnits: false }),
-    priceUsd: asPrice(obj.priceRates?.[CURRENCY_USD], { minorUnits: false }),
+    priceByn: asPrice(obj.priceRates?.[ISO_NUMERIC.BYN], { minorUnits: false }),
+    priceUsd: asPrice(obj.priceRates?.[ISO_NUMERIC.USD], { minorUnits: false }),
     address: asText(obj.address),
     listTime: obj.updatedAt,
     images: asTexts(obj.images),

@@ -31,9 +31,10 @@ src/
     │   ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
     │   ├── source-registry.ts  # Resolves an adapter by URL/id
     │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
+    │   ├── listing-text.ts     # Shared wording: salary, preview, rating
     │   ├── sources.module.ts
-    │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
-    │   └── <site>/             # One adapter per site (kufar, kufar-travel, realt, gsz) + parser
+    │   ├── scraping/           # Shared reading: fetch, paginate, JSON/HTML/text helpers
+    │   └── <site>/             # One adapter per site (kufar, kufar-travel, realt, gsz, rabota) + parser
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root
@@ -107,6 +108,11 @@ Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What
 - Schema changes only via a generated migration (see below).
 
 ## Adding a Source
+
+Sources will number in the hundreds, so **a source holds only knowledge of its site**: where the
+data sits, which keys and codes it uses, its quirks. Code that is not about one site — wording a
+field (`listing-text.ts`), reading text, HTML or JSON (`scraping/`), paging, page checks — lives in
+those shared modules from the start: that is placement, not a premature abstraction.
 
 Mirror `sources/kufar-travel/` (parser + adapter + `__tests__/` with a trimmed live fixture). What
 is ours:
