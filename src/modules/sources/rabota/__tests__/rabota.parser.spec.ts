@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SourceUnavailableError } from '../../source-adapter';
-import { extractPage } from '../rabota.parser';
+import { parsePage } from '../rabota.parser';
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
 
@@ -11,12 +11,12 @@ const state = (vacancies: unknown[], paging: unknown = null): string =>
     vacancySearchResult: { vacancies, paging },
   }).replace(/"/g, '&#34;')}</template>`;
 
-describe('extractPage', () => {
-  const { listings, hasMore } = extractPage(fixture('rabota-search.html'));
+describe('parsePage', () => {
+  const { listings, next } = parsePage(fixture('rabota-search.html'));
 
   it('reads the vacancies, drops the promoted one, and sees the next page', () => {
     expect(listings.map((l) => l.externalId)).toEqual(['100000001', '100000002']);
-    expect(hasMore).toBe(true);
+    expect(next).toBe(true);
   });
 
   it('maps a vacancy: canonical link, salary text, exact time, address and pin', () => {
@@ -45,24 +45,22 @@ describe('extractPage', () => {
       '2000 – 3000 ₽, до вычета налогов',
     ],
   ])('words the salary %p as «%s»', (compensation, expected) => {
-    const [listing] = extractPage(state([{ vacancyId: 7, compensation }])).listings;
+    const [listing] = parsePage(state([{ vacancyId: 7, compensation }])).listings;
 
     expect(listing.priceText).toBe(expected);
   });
 
   it('reports no later page when paging is absent or its next is disabled', () => {
-    expect(extractPage(state([{ vacancyId: 7 }])).hasMore).toBe(false);
-    expect(extractPage(state([{ vacancyId: 7 }], { next: { disabled: true } })).hasMore).toBe(
-      false,
-    );
+    expect(parsePage(state([{ vacancyId: 7 }])).next).toBe(false);
+    expect(parsePage(state([{ vacancyId: 7 }], { next: { disabled: true } })).next).toBe(false);
   });
 
   it('reads a zero-result search as empty', () => {
-    expect(extractPage(fixture('rabota-empty.html'))).toEqual({ listings: [], hasMore: false });
+    expect(parsePage(fixture('rabota-empty.html'))).toEqual({ listings: [], next: false });
   });
 
   // The anti-bot page the prototype met in production carries no search state.
   it('throws on a page without the search state — never an empty search', () => {
-    expect(() => extractPage('<html><body>captcha</body></html>')).toThrow(SourceUnavailableError);
+    expect(() => parsePage('<html><body>captcha</body></html>')).toThrow(SourceUnavailableError);
   });
 });

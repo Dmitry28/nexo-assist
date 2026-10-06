@@ -7,6 +7,7 @@ import { elementText } from '../scraping/html';
 import { timeAgo } from '../scraping/relative-time';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { PageContext, SearchPage } from '../source-definition';
 
 /** gsz.gov.by — the state vacancy bank (Госслужба занятости). */
 export const HOST = 'gsz.gov.by';
@@ -24,18 +25,12 @@ const DETAIL_PATH = /^\/registration\/employer\/vacancy\/([\w-]+)\/detail-public
 // cards is an answer rather than a layout change.
 const NOTHING_FOUND = 'ничего не найдено';
 
-/** One page of a gsz search: its vacancies and whether a later page exists. */
-export interface GszPage {
-  listings: Listing[];
-  hasMore: boolean;
-}
-
 /**
  * Parse a gsz search page. Server-rendered HTML, no JSON blob: each vacancy is a `.job-block`
  * whose title links to its detail page. Zero cards without the «nothing found» text is a
  * redesign or a block page — a SourceUnavailableError, never an empty search.
  */
-export function extractPage(html: string, page: number, now: Date): GszPage {
+export function extractPage(html: string, page: number, now: Date): SearchPage<boolean> {
   const root = parse(html);
   const listings = root
     .querySelectorAll('.job-block')
@@ -45,12 +40,16 @@ export function extractPage(html: string, page: number, now: Date): GszPage {
     throw new SourceUnavailableError('gsz: no vacancy cards — page layout changed?');
   }
   // The pager links every page by number, and a page past the end is a 404 (measured).
-  const next = new RegExp(`[?&]page=${page + 1}(&|$)`);
-  const hasMore = root
+  const nextPage = new RegExp(`[?&]page=${page + 1}(&|$)`);
+  const next = root
     .querySelectorAll('a.page-link')
-    .some((a) => next.test(a.getAttribute('href') ?? ''));
-  return { listings, hasMore };
+    .some((a) => nextPage.test(a.getAttribute('href') ?? ''));
+  return { listings, next };
 }
+
+/** The shared walk's view of a page: its number and clock come from the walk. */
+export const parsePage = (html: string, { page, now }: PageContext): SearchPage<boolean> =>
+  extractPage(html, page, now);
 
 function toListing(card: HTMLElement, now: Date): Listing | undefined {
   const anchor = card.querySelector('.job-title a');

@@ -120,15 +120,10 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 
 ## Architecture
 
-**Source adapter** — the only place that knows about a specific site:
-
-```ts
-interface SourceAdapter {
-  readonly id: SourceId; // 'kufar' | 'kufar-travel' | 'realt'
-  matches(url: string): boolean; // recognize the link (host check)
-  fetch(url: string): Promise<Listing[]>; // fetch + parse → normalized listings
-}
-```
+**Source** — the only place that knows about a specific site: a parser plus a declarative
+definition (host, pinned sort/page size, paging, `parse`). Shared code turns it into an adapter
+that recognizes the link and fetches normalized listings
+([architecture.md § Adding a Source](llm/rules/architecture.md#adding-a-source)).
 
 `SourceRegistry` picks the adapter via `matches()` (or by id). The core (fetch →
 diff → notify), the bot, and the DB schema know nothing about specific sites.
@@ -150,6 +145,5 @@ layer, not the adapter.
 
 ## Extending
 
-A new source = a new adapter implementing the contract; the core, the bot, and
-the DB schema stay unchanged. An unsupported link → GitHub Issue → the adapter is
-added (including with LLM help).
+A new source = its parser and definition; the core, the bot, and the DB schema stay unchanged.
+An unsupported link → GitHub Issue → the source is added (including with LLM help).

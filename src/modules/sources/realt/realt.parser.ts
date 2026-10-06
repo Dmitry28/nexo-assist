@@ -13,6 +13,10 @@ import {
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { PageContext, SearchPage } from '../source-definition';
+
+/** The site's host — every search and every listing link is on it. */
+export const HOST = 'realt.by';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
 interface RawRealtObject {
@@ -95,6 +99,28 @@ export function extractPage(html: string): RealtPage {
   };
 }
 
+/** A search page as the shared walk reads it — the object-URL slug comes from the search URL. */
+export function parsePage(html: string, { url, sent }: PageContext): SearchPage<boolean> {
+  const { objects, received, pagination, linkPath } = extractPage(html);
+  // The search URL first, the page's own declaration second: `seoPayload.parentUrl` reads `/`
+  // on region-prefixed pages (measured on /grodno-region/sale/cottages/).
+  const slug = slugFromSearch(url) ?? linkPath;
+  if (slug === null) throw new SourceUnavailableError(`realt: no object-URL slug for ${url}`);
+  // A running count, not `page × pageSize`: realt bundles its first k pages into page 1
+  // (pageSize 30…360, measured) and then serves `?page=2` as its page k+1, so our page number
+  // and its page size do not multiply. A page past the end is served as page 1 again.
+  const more = pagination !== null && sent + received < pagination.totalCount;
+  return { listings: objects.map((obj) => mapObject(obj, slug)), next: more, sent: received };
+}
+
+// NOTE: object URLs are https://realt.by/<sale|rent>-<type>/object/<code>/. Most search URLs
+// carry a /<sale|rent>/<type>/ segment to derive it from; null when they don't (see the linkPath
+// docblock below for why a guess is worse than a failure).
+function slugFromSearch(url: string): string | null {
+  const match = new URL(url).pathname.match(/\/(sale|rent)\/([a-z-]+)/);
+  return match ? `${match[1]}-${match[2]}` : null;
+}
+
 /**
  * Map a raw object to a normalized listing.
  * `linkPath` is the object-URL slug (e.g. `sale-plots`) — see the helper of that name below.
@@ -106,7 +132,7 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
 
   return {
     externalId: String(obj.code),
-    link: `https://realt.by/${linkPath}/object/${obj.code}/`,
+    link: `https://${HOST}/${linkPath}/object/${obj.code}/`,
     title,
     description: asText(obj.headline) ?? asText(obj.description),
     priceByn: asPrice(obj.priceRates?.[ISO_NUMERIC.BYN], { minorUnits: false }),

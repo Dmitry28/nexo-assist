@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
 import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-InitSchema';
 import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
@@ -13,7 +14,6 @@ import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/17831
 import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
 import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
 import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
-import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { User } from '@/modules/subscriptions/entities/user.entity';
@@ -34,7 +34,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   let subscriptions: SubscriptionsService;
   let watch: WatchService;
   let dataSource: DataSource;
-  const kufar = new KufarAdapter();
+  const kufar = sourceAdapter('kufar');
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -61,10 +61,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
         }),
         SubscriptionsModule,
       ],
-    })
-      .overrideProvider(KufarAdapter)
-      .useValue(kufar)
-      .compile();
+    }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
     subscriptions = moduleRef.get(SubscriptionsService);

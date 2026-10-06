@@ -3,18 +3,18 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
-
-import { KufarAdapter } from '../kufar.adapter';
+import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/kufar-search.html'), 'utf8');
 
-describe('KufarAdapter', () => {
+describe('kufar source', () => {
   const fetchMock = undiciFetchMock();
-  let adapter: KufarAdapter;
+  let adapter: SourceAdapter;
 
   beforeEach(() => {
-    adapter = new KufarAdapter();
+    adapter = sourceAdapter('kufar');
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
   });

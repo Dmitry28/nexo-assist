@@ -3,10 +3,9 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
-
-import { KufarAdapter } from '../../kufar/kufar.adapter';
-import { KufarTravelAdapter } from '../kufar-travel.adapter';
+import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/kufar-travel-search.html'), 'utf8');
 
@@ -22,12 +21,12 @@ const lastPage = (adId: number): string =>
     },
   })}</script>`;
 
-describe('KufarTravelAdapter', () => {
+describe('kufar-travel source', () => {
   const fetchMock = undiciFetchMock();
-  let adapter: KufarTravelAdapter;
+  let adapter: SourceAdapter;
 
   beforeEach(() => {
-    adapter = new KufarTravelAdapter();
+    adapter = sourceAdapter('kufar-travel');
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
   });
 
@@ -42,7 +41,7 @@ describe('KufarTravelAdapter', () => {
     ['https://www.kufar.by/l/x', false, true],
   ])('%s → travel %s, kufar %s', (url, travel, kufar) => {
     expect(adapter.matches(url)).toBe(travel);
-    expect(new KufarAdapter().matches(url)).toBe(kufar);
+    expect(sourceAdapter('kufar').matches(url)).toBe(kufar);
   });
 
   it('pins newest-first and page 1, then walks ?page=N while the paginator says more', async () => {

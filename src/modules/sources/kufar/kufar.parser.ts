@@ -16,6 +16,7 @@ import {
 } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { SearchPage } from '../source-definition';
 
 /**
  * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
@@ -89,6 +90,12 @@ export function extractPage(html: string): KufarPage {
   const pagination = asArray<RawPagination>(listing?.pagination) ?? [];
   const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
   return { ads, nextCursor };
+}
+
+/** A search page as the shared walk reads it: listings and the next page's cursor token. */
+export function parsePage(html: string): SearchPage<string | null> {
+  const { ads, nextCursor } = extractPage(html);
+  return { listings: ads.map(mapAd), next: nextCursor };
 }
 
 /** Map a raw ad to a normalized listing. */
