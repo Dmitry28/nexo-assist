@@ -12,6 +12,7 @@ import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-Ad
 import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
 import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
 import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
+import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
 import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -53,6 +54,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             AddConsecutiveFailures1783196783018,
             EnableRowLevelSecurity1785920305000,
             AddLastNotifiedAt1791244800000,
+            MoveTravelSubscriptions1791331200000,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -158,6 +160,30 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     await subscriptions.markSeen(sub.id, ['2', '3']); // '2' already seen — ignored, no error
 
     expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4']))].sort()).toEqual(['2', '3']);
+  });
+
+  it('MoveTravelSubscriptions re-points old travel links to kufar-travel and re-baselines them', async () => {
+    const travel = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://travel.kufar.by/l/grodno/arendovat',
+    });
+    const sale = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://re.kufar.by/l/grodno/kupit/dom',
+    });
+    await subscriptions.seedBaseline(travel.id, ['stale']);
+    await subscriptions.seedBaseline(sale.id, []);
+
+    const runner = dataSource.createQueryRunner();
+    await new MoveTravelSubscriptions1791331200000().up(runner).finally(() => runner.release());
+
+    const rows = await subscriptions.listByUser(1);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(travel.id)).toMatchObject({ source: 'kufar-travel', baselinedAt: null });
+    expect(byId.get(sale.id)).toMatchObject({ source: 'kufar', baselinedAt: expect.any(Date) });
+    expect((await subscriptions.getSeen(travel.id, ['stale'])).size).toBe(0);
   });
 
   // The quiet report counts from this stamp, against the real users table.

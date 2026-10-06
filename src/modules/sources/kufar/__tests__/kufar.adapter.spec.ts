@@ -28,6 +28,7 @@ describe('KufarAdapter', () => {
     it.each([
       ['https://www.kufar.by/l/x', true],
       ['https://re.kufar.by/l/minsk', true],
+      ['https://travel.kufar.by/l/grodno/arendovat', false],
       ['https://realt.by/x', false],
       ['not a url', false],
     ])('matches(%s) → %s', (url, expected) => {

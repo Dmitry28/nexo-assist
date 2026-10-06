@@ -7,6 +7,10 @@ import type { FetchResult, SourceAdapter, SourceId } from '../source-adapter';
 
 import { HOST, extractPage, mapAd } from './kufar.parser';
 
+// travel.kufar.by is another app with another payload (the kufar-travel adapter); its page reads
+// here as an empty search (no `listing.ads` entries), so a subscription would never deliver.
+const TRAVEL_HOST = 'travel.kufar.by';
+
 // Pin newest-first ordering — the window (MAX_LISTINGS newest) relies on new listings coming first
 // (verified live: sort=lst.d orders by list_time desc).
 const SORT_NEWEST = 'lst.d';
@@ -18,7 +22,7 @@ export class KufarAdapter implements SourceAdapter {
   private readonly logger = new Logger(KufarAdapter.name);
 
   matches(url: string): boolean {
-    return matchesHost({ url, host: HOST });
+    return matchesHost({ url, host: HOST }) && !matchesHost({ url, host: TRAVEL_HOST });
   }
 
   async fetch(url: string): Promise<FetchResult> {
