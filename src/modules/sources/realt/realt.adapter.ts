@@ -17,6 +17,7 @@ const SORT_NEWEST = 'createdAt';
 @Injectable()
 export class RealtAdapter implements SourceAdapter {
   readonly id: SourceId = 'realt';
+  readonly volatileParams = ['sortType', 'page'];
   private readonly logger = new Logger(RealtAdapter.name);
 
   matches(url: string): boolean {
@@ -31,7 +32,7 @@ export class RealtAdapter implements SourceAdapter {
     // 30…360, measured) and then serves `?page=2` as its page k+1, so our page number and its page
     // size do not multiply. A page past the end is served as page 1 again — the old formula
     // overshot into exactly that. Per call, not a field: the adapter is shared by concurrent polls.
-    let received = 0;
+    let sent = 0;
     const base = withParam(url, 'sortType', SORT_NEWEST);
     return paginate({
       firstUrl: withParam(base, 'page', '1'),
@@ -39,7 +40,7 @@ export class RealtAdapter implements SourceAdapter {
       // realt redirects a search it rewrites (e.g. any `addressV2` filter) to a wider one.
       pinPath: true,
       parsePage: (html, page) => {
-        const { objects, pagination, linkPath } = extractPage(html);
+        const { objects, received, pagination, linkPath } = extractPage(html);
         // The search URL first, the page's own declaration second: `seoPayload.parentUrl` reads
         // `/` on region-prefixed pages (measured on /grodno-region/sale/cottages/), so it is the
         // weaker source of the two. Without either, see the linkPath docblock in realt.parser.
@@ -47,8 +48,8 @@ export class RealtAdapter implements SourceAdapter {
         if (slug === null) {
           throw new SourceUnavailableError(`realt: no object-URL slug for ${url}`);
         }
-        received += objects.length;
-        const hasMore = pagination !== null && received < pagination.totalCount;
+        sent += received;
+        const hasMore = pagination !== null && sent < pagination.totalCount;
         const nextUrl = hasMore ? withParam(base, 'page', String(page + 1)) : null;
         return { listings: objects.map((obj) => mapObject(obj, slug)), nextUrl };
       },

@@ -19,6 +19,7 @@ const SORT_NEWEST = 'lst.d';
 @Injectable()
 export class KufarAdapter implements SourceAdapter {
   readonly id: SourceId = 'kufar';
+  readonly volatileParams = ['cursor', 'sort'];
   private readonly logger = new Logger(KufarAdapter.name);
 
   matches(url: string): boolean {

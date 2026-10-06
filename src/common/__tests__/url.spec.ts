@@ -36,22 +36,25 @@ describe('matchesHost', () => {
 });
 
 describe('normalizeUrl', () => {
+  const VOLATILE = ['cursor', 'page', 'sort', 'sortType'];
+
   it('lowercases host, strips www, drops volatile + utm params, sorts, trims slash', () => {
     expect(
       normalizeUrl(
         'https://WWW.re.kufar.by/l/minsk/?sort=lst.d&price=1&cursor=abc&page=2&utm_source=x',
+        VOLATILE,
       ),
     ).toBe('https://re.kufar.by/l/minsk?price=1');
   });
 
   it('treats the same search as equal regardless of param order and pagination/sort', () => {
-    expect(normalizeUrl('https://kufar.by/x?b=2&a=1&page=3')).toBe(
-      normalizeUrl('https://kufar.by/x?a=1&sort=prc&b=2'),
+    expect(normalizeUrl('https://kufar.by/x?b=2&a=1&page=3', VOLATILE)).toBe(
+      normalizeUrl('https://kufar.by/x?a=1&sort=prc&b=2', VOLATILE),
     );
   });
 
   it('drops realt sortType + page', () => {
-    expect(normalizeUrl('https://realt.by/sale/?sortType=createdAt&page=4&rooms=2')).toBe(
+    expect(normalizeUrl('https://realt.by/sale/?sortType=createdAt&page=4&rooms=2', VOLATILE)).toBe(
       'https://realt.by/sale?rooms=2',
     );
   });

@@ -1,11 +1,17 @@
+import { SourceUnavailableError } from '../../source-adapter';
 import {
   asArray,
   asCoordinates,
   asNumber,
   asPositiveNumber,
+  asPrice,
   asRecord,
   asText,
+  asTexts,
   parseNextData,
+  requireArray,
+  requireNextData,
+  withIds,
 } from '../next-data';
 
 const wrap = (json: string): string =>
@@ -149,5 +155,72 @@ describe('asCoordinates', () => {
     ['zeroed', [0, 0]],
   ])('drops %s input rather than pinning the wrong place', (_label, value) => {
     expect(asCoordinates(value)).toBeUndefined();
+  });
+});
+
+describe('requireNextData', () => {
+  it('returns the blob, and throws a source error on a page without one', () => {
+    expect(requireNextData(wrap('{"a":1}'), 'kufar')).toEqual({ a: 1 });
+    expect(() => requireNextData('<html>bot wall</html>', 'kufar')).toThrow(SourceUnavailableError);
+  });
+});
+
+describe('requireArray', () => {
+  it('returns the array — an empty one is a real zero-result page', () => {
+    expect(requireArray([], 'kufar', 'listing.ads')).toEqual([]);
+  });
+
+  it.each([undefined, null, {}, 'x'])('throws a source error on %p', (value) => {
+    expect(() => requireArray(value, 'kufar', 'listing.ads')).toThrow(SourceUnavailableError);
+  });
+});
+
+describe('withIds', () => {
+  const idOf = (item: { id?: unknown }): unknown => item.id;
+
+  it('keeps numeric and text ids, drops an item without a usable one', () => {
+    const items = [{ id: 1 }, { id: 'a7' }, { id: '  ' }, { id: Number.NaN }, {}];
+
+    expect(withIds(items, idOf, 'kufar')).toEqual([{ id: 1 }, { id: 'a7' }]);
+  });
+
+  // A renamed id field: every listing would become "undefined" and merge into one.
+  it('throws a source error when a non-empty page has no id at all', () => {
+    expect(() => withIds([{}, {}], idOf, 'kufar')).toThrow(SourceUnavailableError);
+  });
+
+  it('accepts an empty page', () => {
+    expect(withIds([], idOf, 'kufar')).toEqual([]);
+  });
+});
+
+describe('asPrice', () => {
+  it.each([
+    ['1385000', true, 13850],
+    [7500, true, 75],
+    [45000.4, false, 45000],
+    ['45000', false, 45000],
+    ['49', true, undefined], // rounds to 0 — not a price
+    [0.4, false, undefined],
+    [-500, false, undefined],
+    [0, false, undefined],
+    ['12 BYN', false, undefined],
+    [undefined, true, undefined],
+  ])('asPrice(%p, minorUnits %p) → %p', (value, minorUnits, expected) => {
+    expect(asPrice(value, { minorUnits })).toBe(expected);
+  });
+});
+
+describe('asTexts', () => {
+  it.each([
+    [
+      ['a', ' b ', '', 3, null],
+      ['a', 'b'],
+    ],
+    ['single', ['single']],
+    [undefined, []],
+    [{}, []],
+  ])('asTexts(%p) → %p', (value, expected) => {
+    expect(asTexts(value)).toEqual(expected);
   });
 });

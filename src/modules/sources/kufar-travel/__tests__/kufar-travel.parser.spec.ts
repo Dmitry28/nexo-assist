@@ -35,12 +35,27 @@ describe('extractPage', () => {
     expect(objects.map((o) => o.adId)).toEqual([1, 2, 3]);
   });
 
-  it('reports no later page on the last one', () => {
-    const { hasMore } = extractPage(
-      page({ rentalObjects: [], bookingPaginator: { page: 13, pages: 13 } }),
-    );
+  it.each([
+    [{ page: 12, pages: 13 }, true],
+    [{ page: 13, pages: 13 }, false],
+    [{ page: 1, pages: 0 }, false], // zero-result search (measured)
+    [{ page: 'x', pages: 13 }, false],
+    [undefined, false],
+  ])('paginator %p → hasMore %p', (bookingPaginator, expected) => {
+    expect(extractPage(page({ rentalObjects: [], bookingPaginator })).hasMore).toBe(expected);
+  });
 
-    expect(hasMore).toBe(false);
+  it('drops an object without an id, and fails a page where none has one', () => {
+    const at = '2026-10-06T10:00:00Z';
+    const objects = (items: unknown[]) => extractPage(page({ rentalObjects: items })).objects;
+
+    expect(
+      objects([
+        { adId: 1, listTime: at },
+        { id: 'x', listTime: at },
+      ]),
+    ).toHaveLength(1);
+    expect(() => objects([{ id: 'x', listTime: at }])).toThrow(SourceUnavailableError);
   });
 
   it('throws when the page carries no __NEXT_DATA__ at all', () => {

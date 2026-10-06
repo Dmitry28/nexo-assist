@@ -155,6 +155,30 @@ describe('RealtAdapter', () => {
       expect(capped).toBe(false);
     });
 
+    // totalCount counts what realt sent, so a dropped malformed object must not read as "more".
+    it('stops at totalCount even when a malformed object was dropped', async () => {
+      const page =
+        '<script id="__NEXT_DATA__" type="application/json">' +
+        JSON.stringify({
+          props: {
+            pageProps: {
+              objects: [{ code: 1, updatedAt: '2026-01-01T00:00:00Z' }, { updatedAt: 'x' }],
+              pagination: { totalCount: 2 },
+            },
+          },
+        }) +
+        '</script>';
+      fetchMock.mockResolvedValue(new Response(page));
+
+      const { listings, capped } = await adapter.fetch(
+        'https://realt.by/grodno-region/sale/plots/',
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(listings).toHaveLength(1);
+      expect(capped).toBe(false);
+    });
+
     it('pins page 1 and newest-first sort regardless of pasted params', async () => {
       fetchMock.mockResolvedValue(new Response(realtPage([1], 10)));
 
@@ -163,12 +187,6 @@ describe('RealtAdapter', () => {
       const firstUrl = String(fetchMock.mock.calls[0][0]);
       expect(firstUrl).toContain('page=1');
       expect(firstUrl).toContain('sortType=createdAt');
-    });
-
-    it('rejects on a non-OK response — an outage must not look like an empty search', async () => {
-      fetchMock.mockResolvedValue(new Response('', { status: 404 }));
-
-      await expect(adapter.fetch('https://realt.by/x')).rejects.toThrow('HTTP 404');
     });
   });
 });

@@ -3,9 +3,12 @@ import {
   asArray,
   asCoordinates,
   asPositiveNumber,
+  asPrice,
   asRecord,
   asText,
-  parseNextData,
+  asTexts,
+  requireNextData,
+  withIds,
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
@@ -37,7 +40,7 @@ interface RawRealtObject {
   /** `[longitude, latitude]` — longitude first, same order as kufar. */
   location?: number[] | null;
   /** Pre-built CDN URLs. */
-  images?: string[];
+  images?: unknown;
 }
 
 // realt.by priceRates currency codes (ISO 4217 numeric).
@@ -51,6 +54,8 @@ interface RawPagination {
 /** One page of a realt search: objects, pagination block and object-URL slug (null = unknown). */
 export interface RealtPage {
   objects: RawRealtObject[];
+  /** How many objects realt sent, before any malformed one was dropped — what totalCount counts. */
+  received: number;
   pagination: RawPagination | null;
   linkPath: string | null;
 }
@@ -63,8 +68,7 @@ export interface RealtPage {
  * (observed live).
  */
 export function extractPage(html: string): RealtPage {
-  const data = parseNextData(html);
-  if (!data) throw new SourceUnavailableError('realt: __NEXT_DATA__ missing or unparseable');
+  const data = requireNextData(html, 'realt');
 
   const props = asRecord(data.props);
   // NOTE: asRecord rejects a non-object `pageProps` (an array, a string) where the previous cast
@@ -85,7 +89,8 @@ export function extractPage(html: string): RealtPage {
     throw new SourceUnavailableError('realt: objects is not an array — page layout changed?');
   }
   return {
-    objects: objects ?? [],
+    objects: withIds(objects ?? [], (obj) => obj.code, 'realt'),
+    received: objects?.length ?? 0,
     linkPath: linkPath(pageProps),
     // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
     // reads `totalCount` off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
@@ -107,11 +112,11 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
     link: `https://realt.by/${linkPath}/object/${obj.code}/`,
     title,
     description: asText(obj.headline) ?? asText(obj.description),
-    priceByn: toPrice(obj.priceRates?.[CURRENCY_BYN]),
-    priceUsd: toPrice(obj.priceRates?.[CURRENCY_USD]),
+    priceByn: asPrice(obj.priceRates?.[CURRENCY_BYN], { minorUnits: false }),
+    priceUsd: asPrice(obj.priceRates?.[CURRENCY_USD], { minorUnits: false }),
     address: asText(obj.address),
     listTime: obj.updatedAt,
-    images: obj.images ?? [],
+    images: asTexts(obj.images),
     coordinates: asCoordinates(obj.location),
     seller: asText(obj.contactName),
     details: listingDetails(
@@ -132,10 +137,6 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
 function levels(obj: RawRealtObject): number | undefined {
   const value = asPositiveNumber(obj.levels);
   return value === asPositiveNumber(obj.storeys) ? undefined : value;
-}
-
-function toPrice(value: number | undefined): number | undefined {
-  return typeof value === 'number' && value > 0 ? Math.round(value) : undefined;
 }
 
 /**

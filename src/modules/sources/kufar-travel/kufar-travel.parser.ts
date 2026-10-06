@@ -1,13 +1,17 @@
 import { detail, listingDetails } from '../listing-details';
 import {
-  asArray,
   asCoordinates,
+  asNumber,
   asPositiveNumber,
+  asPrice,
   asRecord,
   asText,
-  parseNextData,
+  asTexts,
+  requireArray,
+  requireNextData,
+  withIds,
 } from '../scraping/next-data';
-import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
+import { UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
 /** travel.kufar.by — kufar's short-term (per-night) rentals: its own app and payload. */
@@ -28,7 +32,7 @@ interface RawRentalObject {
   priceConversions?: { usd?: number };
   address?: string;
   listTime: string;
-  images?: { gallery?: string[]; listings?: string[] };
+  images?: { gallery?: unknown; listings?: unknown };
   /** `[longitude, latitude]` — the same order as kufar's sale ads. */
   coordinates?: unknown;
   housingType?: { ru?: string };
@@ -46,11 +50,6 @@ interface RawRentalObject {
   ratingScoresCount?: number;
 }
 
-interface RawPaginator {
-  page: number;
-  pages: number;
-}
-
 /** One page of a travel search: its rental objects and whether a later page exists. */
 export interface KufarTravelPage {
   objects: RawRentalObject[];
@@ -63,17 +62,18 @@ export interface KufarTravelPage {
  * its absence is a layout change or a bot-wall, which must not read as an empty search.
  */
 export function extractPage(html: string): KufarTravelPage {
-  const data = parseNextData(html);
-  if (!data) throw new SourceUnavailableError('kufar-travel: __NEXT_DATA__ missing or unparseable');
-
+  const data = requireNextData(html, 'kufar-travel');
   const listing = asRecord(asRecord(asRecord(data.props)?.initialState)?.listing);
-  const all = asArray<RawRentalObject>(listing?.rentalObjects);
-  if (!all) {
-    throw new SourceUnavailableError('kufar-travel: rentalObjects missing — page layout changed?');
-  }
+  const all = withIds(
+    requireArray<RawRentalObject>(listing?.rentalObjects, 'kufar-travel', 'rentalObjects'),
+    (o) => o.adId,
+    'kufar-travel',
+  );
   // No paginator means no next page; `pages` is 0 on a zero-result search (measured).
-  const paginator = asRecord(listing?.bookingPaginator) as RawPaginator | undefined;
-  const hasMore = paginator !== undefined && paginator.page < paginator.pages;
+  const paginator = asRecord(listing?.bookingPaginator);
+  const page = asNumber(paginator?.page);
+  const pages = asNumber(paginator?.pages);
+  const hasMore = page !== undefined && pages !== undefined && page < pages;
   return { objects: withoutPromotedHotels(all), hasMore };
 }
 
@@ -106,12 +106,12 @@ export function mapRentalObject(raw: RawRentalObject): Listing {
     link: `https://${HOST}/hotel/${raw.adId}`,
     title: asText(raw.subject) ?? UNTITLED_LISTING,
     description: preview(raw.body),
-    priceByn: toPrice(raw.price),
-    priceUsd: toPrice(raw.priceConversions?.usd),
+    priceByn: asPrice(raw.price, { minorUnits: true }),
+    priceUsd: asPrice(raw.priceConversions?.usd, { minorUnits: true }),
     address: asText(raw.address),
     listTime: raw.listTime,
     // `gallery` is the full-size set; `listings` the thumbnails — the fallback, not the choice.
-    images: asArray<string>(raw.images?.gallery) ?? asArray<string>(raw.images?.listings) ?? [],
+    images: asTexts(raw.images?.gallery ?? raw.images?.listings),
     coordinates: asCoordinates(raw.coordinates),
     details: listingDetails(
       detail('Тип', asText(raw.housingType?.ru)),
@@ -136,10 +136,4 @@ function preview(raw: unknown): string | undefined {
   return text !== undefined && text.length > PREVIEW_CHARS
     ? `${text.slice(0, PREVIEW_CHARS).trimEnd()}…`
     : text;
-}
-
-// The price is per night, in 1/100 of the unit; a 0 is "not set", not a free stay.
-function toPrice(raw: unknown): number | undefined {
-  const value = Math.round((asPositiveNumber(raw) ?? 0) / 100);
-  return value > 0 ? value : undefined;
 }

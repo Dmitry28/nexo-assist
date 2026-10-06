@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import { KufarAdapter } from '../kufar/kufar.adapter';
 import { RealtAdapter } from '../realt/realt.adapter';
 import { SourceRegistry } from '../source-registry';
-import { SourcesModule } from '../sources.module';
+import { ADAPTERS, SourcesModule } from '../sources.module';
 
 describe('SourceRegistry', () => {
   const registry = new SourceRegistry([new KufarAdapter(), new RealtAdapter()]);
@@ -15,6 +15,14 @@ describe('SourceRegistry', () => {
 
   it('returns null for an unsupported URL', () => {
     expect(registry.match('https://example.com/x')).toBeNull();
+  });
+
+  // The dedup key of every stored subscription is built with this list — a change here changes
+  // `normalizedUrl` under existing rows. Grow it only with a key a new adapter really sets.
+  it('pins the duplicate-check params of all registered adapters', () => {
+    const all = new SourceRegistry(ADAPTERS.map((Adapter) => new Adapter()));
+
+    expect(all.volatileParams().sort()).toEqual(['cursor', 'page', 'sort', 'sortType']);
   });
 
   it('resolves an adapter by source id', () => {

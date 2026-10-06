@@ -15,6 +15,7 @@ const SORT_NEWEST = 'lst.d';
 @Injectable()
 export class KufarTravelAdapter implements SourceAdapter {
   readonly id: SourceId = 'kufar-travel';
+  readonly volatileParams = ['sort', 'page'];
   private readonly logger = new Logger(KufarTravelAdapter.name);
 
   matches(url: string): boolean {
