@@ -33,7 +33,7 @@ src/
     │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
-    │   └── <site>/             # One adapter per site (kufar, realt) + parser
+    │   └── <site>/             # One adapter per site (kufar, kufar-travel, realt) + parser
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root

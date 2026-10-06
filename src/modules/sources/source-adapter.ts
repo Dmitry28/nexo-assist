@@ -1,4 +1,4 @@
-export type SourceId = 'kufar' | 'realt';
+export type SourceId = 'kufar' | 'kufar-travel' | 'realt';
 
 /**
  * Shown when a source gives no usable title. Part of the contract, not of one parser: `title` is

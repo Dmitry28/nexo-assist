@@ -20,7 +20,7 @@ realt.by ◄────напрямую────┤   ├─ Pod: initContai
 kufar.by ◄─через прокси───┤              │
    ▲                      │              └──TLS(verify-full)──► Supabase (managed Postgres)
    └── Oracle Always Free (E2.1.Micro) + tinyproxy: egress для источников,
-       которые блокируют хостинги (сейчас kufar). Доступен только с нашего сервера.
+       которые блокируют хостинги (сейчас kufar и travel.kufar.by). Доступен только с нашего сервера.
 
 GHCR (ghcr.io) ──образ (multi-arch, пин по sha)──► кластер
 ```

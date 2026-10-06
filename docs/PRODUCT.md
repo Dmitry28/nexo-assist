@@ -12,7 +12,8 @@ start; more frequent once throttling/dedupe land).
 
 ## Status now (implemented)
 
-- Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first, and
+- Sources: **kufar (sale and long-term rent), kufar travel (per-night rent) + realt** via the
+  adapter registry; each search is fetched newest-first, and
   a run looks at its **newest 150 listings** (up to 5 pages) — a pasted sort or page number is
   overridden. A search that gains more than that between two runs loses the rest (the owner is
   told via Sentry).
@@ -20,7 +21,7 @@ start; more frequent once throttling/dedupe land).
   title, description, price in both currencies, address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's
   searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
-  source publishes one (both kufar and realt do). Past **30 cards** in one delivery the rest
+  source publishes one (all three do). Past **30 cards** in one delivery the rest
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
   Messages are paced one per second. A refused photo falls back to the text card; a refused pin
   is ignored — the listing already arrived.
@@ -123,7 +124,7 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 
 ```ts
 interface SourceAdapter {
-  readonly id: SourceId; // 'kufar' | 'realt'
+  readonly id: SourceId; // 'kufar' | 'kufar-travel' | 'realt'
   matches(url: string): boolean; // recognize the link (host check)
   fetch(url: string): Promise<Listing[]>; // fetch + parse → normalized listings
 }

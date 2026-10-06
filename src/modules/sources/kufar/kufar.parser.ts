@@ -106,7 +106,9 @@ export function mapAd(ad: RawKufarAd): Listing {
       detail('Тип', propertyType(ad)),
       detail('Площадь', asPositiveNumber(param(ad.ad_parameters, 'size')), 'м²'),
       detail('Участок', asPositiveNumber(param(ad.ad_parameters, 'size_area')), 'сот.'),
-      detail('Комнат', asPositiveNumber(param(ad.ad_parameters, 'rooms'))),
+      // A dictionary field, not a count: measured 2026-10-06, `v` "6" is a studio and "5" reads
+      // «5 и более» or «5+» by category — only the label is right.
+      detail('Комнат', asText(param(ad.ad_parameters, 'rooms', 'vl'))),
       // Rent ads carry the storey and the building's height; a sale ad carries neither. Both
       // are positive-only: storeys here are 1-based, so a 0 is an unfilled field, not a basement.
       detail('Этаж', asPositiveNumber(param(ad.ad_parameters, 'floor'))),
