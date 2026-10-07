@@ -33,8 +33,18 @@ interface CommonDefinition<Id extends string> {
   sample: string;
   /** What the site offers, in a few words, for the bot's list of sites («вакансии»). */
   about: string;
-  /** The search page's path (trailing slash optional), when other pages of the host are no search. */
-  searchPath?: string;
+  /**
+   * The search page's path (trailing slash optional), when other pages of the host are no search —
+   * a pattern (no `g`/`y` flag — `test` would keep state) when the path carries the search itself
+   * (gridom's `/<developer>`).
+   */
+  searchPath?: string | RegExp;
+  /**
+   * Where the data for a pasted link really lives, when that is not the page itself — a JSON
+   * endpoint behind a widget. Must stay on `host`. Matching and the duplicate check keep the
+   * pasted link.
+   */
+  requestUrl?(url: string): string;
   /**
    * Params forced on every request — newest-first sort, the page size.
    * NOTE: these, the paging param and `noise` are what the duplicate check drops from this source's
@@ -97,7 +107,14 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
     const subHosts = definitions
       .map((other) => other.host)
       .filter((host) => host !== def.host && host.endsWith(`.${def.host}`));
-    const searchPath = def.searchPath === undefined ? undefined : trimSlash(def.searchPath);
+    const { searchPath } = def;
+    const onSearchPath = (url: string): boolean => {
+      if (searchPath === undefined) return true;
+      const path = trimSlash(new URL(url).pathname);
+      return typeof searchPath === 'string'
+        ? path === trimSlash(searchPath)
+        : searchPath.test(path);
+    };
     const pagingParam = pagingParamOf(def);
     const logger = new Logger(`source:${def.id}`);
     return {
@@ -111,11 +128,13 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
       matches: (url) =>
         matchesHost({ url, host: def.host }) &&
         !subHosts.some((host) => matchesHost({ url, host })) &&
-        (searchPath === undefined || trimSlash(new URL(url).pathname) === searchPath),
+        onSearchPath(url),
       fetch: (url) => fetchSearch(def, url, pagingParam, logger),
     };
   });
 }
+
+const requested = (def: SourceDefinition, url: string): string => def.requestUrl?.(url) ?? url;
 
 function pagingParamOf(def: SourceDefinition): string | undefined {
   if ('singlePage' in def) return undefined;
@@ -131,7 +150,9 @@ function fetchSearch(
   // A pasted page or cursor would start mid-list and skip the newest listings.
   const base = Object.entries(def.pins ?? {}).reduce(
     (next, [key, value]) => withParam(next, key, value),
-    pagingParam === undefined ? url : withoutParam(url, pagingParam),
+    pagingParam === undefined
+      ? requested(def, url)
+      : withoutParam(requested(def, url), pagingParam),
   );
   // Page N of the walk is the site's `first + N - 1` (rabota counts from 0, the rest from 1).
   const pageUrl = (n: number): string =>

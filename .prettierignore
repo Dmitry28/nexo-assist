@@ -2,3 +2,5 @@ dist
 coverage
 node_modules
 package-lock.json
+# A live page kept malformed on purpose (the unclosed span the parser must survive).
+src/modules/sources/prometr/__tests__/fixtures/prometr-search.html

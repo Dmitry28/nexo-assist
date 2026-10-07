@@ -13,8 +13,9 @@ start; more frequent once throttling/dedupe land).
 ## Status now (implemented)
 
 - Sources: **kufar (sale and long-term rent), kufar travel (per-night rent), realt, vacancies from
-  gsz.gov.by (state vacancy bank) and rabota.by, and two fixed pages — ghb.by's price list and
-  grodnorik.gov.by's auction notices (new items only for now; no paging there)** via the adapter registry; each search is fetched newest-first, and
+  gsz.gov.by (state vacancy bank) and rabota.by, and fixed pages — ghb.by's price list,
+  grodnorik.gov.by's auction notices, prometr.by new-build complexes and gridom.by developers'
+  units (new items only for now; no paging there)** via the adapter registry; each search is fetched newest-first, and
   a run looks at its **newest 150 listings** (up to 5 pages) — a pasted sort or page number is
   overridden. A search that gains more than that between two runs loses the rest (the owner is
   told via Sentry).
