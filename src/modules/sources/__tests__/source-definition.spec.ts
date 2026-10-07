@@ -119,6 +119,32 @@ describe('createSourceAdapters', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('matches a search path given as a pattern', () => {
+    const [adapter] = createSourceAdapters([define({ searchPath: /^\/[a-z]+$/ })]);
+
+    expect(adapter.matches('https://a.by/pogorany/')).toBe(true);
+    expect(adapter.matches('https://a.by/api/x')).toBe(false);
+  });
+
+  it('fetches what requestUrl maps the pasted link to', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
+    const [adapter] = createSourceAdapters([
+      {
+        id: 'gridom',
+        host: 'a.by',
+        sample: 'https://a.by/dev',
+        about: 'test',
+        singlePage: true,
+        requestUrl: (url) => `${url}/data.json`,
+        parse: () => ({ listings: [listing('1')] }),
+      },
+    ]);
+
+    await adapter.fetch('https://a.by/dev');
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://a.by/dev/data.json');
+  });
+
   it('fetches a single page once, adding no paging param', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
     const [adapter] = createSourceAdapters([
