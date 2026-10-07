@@ -68,14 +68,25 @@ describe.each(SOURCES.map((def) => [def.id, sourceAdapter(def.id), def.sample] a
     // Every source's live fixture, held to what the core relies on: a link on the site, a unique
     // id, a title, and a time that is empty or ISO (the card prints it; '' means unknown).
     it('maps its live fixture into listings the core can rely on', async () => {
-      // `<id>-search.<ext>` — HTML for most, JSON where the source reads an API (gridom).
+      // `<id>-search.<ext>` — HTML for most, JSON for an API (gridom); a source that needs two
+      // requests for its page (gcn) has `<id>-search.1.*`, `.2.*`, served in that order.
       const dir = join(__dirname, '..', adapter.id, '__tests__', 'fixtures');
-      const name = readdirSync(dir).find((file) => file.startsWith(`${adapter.id}-search.`));
-      if (name === undefined) throw new Error(`${adapter.id}: no fixtures/${adapter.id}-search.*`);
-      const fixture = readFileSync(join(dir, name), 'utf8');
-      fetchMock
-        .mockResolvedValueOnce(new Response(fixture))
-        .mockResolvedValue(new Response('', { status: 503 }));
+      const names = readdirSync(dir)
+        .filter((file) => file.startsWith(`${adapter.id}-search.`))
+        .sort();
+      if (names.length === 0) throw new Error(`${adapter.id}: no fixtures/${adapter.id}-search.*`);
+      for (const name of names) {
+        fetchMock.mockResolvedValueOnce(new Response(readFileSync(join(dir, name), 'utf8')));
+      }
+      // A source that visits item pages (gcn) has `<id>-item.*` — served for every visit.
+      const item = readdirSync(dir).find((file) => file.startsWith(`${adapter.id}-item.`));
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(
+          item === undefined
+            ? new Response('', { status: 503 })
+            : new Response(readFileSync(join(dir, item), 'utf8')),
+        ),
+      );
 
       const { listings } = await adapter.fetch(sample);
 

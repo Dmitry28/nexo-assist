@@ -123,11 +123,13 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
 - `<site>.source.ts` — `defineSource({...})`: id (the folder name; stored with subscriptions, never
   renamed), host, a real `sample` search, `about` (a few words for /help), optional search path,
   pinned params (newest-first sort, page size), page or cursor paging, or `singlePage: true`
-  (one fixed page), noise params, `requestUrl` (when the data sits behind a widget's API), `parse`;
+  (one fixed page), noise params, `requestUrl` (when the data sits behind a widget's API), for a single page
+  `load`/`enrich` (a second request for the list; an item-page visit for a missing field), `parse`;
   `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)).
   Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its
   `pins` NOTE: changing them later needs a re-normalizing migration).
-- `__tests__/` — parser specs on a trimmed live fixture `fixtures/<id>-search.<html|json>` (that name
+- `__tests__/` — parser specs on a trimmed live fixture `fixtures/<id>-search.<html|json>` (or `.1.*`, `.2.*`
+  for a page that takes two requests, plus `<id>-item.*` for item-page visits; that name
   is what the contract spec loads; redacted — the repo is public).
 - Register: one line in `SOURCES` (`sources.ts`) — `SourceId`, /help's list of sites and the
   contract spec follow from it. The contract spec checks every source for registration, host

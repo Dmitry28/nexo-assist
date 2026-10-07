@@ -53,7 +53,8 @@ export class WatchService {
    * fetch fails. Resolves to the number of listings seeded.
    */
   async baseline(sub: Subscription): Promise<number> {
-    const { listings } = await this.fetchListings(sub);
+    // Ids are all a baseline needs — a source's item-page visits (gcn's prices) are skipped.
+    const { listings } = await this.fetchListings(sub, { idsOnly: true });
     // NOTE: seed + mark-baselined in one transaction (seedBaseline). A partial fetch is still
     // marked done, deliberately: leaving it pending would re-baseline every run, and a source
     // that always fails on page 2 would then never notify at all — silence is the worse of the
@@ -119,8 +120,11 @@ export class WatchService {
    * place that can notice the window (MAX_LISTINGS) being outgrown. `paginate` enforces it, so
    * this is the backstop for an adapter that does not go through `paginate`.
    */
-  private async fetchListings(sub: Subscription): Promise<FetchResult> {
-    const result = await this.adapter(sub).fetch(sub.url);
+  private async fetchListings(
+    sub: Subscription,
+    options?: { idsOnly?: boolean },
+  ): Promise<FetchResult> {
+    const result = await this.adapter(sub).fetch(sub.url, options);
     const { listings } = result;
     // Reported here rather than in each caller: this is the one place every fetch passes
     // through, and all three of them are hurt by a prefix — a baseline under-counts the search,
