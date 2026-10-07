@@ -25,12 +25,22 @@ export interface SearchPage<Next> {
   sent?: number;
 }
 
-interface CommonDefinition {
-  id: SourceId;
+interface CommonDefinition<Id extends string> {
+  /** Stored with every subscription — never rename one that is live. */
+  id: Id;
   host: string;
+  /** A real search URL on this host and path — the contract spec runs every source against it. */
+  sample: string;
+  /** What the site offers, in a few words, for the bot's list of sites («вакансии»). */
+  about: string;
   /** The search page's path (trailing slash optional), when other pages of the host are no search. */
   searchPath?: string;
-  /** Params forced on every request — newest-first sort, the page size. */
+  /**
+   * Params forced on every request — newest-first sort, the page size.
+   * NOTE: these, the paging param and `noise` are what the duplicate check drops from this source's
+   * links — changing them changes stored `normalizedUrl`s, so it ships with a re-normalizing
+   * migration (precedent: RenormalizeSubscriptionUrls).
+   */
   pins?: Readonly<Record<string, string>>;
   /** Per-visit noise a pasted link carries that names no search (hh's `hhtmFrom`…). */
   noise?: readonly string[];
@@ -41,13 +51,13 @@ interface CommonDefinition {
 }
 
 /** A site that numbers its pages, counting from `first`; `next` says whether another follows. */
-interface PagedDefinition extends CommonDefinition {
+interface PagedDefinition<Id extends string> extends CommonDefinition<Id> {
   page: { param: string; first: number };
   parse(html: string, ctx: PageContext): SearchPage<boolean>;
 }
 
 /** A site that hands back a cursor token for the next page; `next` is it, or null at the end. */
-interface CursorDefinition extends CommonDefinition {
+interface CursorDefinition<Id extends string> extends CommonDefinition<Id> {
   cursor: { param: string };
   parse(html: string, ctx: PageContext): SearchPage<string | null>;
 }
@@ -56,7 +66,17 @@ interface CursorDefinition extends CommonDefinition {
  * A source, declared: everything here is knowledge of one site. `createSourceAdapters` turns it
  * into a SourceAdapter — matching, pinning, paging and the duplicate-check params are shared.
  */
-export type SourceDefinition = PagedDefinition | CursorDefinition;
+// The default is for the shared code that takes any registered source.
+export type SourceDefinition<Id extends string = SourceId> =
+  PagedDefinition<Id> | CursorDefinition<Id>;
+
+/**
+ * Declare a source, keeping its `id` as a literal: `SourceId` is derived from the registered
+ * definitions (sources.ts), so a new source needs no edit of a shared union.
+ */
+export const defineSource = <const Id extends string>(
+  definition: SourceDefinition<Id>,
+): SourceDefinition<Id> => definition;
 
 const trimSlash = (path: string): string => path.replace(/\/+$/, '');
 

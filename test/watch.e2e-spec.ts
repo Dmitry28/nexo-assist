@@ -14,6 +14,7 @@ import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/17831
 import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
 import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
 import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
+import { RenormalizeSubscriptionUrls1791417600000 } from '@/database/migrations/1791417600000-RenormalizeSubscriptionUrls';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { User } from '@/modules/subscriptions/entities/user.entity';
@@ -55,6 +56,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             EnableRowLevelSecurity1785920305000,
             AddLastNotifiedAt1791244800000,
             MoveTravelSubscriptions1791331200000,
+            RenormalizeSubscriptionUrls1791417600000,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -183,6 +185,28 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     expect((await subscriptions.getSeen(travel.id, ['stale'])).size).toBe(0);
   });
 
+  it('RenormalizeSubscriptionUrls keeps a key that is noise only on another source', async () => {
+    // `page` is realt's paging param, not kufar's: kufar's row keeps it, realt's drops it.
+    const kufarRow = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://re.kufar.by/l/x?page=2&sort=lst.d',
+    });
+    const realtRow = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'realt',
+      url: 'https://realt.by/sale/plots/?page=2&rooms=1',
+    });
+    await dataSource.query(`UPDATE "subscriptions" SET "normalizedUrl" = 'stale-' || "id"`);
+
+    const runner = dataSource.createQueryRunner();
+    await new RenormalizeSubscriptionUrls1791417600000().up(runner).finally(() => runner.release());
+
+    const byId = new Map((await subscriptions.listByUser(1)).map((r) => [r.id, r.normalizedUrl]));
+    expect(byId.get(kufarRow.id)).toBe('https://re.kufar.by/l/x?page=2');
+    expect(byId.get(realtRow.id)).toBe('https://realt.by/sale/plots?rooms=1');
+  });
+
   // The quiet report counts from this stamp, against the real users table.
   it('markNotified stamps the user as just notified', async () => {
     const sub = await subscriptions.add({
@@ -238,17 +262,18 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     expect((await subscriptions.getSeen(sub.id, ids)).size).toBe(MAX_SEEN_PER_SUBSCRIPTION);
   });
 
+  // Each source drops only its own paging/order keys — kufar's are `cursor` and `sort`.
   it('dedups the same search regardless of pagination/order/utm params', async () => {
     await subscriptions.add({
       user: { telegramId: 1 },
       source: 'kufar',
-      url: 'https://kufar.by/l/minsk?page=1&sort=lst.d',
+      url: 'https://kufar.by/l/minsk?cursor=a&sort=lst.d',
     });
     await expect(
       subscriptions.add({
         user: { telegramId: 1 },
         source: 'kufar',
-        url: 'https://kufar.by/l/minsk?page=5&utm_source=ad',
+        url: 'https://kufar.by/l/minsk?cursor=b&utm_source=ad',
       }),
     ).rejects.toBeInstanceOf(DuplicateSubscriptionError);
   });
@@ -405,7 +430,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     const s = await subscriptions.add({
       user: { telegramId: 1 },
       source: 'kufar',
-      url: 'https://kufar.by/l/x?page=1',
+      url: 'https://kufar.by/l/x?cursor=a',
     });
     await subscriptions.bumpFailures(s.id);
     await subscriptions.pause(s.id);
@@ -415,7 +440,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     const revived = await subscriptions.add({
       user: { telegramId: 1 },
       source: 'kufar',
-      url: 'https://kufar.by/l/x?page=9',
+      url: 'https://kufar.by/l/x?cursor=b',
     });
     expect(revived.id).toBe(s.id); // same row, no duplicate created
     expect(revived.pausedAt).toBeNull();

@@ -1,5 +1,5 @@
 import type { SourceAdapter, SourceId } from '@/modules/sources/source-adapter';
-import { ADAPTERS } from '@/modules/sources/sources.module';
+import { ADAPTERS } from '@/modules/sources/sources';
 
 /** The registered adapter of a source — the same instance the app wires. */
 export function sourceAdapter(id: SourceId): SourceAdapter {

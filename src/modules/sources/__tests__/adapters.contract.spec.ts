@@ -1,35 +1,31 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import { matchesHost } from '@/common/url';
 
-import type { SourceId } from '../source-adapter';
 import { SourceUnavailableError } from '../source-adapter';
-import { ADAPTERS } from '../sources.module';
+import { ADAPTERS, SOURCES } from '../sources';
 
-// One real search per source. A Record, so a new SourceId without a sample fails to compile.
-const SAMPLES: Record<SourceId, string> = {
-  kufar: 'https://re.kufar.by/l/grodno/kupit/dom',
-  'kufar-travel': 'https://travel.kufar.by/l/grodno/arendovat',
-  realt: 'https://realt.by/grodno-region/sale/plots/',
-  gsz: 'https://gsz.gov.by/registration/vacancy-search/?region=12380&district=14712',
-  rabota: 'https://rabota.by/search/vacancy?area=2302',
-};
+// A source folder whose definition is left out of SOURCES would pass every check below: each
+// `<id>/<id>.source.ts` on disk must be registered (folder name = id, as the fixtures assume).
+it('registers every source folder, once', () => {
+  const folders = readdirSync(join(__dirname, '..'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => existsSync(join(__dirname, '..', name, `${name}.source.ts`)));
 
-// A definition written but left out of the registration list would pass every check below.
-it('registers exactly the sources that have a sample, once each', () => {
-  expect(ADAPTERS.map((a) => a.id).sort()).toEqual(Object.keys(SAMPLES).sort());
+  expect(SOURCES.map((s) => s.id).sort()).toEqual(folders.sort());
 });
 
 // What every registered adapter owes the core — checked once here, not per adapter.
-describe.each(ADAPTERS.map((adapter) => [adapter.id, adapter] as const))(
+describe.each(SOURCES.map((def) => [def.id, sourceAdapter(def.id), def.sample] as const))(
   '%s contract',
-  (_name, adapter) => {
+  (_name, adapter, sample) => {
     const fetchMock = undiciFetchMock();
-    const sample = SAMPLES[adapter.id];
 
     beforeEach(() => {
       jest.spyOn(Logger.prototype, 'warn').mockImplementation();

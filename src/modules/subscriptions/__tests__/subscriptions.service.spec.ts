@@ -83,7 +83,7 @@ const build = () => {
     subs as unknown as Repository<Subscription>,
     seen as unknown as Repository<SeenListing>,
     users as unknown as Repository<User>,
-    { volatileParams: () => ['page', 'sort'] } as unknown as SourceRegistry,
+    { get: () => ({ volatileParams: ['page', 'sort'] }) } as unknown as SourceRegistry,
   );
   return { subs, users, seen, manager, txManager, insert, txInsert, service };
 };
