@@ -1,4 +1,5 @@
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { SOURCES } from '@/modules/sources/sources';
 
 import {
   BOT_COMMANDS,
@@ -144,6 +145,8 @@ describe('HELP_MESSAGE', () => {
 
   it('says what is stored and how to have it deleted', () => {
     expect(HELP_MESSAGE).toContain('telegram-id');
+    // Every registered source, one line each — no hand-kept list to forget a new one in.
+    for (const { host, about } of SOURCES) expect(HELP_MESSAGE).toContain(`• ${host} — ${about}`);
     expect(HELP_MESSAGE).toContain('удалить');
   });
 });

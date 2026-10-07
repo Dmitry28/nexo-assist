@@ -18,6 +18,8 @@ type Paged = Extract<SourceDefinition, { page: unknown }>;
 const define = (over: Partial<Paged> = {}): Paged => ({
   id: 'kufar',
   host: 'a.by',
+  sample: 'https://a.by/s',
+  about: 'test',
   page: { param: 'page', first: 1 },
   parse: () => ({ listings: [listing('1')], next: false }),
   ...over,
@@ -105,6 +107,8 @@ describe('createSourceAdapters', () => {
       {
         id: 'kufar',
         host: 'a.by',
+        sample: 'https://a.by/s',
+        about: 'test',
         cursor: { param: 'cursor' },
         parse: () => ({ listings: [listing('1')], next: '' }),
       },
@@ -121,6 +125,8 @@ describe('createSourceAdapters', () => {
       {
         id: 'kufar',
         host: 'a.by',
+        sample: 'https://a.by/s',
+        about: 'test',
         cursor: { param: 'cursor' },
         parse: (_html, { page }) => ({
           listings: [listing(String(page))],

@@ -29,7 +29,7 @@ export function extractUrl(text: string): string | null {
 /**
  * Canonical form of a search URL for dedup: lowercased host without `www.`, `volatileParams`
  * (sort, paging — they don't name a search) and `utm_*` dropped, remaining params sorted, no
- * trailing slash or fragment. Heuristic; refine per adapter only if a real collision shows up.
+ * trailing slash or fragment. `volatileParams` is the subscription's source's own list.
  */
 export function normalizeUrl(url: string, volatileParams: readonly string[]): string {
   const parsed = new URL(url);

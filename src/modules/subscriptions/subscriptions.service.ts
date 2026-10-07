@@ -49,10 +49,14 @@ export class SubscriptionsService {
     source: SourceId;
     url: string;
   }): Promise<Subscription> {
+    // Each source drops only its own sort/paging/noise keys — on another site the same key may be
+    // a filter. Looked up by the id the subscription is stored with, before any write.
+    const adapter = this.sources.get(input.source);
+    if (!adapter) throw new Error(`Invariant: no registered adapter for source ${input.source}`);
     const user = await this.upsertUser(input.user);
     // Dedup on the normalized URL (a unique index backs it); the bot flow is sequential,
     // so the check-then-insert TOCTOU race is negligible.
-    const normalizedUrl = normalizeUrl(input.url, this.sources.volatileParams());
+    const normalizedUrl = normalizeUrl(input.url, adapter.volatileParams);
     const existing = await this.subs.findOneBy({ userId: user.id, normalizedUrl });
     // Re-sending a URL you already watch revives it if it was auto-paused (dead link /
     // blocked); an active one is a real duplicate.

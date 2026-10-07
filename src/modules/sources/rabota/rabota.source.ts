@@ -1,11 +1,13 @@
-import type { SourceDefinition } from '../source-definition';
+import { defineSource } from '../source-definition';
 
 import { HOST, SEARCH_PATH, parsePage } from './rabota.parser';
 
 /** rabota.by — hh.ru's Belarusian site, vacancies. */
-export const rabota: SourceDefinition = {
+export const rabota = defineSource({
   id: 'rabota',
   host: HOST,
+  sample: 'https://rabota.by/search/vacancy?area=2302',
+  about: 'вакансии',
   // The results page only: `/search/vacancy/advanced` is the search form.
   searchPath: SEARCH_PATH,
   // hh sorts by relevance unless told; 100 a page (its most) makes the window two requests.
@@ -16,4 +18,4 @@ export const rabota: SourceDefinition = {
   // TODO [M]: no proxy — not measured from the Hetzner host; the prototype saw plain requests
   // fail there. curl rabota.by from it and set useProxy from the answer.
   parse: parsePage,
-};
+});

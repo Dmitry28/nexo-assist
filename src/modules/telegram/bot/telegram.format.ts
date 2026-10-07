@@ -2,6 +2,7 @@ import type { BotCommand } from 'grammy/types';
 
 import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
+import { SOURCES } from '@/modules/sources/sources';
 
 /** Reusable "no link preview" message option. */
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
@@ -197,11 +198,13 @@ export const deadSubscriptionNotice = ({ source, url }: { source: string; url: s
 
 // NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
 // Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
-// The sites a link can come from, as a reader names them. Grows with ADAPTERS (sources.module.ts)
-// — a step of docs/llm/rules/architecture.md § Adding a Source.
-const SITES = 'kufar.by (продажа, аренда, посуточно), realt.by, gsz.gov.by и rabota.by (вакансии)';
+// Built from the registered sources, so a new one appears here without an edit. One line each, in
+// /help only: a prompt listing hundreds of sites would bury the instruction it carries.
+const SITES = SOURCES.map((source) => `• ${source.host} — ${source.about}`).join('\n');
 
-export const PROMPT = `Пришлите ссылку на поиск с ${SITES} — буду следить за новыми объявлениями.`;
+export const PROMPT =
+  'Пришлите ссылку на поиск с поддерживаемого сайта (список — в /help) — буду следить за ' +
+  'новыми объявлениями.';
 
 /**
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:
@@ -215,7 +218,8 @@ export const BOT_COMMANDS = [
 
 /** `/help` — built from BOT_COMMANDS so the menu and the text cannot drift apart. */
 export const HELP_MESSAGE = [
-  `🔎 Слежу за поиском на ${SITES} и присылаю новые объявления.`,
+  '🔎 Слежу за поиском на сайтах ниже и присылаю новые объявления.',
+  SITES,
   '',
   'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
     '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +

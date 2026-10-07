@@ -56,7 +56,8 @@ start; more frequent once throttling/dedupe land).
   error — never mistaken for an empty search. Redirects are pinned to the source's host.
 - Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the seen set
   survive restarts; seen is pruned to a bounded window per subscription; per-user limit on
-  **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
+  **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard (a link's sort,
+  paging and tracking params don't make a new search — each source's own list).
 - Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
   refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
   orchestrator restarts it.

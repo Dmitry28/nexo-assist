@@ -1,4 +1,7 @@
-export type SourceId = 'kufar' | 'kufar-travel' | 'realt' | 'gsz' | 'rabota';
+import type { SOURCES } from './sources';
+
+/** Every registered source's id — derived, so registering a source is the only edit. */
+export type SourceId = (typeof SOURCES)[number]['id'];
 
 /**
  * Shown when a source gives no usable title. Part of the contract, not of one parser: `title` is
@@ -119,11 +122,7 @@ export interface Listing {
 /** A source plugin — the only place that knows about a specific site. */
 export interface SourceAdapter {
   readonly id: SourceId;
-  /**
-   * Query params this adapter sets or strips itself (sort, paging). They do not name a search, so
-   * the duplicate check drops them (SourceRegistry.volatileParams); the contract spec checks the
-   * list covers what the adapter sends.
-   */
+  /** Query params that name no search on this source — the duplicate check drops them. */
   readonly volatileParams: readonly string[];
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;

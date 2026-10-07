@@ -17,15 +17,6 @@ export class SourceRegistry {
     return this.adapters.find((adapter) => adapter.matches(url)) ?? null;
   }
 
-  /**
-   * Every adapter's `volatileParams`, as one list. One list for all sources, not the matching
-   * adapter's own: stored `normalizedUrl`s were built that way, and a per-source list would
-   * change them under existing rows.
-   */
-  volatileParams(): string[] {
-    return [...new Set(this.adapters.flatMap((adapter) => adapter.volatileParams))];
-  }
-
   /** Adapter for a known source id, or null. */
   get(id: SourceId): SourceAdapter | null {
     return this.adapters.find((adapter) => adapter.id === id) ?? null;
