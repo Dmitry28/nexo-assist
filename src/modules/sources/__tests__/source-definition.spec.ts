@@ -119,6 +119,26 @@ describe('createSourceAdapters', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('fetches a single page once, adding no paging param', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
+    const [adapter] = createSourceAdapters([
+      {
+        id: 'ghb',
+        host: 'a.by',
+        sample: 'https://a.by/list',
+        about: 'test',
+        singlePage: true,
+        parse: () => ({ listings: [listing('1')] }),
+      },
+    ]);
+
+    await adapter.fetch('https://a.by/list?x=1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://a.by/list?x=1');
+    expect(adapter.volatileParams).toEqual([]);
+  });
+
   it('follows a cursor token, starting without one', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
     const [adapter] = createSourceAdapters([

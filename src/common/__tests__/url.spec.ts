@@ -53,6 +53,12 @@ describe('normalizeUrl', () => {
     );
   });
 
+  it('drops ad-click ids like utm — they name the visit, not the search', () => {
+    expect(normalizeUrl('https://ghb.by/ru/x/?fbclid=1&gclid=2&yclid=3', [])).toBe(
+      'https://ghb.by/ru/x',
+    );
+  });
+
   it('drops realt sortType + page', () => {
     expect(normalizeUrl('https://realt.by/sale/?sortType=createdAt&page=4&rooms=2', VOLATILE)).toBe(
       'https://realt.by/sale?rooms=2',

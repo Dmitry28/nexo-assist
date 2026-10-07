@@ -15,7 +15,8 @@ last check, once a day — a card per listing with its photos, price in both cur
 source's own details and a map pin where there is one; past 30 in one delivery the rest arrives
 as a compact list. Delivery
 rules and what the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its
-beta audience does.
+beta audience does. Fixed pages (a price list, a notice board) work too — the full list of sites is in
+[docs/PRODUCT.md](docs/PRODUCT.md).
 
 | Command  | What it does                                                                |
 | -------- | --------------------------------------------------------------------------- |

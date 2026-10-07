@@ -26,17 +26,22 @@ export function extractUrl(text: string): string | null {
   return url !== null && url.length <= MAX_URL_LENGTH ? url : null;
 }
 
+// Ad-click ids a shared link picks up — like utm_*, they name the visit, never a search.
+const CLICK_IDS = new Set(['fbclid', 'gclid', 'yclid']);
+
 /**
  * Canonical form of a search URL for dedup: lowercased host without `www.`, `volatileParams`
- * (sort, paging — they don't name a search) and `utm_*` dropped, remaining params sorted, no
- * trailing slash or fragment. `volatileParams` is the subscription's source's own list.
+ * (sort, paging — they don't name a search), `utm_*` and ad-click ids dropped, remaining params
+ * sorted, no trailing slash or fragment. `volatileParams` is the subscription's source's own list.
  */
 export function normalizeUrl(url: string, volatileParams: readonly string[]): string {
   const parsed = new URL(url);
   parsed.hash = '';
   parsed.hostname = stripWww(parsed.hostname);
   for (const key of [...parsed.searchParams.keys()]) {
-    if (volatileParams.includes(key) || key.startsWith('utm_')) parsed.searchParams.delete(key);
+    if (volatileParams.includes(key) || key.startsWith('utm_') || CLICK_IDS.has(key)) {
+      parsed.searchParams.delete(key);
+    }
   }
   parsed.searchParams.sort();
   parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
