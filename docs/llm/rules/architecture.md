@@ -122,7 +122,8 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
   `withoutStalePromos`, `asPrice`…), so a missing key fails the poll instead of reading as empty.
 - `<site>.source.ts` — `defineSource({...})`: id (the folder name; stored with subscriptions, never
   renamed), host, a real `sample` search, `about` (a few words for /help), optional search path,
-  pinned params (newest-first sort, page size), page or cursor paging, noise params, `parse`;
+  pinned params (newest-first sort, page size), page or cursor paging, or `singlePage: true`
+  (one fixed page), noise params, `parse`;
   `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)).
   Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its
   `pins` NOTE: changing them later needs a re-normalizing migration).

@@ -1,7 +1,29 @@
+import { LOCALE } from '@/common/locale';
+
 /**
  * How listing facts read on a card, for every source alike. Adapters map their site's codes onto
  * these inputs (hh's `BYR` → `BYN`, `HOUR` → `hour`) — the wording lives here, once.
  */
+
+const grouped = (value: number): string => value.toLocaleString(LOCALE);
+
+/** «1 500 – 2 000 руб.», «от 3 150 руб./м²», «до 900 $» — or undefined with neither bound. */
+export function rangeText({
+  from,
+  to,
+  unit,
+}: {
+  from?: number;
+  to?: number;
+  unit: string;
+}): string | undefined {
+  if (from !== undefined && to !== undefined) {
+    return from === to ? `${grouped(from)} ${unit}` : `${grouped(from)} – ${grouped(to)} ${unit}`;
+  }
+  if (from !== undefined) return `от ${grouped(from)} ${unit}`;
+  if (to !== undefined) return `до ${grouped(to)} ${unit}`;
+  return undefined;
+}
 
 /** Shown when a vacancy states no salary — a blank price line reads as our bug. */
 export const NO_SALARY = 'зарплата не указана';
@@ -40,13 +62,12 @@ export function salaryText({
   period?: PayPeriod;
   gross?: boolean;
 }): string | undefined {
-  const unit = `${CURRENCY_SIGN[currency] ?? currency}${PER[period]}`;
-  let amount: string;
-  if (from !== undefined && to !== undefined) {
-    amount = from === to ? `${from} ${unit}` : `${from} – ${to} ${unit}`;
-  } else if (from !== undefined) amount = `от ${from} ${unit}`;
-  else if (to !== undefined) amount = `до ${to} ${unit}`;
-  else return undefined;
+  const amount = rangeText({
+    from,
+    to,
+    unit: `${CURRENCY_SIGN[currency] ?? currency}${PER[period]}`,
+  });
+  if (amount === undefined) return undefined;
   return gross ? `${amount}, до вычета налогов` : amount;
 }
 

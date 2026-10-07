@@ -62,13 +62,20 @@ interface CursorDefinition<Id extends string> extends CommonDefinition<Id> {
   parse(html: string, ctx: PageContext): SearchPage<string | null>;
 }
 
+/** A site watched as one fixed page — a price list, a notice board: no paging at all. */
+interface SinglePageDefinition<Id extends string> extends CommonDefinition<Id> {
+  /** Said out loud: a paged source that forgot `page` must not compile as a single page. */
+  singlePage: true;
+  parse(html: string, ctx: PageContext): Omit<SearchPage<never>, 'next'>;
+}
+
 /**
  * A source, declared: everything here is knowledge of one site. `createSourceAdapters` turns it
  * into a SourceAdapter — matching, pinning, paging and the duplicate-check params are shared.
+ * The default id is for the shared code that takes any registered source.
  */
-// The default is for the shared code that takes any registered source.
 export type SourceDefinition<Id extends string = SourceId> =
-  PagedDefinition<Id> | CursorDefinition<Id>;
+  PagedDefinition<Id> | CursorDefinition<Id> | SinglePageDefinition<Id>;
 
 /**
  * Declare a source, keeping its `id` as a literal: `SourceId` is derived from the registered
@@ -91,11 +98,15 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
       .map((other) => other.host)
       .filter((host) => host !== def.host && host.endsWith(`.${def.host}`));
     const searchPath = def.searchPath === undefined ? undefined : trimSlash(def.searchPath);
-    const pagingParam = 'cursor' in def ? def.cursor.param : def.page.param;
+    const pagingParam = pagingParamOf(def);
     const logger = new Logger(`source:${def.id}`);
     return {
       id: def.id,
-      volatileParams: [...Object.keys(def.pins ?? {}), pagingParam, ...(def.noise ?? [])],
+      volatileParams: [
+        ...Object.keys(def.pins ?? {}),
+        ...(pagingParam === undefined ? [] : [pagingParam]),
+        ...(def.noise ?? []),
+      ],
       // matchesHost first: it rejects what `new URL` would throw on.
       matches: (url) =>
         matchesHost({ url, host: def.host }) &&
@@ -106,20 +117,25 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
   });
 }
 
+function pagingParamOf(def: SourceDefinition): string | undefined {
+  if ('singlePage' in def) return undefined;
+  return 'cursor' in def ? def.cursor.param : def.page.param;
+}
+
 function fetchSearch(
   def: SourceDefinition,
   url: string,
-  pagingParam: string,
+  pagingParam: string | undefined,
   logger: Logger,
 ): Promise<FetchResult> {
   // A pasted page or cursor would start mid-list and skip the newest listings.
   const base = Object.entries(def.pins ?? {}).reduce(
     (next, [key, value]) => withParam(next, key, value),
-    withoutParam(url, pagingParam),
+    pagingParam === undefined ? url : withoutParam(url, pagingParam),
   );
   // Page N of the walk is the site's `first + N - 1` (rabota counts from 0, the rest from 1).
   const pageUrl = (n: number): string =>
-    'cursor' in def ? base : withParam(base, pagingParam, String(def.page.first + n - 1));
+    'page' in def ? withParam(base, def.page.param, String(def.page.first + n - 1)) : base;
   const now = new Date();
   // Per call, not per adapter: the adapter is shared by concurrent polls.
   let sent = 0;
@@ -127,10 +143,13 @@ function fetchSearch(
     firstUrl: pageUrl(1),
     host: def.host,
     parsePage: (html, page) => {
-      const { listings, next, sent: raw } = def.parse(html, { url, page, now, sent });
+      const parsed = def.parse(html, { url, page, now, sent });
+      const { listings, sent: raw } = parsed;
       sent += raw ?? listings.length;
-      // An empty token or `false` alike: no page follows.
-      if (!next) return { listings, nextUrl: null };
+      const next = 'next' in parsed ? parsed.next : undefined;
+      // An empty token, `false` or a single page alike: no page follows (the param check is also
+      // what narrows `pagingParam` for the URL below).
+      if (!next || pagingParam === undefined) return { listings, nextUrl: null };
       return {
         listings,
         nextUrl: typeof next === 'string' ? withParam(base, pagingParam, next) : pageUrl(page + 1),

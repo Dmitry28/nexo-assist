@@ -23,7 +23,7 @@ describe('parsePage', () => {
     expect(listings[0]).toMatchObject({
       link: 'https://rabota.by/vacancy/100000001',
       title: 'Токарь универсал',
-      priceText: '3000 – 5500 руб.',
+      priceText: '3\u00a0000 – 5\u00a0500 руб.',
       listTime: '2026-10-06T23:25:08.995+03:00',
       address: 'Минск, улица Примерная, 1',
       coordinates: { lat: 53.9, lon: 27.56 },
@@ -37,12 +37,12 @@ describe('parsePage', () => {
   });
 
   it.each([
-    [{ from: 1500, currencyCode: 'BYR' }, 'от 1500 руб.'],
+    [{ from: 1500, currencyCode: 'BYR' }, 'от 1\u00a0500 руб.'],
     [{ to: 900, currencyCode: 'USD' }, 'до 900 $'],
     [{ from: 15, to: 15, currencyCode: 'BYR', mode: 'HOUR' }, '15 руб. в час'],
     [
       { from: 2000, to: 3000, currencyCode: 'RUR', gross: true },
-      '2000 – 3000 ₽, до вычета налогов',
+      '2\u00a0000 – 3\u00a0000 ₽, до вычета налогов',
     ],
   ])('words the salary %p as «%s»', (compensation, expected) => {
     const [listing] = parsePage(state([{ vacancyId: 7, compensation }])).listings;
