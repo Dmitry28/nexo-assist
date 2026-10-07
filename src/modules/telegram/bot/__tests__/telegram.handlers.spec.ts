@@ -314,8 +314,8 @@ describe('TelegramHandlers', () => {
       string,
       { reply_markup: { inline_keyboard: Array<Array<{ callback_data: string }>> } },
     ];
-    expect(text).toContain('#2 — kufar ⏸ на паузе');
-    expect(text).not.toContain('#1 — kufar ⏸');
+    expect(text).toContain('#2 — kufar.by ⏸ на паузе');
+    expect(text).not.toContain('#1 — kufar.by ⏸');
     const buttons = options.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
     expect(buttons).toContain('resume:paused');
     expect(buttons).not.toContain('resume:active');
