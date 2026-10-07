@@ -1,6 +1,10 @@
+import { Logger } from '@nestjs/common';
+
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
 import * as paginateModule from '../scraping/paginate';
+import { SourceUnavailableError } from '../source-adapter';
+import type { Listing } from '../source-adapter';
 import type { SourceDefinition } from '../source-definition';
 import { createSourceAdapters } from '../source-definition';
 
@@ -186,5 +190,60 @@ describe('createSourceAdapters', () => {
     expect(
       fetchMock.mock.calls.map(([url]) => new URL(String(url)).searchParams.get('cursor')),
     ).toEqual([null, 'abc']);
+  });
+});
+
+describe('createSourceAdapters — load and enrich', () => {
+  const fetchMock = undiciFetchMock();
+
+  const define = (enrich: (l: Listing) => Promise<Listing>) =>
+    createSourceAdapters([
+      {
+        id: 'gcn',
+        host: 'a.by',
+        sample: 'https://a.by/s',
+        about: 'test',
+        singlePage: true,
+        load: async (url, get) => get(`${url}/grid`),
+        enrich,
+        parse: () => ({ listings: [listing('1'), listing('2')] }),
+      },
+    ])[0];
+
+  it('fetches the body through load, then enriches every listing', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
+
+    const { listings, complete } = await define((l) =>
+      Promise.resolve({ ...l, priceByn: 5 }),
+    ).fetch('https://a.by/s');
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://a.by/s/grid');
+    expect(listings.map((l) => l.priceByn)).toEqual([5, 5]);
+    expect(complete).toBe(true);
+  });
+
+  // A listing whose visit failed is held back for the next poll — delivered without the field,
+  // it would be marked seen and never come back with it. Every visit failing is the site breaking.
+  it('holds back a listing whose visit failed, and fails the poll when every visit did', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+    const someFail = await define((l) =>
+      l.externalId === '1' ? Promise.reject(new Error('down')) : Promise.resolve(l),
+    ).fetch('https://a.by/s');
+
+    expect(someFail).toMatchObject({ complete: false, listings: [{ externalId: '2' }] });
+    await expect(
+      define(() => Promise.reject(new Error('down'))).fetch('https://a.by/s'),
+    ).rejects.toBeInstanceOf(SourceUnavailableError);
+  });
+
+  it('skips the visits when the caller needs only ids — the baseline', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
+    const visit = jest.fn((l: Listing) => Promise.resolve(l));
+
+    await define(visit).fetch('https://a.by/s', { idsOnly: true });
+
+    expect(visit).not.toHaveBeenCalled();
   });
 });

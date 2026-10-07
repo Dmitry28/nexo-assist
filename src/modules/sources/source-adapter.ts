@@ -61,7 +61,8 @@ export const MAX_LISTINGS = 150;
 /**
  * What one `fetch` collected, and whether anything was lost along the way.
  *
- * `complete: false` means a page after the first failed to load or parse, so these listings are a
+ * `complete: false` means a page after the first failed to load or parse — or some item-page visits
+ * failed and those listings were held back for the next poll — so these listings are a
  * prefix of what the search actually holds. It is never an error by itself: page one carries the
  * newest listings, and a run that delivers those is a useful run. It matters to the caller that
  * treats a fetch as an inventory (the baseline) and to whoever needs to hear that a source
@@ -126,6 +127,9 @@ export interface SourceAdapter {
   readonly volatileParams: readonly string[];
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
-  /** Fetch + parse the URL into normalized listings. */
-  fetch(url: string): Promise<FetchResult>;
+  /**
+   * Fetch + parse the URL into normalized listings. `idsOnly`: the caller needs only ids (the
+   * baseline on subscribe) — a source may skip work that only fills fields (item-page visits).
+   */
+  fetch(url: string, options?: { idsOnly?: boolean }): Promise<FetchResult>;
 }

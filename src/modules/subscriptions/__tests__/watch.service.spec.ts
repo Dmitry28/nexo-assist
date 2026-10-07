@@ -59,6 +59,15 @@ describe('WatchService.poll — first run (baseline)', () => {
     expect(subscriptions.seedBaseline).toHaveBeenCalledWith('sub-1', ['1', '2']);
   });
 
+  // Ids are all a baseline needs — a source may skip item-page visits for it (gcn's prices).
+  it('asks the source for ids only', async () => {
+    const { adapter, watch } = build([listing(1)]);
+
+    await watch.poll(sub());
+
+    expect(adapter.fetch).toHaveBeenCalledWith(expect.any(String), { idsOnly: true });
+  });
+
   it('reports nothing when the subscription was removed while the fetch was in flight', async () => {
     const { subscriptions, watch } = build([listing(1)]);
     subscriptions.has.mockResolvedValue(false);

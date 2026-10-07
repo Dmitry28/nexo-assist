@@ -94,7 +94,7 @@
   релиза — миграция ставит всем отметку «уведомлён сейчас».
 - **Доступ с сервера к новым источникам** (PR #143–#146, #151): до релиза с сервера выполнить
   `curl -s -o /dev/null -w "%{http_code} %{size_download}\n" -A "Mozilla/5.0 Chrome/124" <ссылка>`
-  для travel.kufar.by, gsz.gov.by, rabota.by, ghb.by, grodnorik.gov.by, prometr.by и gridom.by (.gov.by может не пускать
+  для travel.kufar.by, gsz.gov.by, rabota.by, ghb.by, grodnorik.gov.by, prometr.by, gridom.by и gcn.by (.gov.by может не пускать
   зарубежные IP). 200 и сотни КБ — прокси не нужен; 403 или
   крошечный ответ — включить `useProxy` в определении источника (и снять `TODO [M]`).
 - **Две миграции пройдут сами** при старте (initContainer): `MoveTravelSubscriptions` переводит

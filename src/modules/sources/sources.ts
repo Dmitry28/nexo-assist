@@ -1,3 +1,4 @@
+import { gcn } from './gcn/gcn.source';
 import { ghb } from './ghb/ghb.source';
 import { gridom } from './gridom/gridom.source';
 import { grodnorik } from './grodnorik/grodnorik.source';
@@ -20,6 +21,7 @@ export const SOURCES = [
   grodnorik,
   prometr,
   gridom,
+  gcn,
 ] as const;
 
 /**
