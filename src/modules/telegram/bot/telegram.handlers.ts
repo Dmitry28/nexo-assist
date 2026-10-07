@@ -7,6 +7,7 @@ import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { SearchRewrittenError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
+import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
@@ -223,7 +224,7 @@ export class TelegramHandlers {
       // A paused subscription delivers nothing; without the mark it looks live and the user
       // waits for notifications that will never come.
       const paused = Boolean(sub.pausedAt);
-      const line = `#${i + 1} — ${sub.source}${paused ? ' ⏸ на паузе' : ''}\n${sub.url}`;
+      const line = `#${i + 1} — ${siteName(sub.source)}${paused ? ' ⏸ на паузе' : ''}\n${sub.url}`;
       const rowButtons = paused ? 2 : 1;
       if (
         length + line.length > MAX_MESSAGE_BUDGET_CHARS ||

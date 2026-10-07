@@ -5,6 +5,7 @@ import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Listing } from '@/modules/sources/source-adapter';
+import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
@@ -110,7 +111,7 @@ export class CheckHandlers {
       if (outcome.kind === 'nothing') return false;
       if (outcome.kind === 'baselined') {
         await ctx.reply(
-          `${sub.source} — объявлений сейчас: ${outcome.count}, дальше только новые.\n${sub.url}`,
+          `${siteName(sub.source)} — объявлений сейчас: ${outcome.count}, дальше только новые.\n${sub.url}`,
           { link_preview_options: NO_LINK_PREVIEW },
         );
         return true;
@@ -157,7 +158,7 @@ export class CheckHandlers {
           .reply(
             delivered.length > 0
               ? 'Часть объявлений не отправилась — пришлю в следующую проверку.'
-              : `Не получилось отправить объявления по поиску на ${sub.source} — попробуйте позже.`,
+              : `Не получилось отправить объявления по поиску на ${siteName(sub.source)} — попробуйте позже.`,
           )
           .catch(() => undefined);
       }
@@ -166,7 +167,9 @@ export class CheckHandlers {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);
       this.reportCheck({ err, ctx, sub });
       await ctx
-        .reply(`Не получилось проверить поиск на ${sub.source} — попробуйте позже.\n${sub.url}`)
+        .reply(
+          `Не получилось проверить поиск на ${siteName(sub.source)} — попробуйте позже.\n${sub.url}`,
+        )
         .catch(() => undefined);
       return true;
     }

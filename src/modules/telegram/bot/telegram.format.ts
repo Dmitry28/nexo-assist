@@ -2,7 +2,7 @@ import type { BotCommand } from 'grammy/types';
 
 import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
-import { SOURCES } from '@/modules/sources/sources';
+import { SOURCES, siteName } from '@/modules/sources/sources';
 
 /** Reusable "no link preview" message option. */
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
@@ -162,6 +162,7 @@ export const MAX_LABEL_CHARS = 40;
  * replace this (PRODUCT_PLAN.md § Фаза 7).
  */
 export function searchLabel({ source, url }: { source: string; url: string }): string {
+  const site = siteName(source);
   let path: string;
   try {
     path = new URL(url).pathname
@@ -175,13 +176,13 @@ export function searchLabel({ source, url }: { source: string; url: string }): s
   } catch {
     // A stored URL that no longer parses — or decodes — is not worth failing a delivery over:
     // the source name alone still tells the reader more than nothing.
-    return source;
+    return site;
   }
-  if (path === '') return source;
+  if (path === '') return site;
   // `truncate` always appends the ellipsis — deciding there is something to cut is the caller's
   // job (see its docblock), so a path that fits must not go through it.
   const shown = path.length > MAX_LABEL_CHARS ? truncate(path, MAX_LABEL_CHARS) : path;
-  return `${source} · ${shown}`;
+  return `${site} · ${shown}`;
 }
 
 /** The site swapped the pasted search for another one, so it cannot be watched (realt `addressV2`). */
@@ -193,7 +194,7 @@ export const searchRewrittenNotice = ({ from, to }: { from: string; to: string }
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
-  `⚠️ Поиск на ${source} перестал отвечать — я поставил его на паузу.\n` +
+  `⚠️ Поиск на ${siteName(source)} перестал отвечать — я поставил его на паузу.\n` +
   `Проверьте ссылку и пришлите её снова, если она рабочая.\n${url}`;
 
 // NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
