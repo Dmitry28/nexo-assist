@@ -26,6 +26,8 @@
  */
 import * as Sentry from '@sentry/nestjs';
 
+import { redactBreadcrumb, redactSecrets } from './common/redact';
+
 const stage = process.env.APP_ENV ?? 'development';
 const reportsFromThisStage =
   process.env.SENTRY_ENABLED === 'true' || stage === 'production' || stage === 'staging';
@@ -40,5 +42,12 @@ if (process.env.SENTRY_DSN && reportsFromThisStage) {
     // Which deployment the event came from, so staging noise never looks like production.
     environment: stage,
     tracesSampleRate: 0,
+    // The fetch integration records every outgoing request — the paid anti-bot services' keys
+    // ride in their query strings (sources/scraping/providers.ts).
+    beforeBreadcrumb: (crumb) => redactBreadcrumb(crumb),
+    beforeSend: (event) =>
+      event.request?.url === undefined
+        ? event
+        : { ...event, request: { ...event.request, url: redactSecrets(event.request.url) } },
   });
 }

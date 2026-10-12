@@ -23,10 +23,17 @@ export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
 export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 
+// Bot-wide cap on active subscriptions to protected sources (paid anti-bot reads). The free tiers
+// bound it: a rendered page costs ~25 credits, ZenRows' 5000 plus Scrape.do's 1000 a month cover
+// ~7 daily polls in all (PRODUCT_PLAN.md § «Платная ступень»). Owner's choice, 2026-10-13.
+export const MAX_PROTECTED_SUBSCRIPTIONS = 5;
+
 /** The user already watches this search (matched by normalized URL). */
 export class DuplicateSubscriptionError extends Error {}
 /** The user hit MAX_SUBSCRIPTIONS_PER_USER. */
 export class SubscriptionLimitError extends Error {}
+/** The bot hit MAX_PROTECTED_SUBSCRIPTIONS. */
+export class ProtectedLimitError extends Error {}
 
 /** Telegram account details captured from `ctx.from` at subscribe time. */
 export interface TelegramUserProfile {
@@ -65,7 +72,7 @@ export class SubscriptionsService {
     if (existing && !existing.pausedAt) throw new DuplicateSubscriptionError();
 
     // A revive reactivates a paused sub, so it's capped the same as a fresh add.
-    await this.assertUnderActiveCap(user.id);
+    await this.assertUnderActiveCap(user.id, input.source);
     if (existing) return this.revive(existing); // paused (checked above) → reactivate
     let created: Subscription;
     try {
@@ -146,12 +153,22 @@ export class SubscriptionsService {
   }
 
   /**
-   * Throw once the user is at the active-subscription cap. Counts active only — auto-paused
-   * subs create no scraping load, so they must not lock a user out.
+   * Throw once the user is at the active-subscription cap, or — for a protected source — the bot
+   * at its cap for those. Counts active only — auto-paused subs create no scraping load, so they
+   * must not lock anyone out.
    */
-  private async assertUnderActiveCap(userId: Subscription['userId']): Promise<void> {
+  private async assertUnderActiveCap(
+    userId: Subscription['userId'],
+    source: SourceId,
+  ): Promise<void> {
     const activeCount = await this.subs.countBy({ userId, pausedAt: IsNull() });
     if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) throw new SubscriptionLimitError();
+    // NOTE: count-then-insert, so two adds at once can make it 6 — the bot handles updates one
+    // by one, and one extra slot costs a few days of credits, not an outage.
+    const paid = this.sources.protectedIds();
+    if (!paid.includes(source)) return;
+    const paidCount = await this.subs.countBy({ source: In(paid), pausedAt: IsNull() });
+    if (paidCount >= MAX_PROTECTED_SUBSCRIPTIONS) throw new ProtectedLimitError();
   }
 
   /** Re-activate a paused subscription (user re-sent its URL): clear pause + failure streak. */
@@ -173,13 +190,13 @@ export class SubscriptionsService {
    * Un-pause the user's subscription — the /list ▶️ button. NOT the same as re-sending its URL:
    * this leaves the seen set alone, so the pause backlog still gets delivered, while re-sending
    * goes through the subscribe handler and re-baselines, dropping it (see PRODUCT.md § Status now).
-   * False when it isn't theirs or is gone; throws SubscriptionLimitError at the active cap.
+   * False when it isn't theirs or is gone; throws SubscriptionLimitError or ProtectedLimitError at a cap.
    */
   async resume(id: string, telegramUserId: number): Promise<boolean> {
     const sub = await this.findOwned(id, telegramUserId);
     if (!sub) return false;
     if (!sub.pausedAt) return true; // already active — nothing to do
-    await this.assertUnderActiveCap(sub.userId);
+    await this.assertUnderActiveCap(sub.userId, sub.source);
     await this.revive(sub);
     return true;
   }

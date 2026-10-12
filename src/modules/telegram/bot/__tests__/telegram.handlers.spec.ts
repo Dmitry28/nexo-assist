@@ -10,6 +10,7 @@ import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
+  ProtectedLimitError,
   SubscriptionLimitError,
 } from '@/modules/subscriptions/subscriptions.service';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -179,6 +180,14 @@ describe('TelegramHandlers', () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
     const ctx = await pressButton(`subscribe:${nonce}`);
     expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('Достигнут предел'));
+    expect(watch.baseline).not.toHaveBeenCalled();
+  });
+
+  it('says the protected-source slots are taken instead of subscribing', async () => {
+    subscriptions.add.mockRejectedValue(new ProtectedLimitError());
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
+    const ctx = await pressButton(`subscribe:${nonce}`);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('защищён от ботов'));
     expect(watch.baseline).not.toHaveBeenCalled();
   });
 

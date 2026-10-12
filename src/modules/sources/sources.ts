@@ -3,6 +3,7 @@ import { ghb } from './ghb/ghb.source';
 import { gridom } from './gridom/gridom.source';
 import { grodnorik } from './grodnorik/grodnorik.source';
 import { gsz } from './gsz/gsz.source';
+import { idriver } from './idriver/idriver.source';
 import { kufar } from './kufar/kufar.source';
 import { kufarTravel } from './kufar-travel/kufar-travel.source';
 import { prometr } from './prometr/prometr.source';
@@ -22,6 +23,7 @@ export const SOURCES = [
   prometr,
   gridom,
   gcn,
+  idriver,
 ] as const;
 
 /**

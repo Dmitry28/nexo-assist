@@ -31,6 +31,9 @@ const HEADERS = {
 // One agent per address: it pools connections instead of opening a tunnel per request.
 let proxyAgentCache: { url: string; agent: ProxyAgent } | undefined;
 
+/** Whether a proxy is configured at all — the ladder skips its rung otherwise. */
+export const hasProxy = (): boolean => Boolean(process.env.SCRAPE_PROXY_URL);
+
 function proxyAgent(): ProxyAgent | undefined {
   const url = process.env.SCRAPE_PROXY_URL;
   if (!url) return undefined;
@@ -113,14 +116,17 @@ export async function fetchHtml({
   host,
   useProxy = false,
   pinPath = false,
+  timeoutMs = FETCH_TIMEOUT_MS,
 }: {
   url: string;
   host: string;
   useProxy?: boolean;
   pinPath?: boolean;
+  /** Less than the default when the caller has a budget to keep (the ladder). */
+  timeoutMs?: number;
 }): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, FETCH_TIMEOUT_MS));
   try {
     const res = await fetchFollowingHost({
       url,
@@ -140,7 +146,10 @@ export async function fetchHtml({
     if (contentLength > MAX_HTML_LENGTH) {
       throw new SourceUnavailableError(`Content-Length ${contentLength} exceeds limit for ${url}`);
     }
-    const html = await res.text();
+    // A timeout can land mid-body too — still the source not answering, not our bug.
+    const html = await res.text().catch((err: unknown) => {
+      throw new SourceUnavailableError(`body read failed for ${url}`, { cause: err });
+    });
     if (html.length > MAX_HTML_LENGTH) {
       throw new SourceUnavailableError(`Response too large (${html.length} chars) for ${url}`);
     }

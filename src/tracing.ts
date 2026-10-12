@@ -15,7 +15,15 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
   const sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter(),
-    instrumentations: [getNodeAutoInstrumentations()],
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        // The paid anti-bot services take their key in the URL, and a span records it whole.
+        '@opentelemetry/instrumentation-undici': {
+          ignoreRequestHook: (request) =>
+            /^https:\/\/api\.(zenrows\.com|scrape\.do)/.test(request.origin),
+        },
+      }),
+    ],
   });
 
   sdk.start();

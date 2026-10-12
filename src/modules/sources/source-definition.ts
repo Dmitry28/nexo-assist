@@ -3,6 +3,8 @@ import { Logger } from '@nestjs/common';
 import { matchesHost, withParam, withoutParam } from '@/common/url';
 
 import { fetchHtml } from './scraping/http';
+import { fetchProtected } from './scraping/ladder';
+import type { Protection } from './scraping/ladder';
 import { paginate } from './scraping/paginate';
 import { mapPool } from './scraping/pool';
 import { SourceUnavailableError } from './source-adapter';
@@ -66,6 +68,12 @@ interface CommonDefinition<Id extends string> {
   noise?: readonly string[];
   /** Route through SCRAPE_PROXY_URL — only for a site measured to block datacenter IPs. */
   useProxy?: boolean;
+  /**
+   * Behind anti-bot protection: every request climbs the fetch ladder (scraping/ladder.ts), paid
+   * rungs included — and counts against MAX_PROTECTED_SUBSCRIPTIONS. Not with `enrich` (a paid
+   * visit per item per poll) nor `pinPath` (the paid rungs follow redirects on their side).
+   */
+  protection?: Protection;
   /** Fail on a redirect to another path — for sites that rewrite a search (see fetchHtml). */
   pinPath?: boolean;
   /**
@@ -130,6 +138,9 @@ const trimSlash = (path: string): string => path.replace(/\/+$/, '');
  */
 export function createSourceAdapters(definitions: readonly SourceDefinition[]): SourceAdapter[] {
   return definitions.map((def) => {
+    if (def.protection && ('enrich' in def || def.pinPath)) {
+      throw new Error(`${def.id}: protection cannot go with enrich or pinPath`);
+    }
     const subHosts = definitions
       .map((other) => other.host)
       .filter((host) => host !== def.host && host.endsWith(`.${def.host}`));
@@ -156,6 +167,7 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
         !subHosts.some((host) => matchesHost({ url, host })) &&
         onSearchPath(url),
       reportsRemoved: def.reportsRemoved === true,
+      protected: def.protection !== undefined,
       fetch: (url, options) => fetchSearch(def, url, pagingParam, logger, options),
     };
   });
@@ -188,7 +200,11 @@ function fetchSearch(
   const load = 'load' in def ? def.load : undefined;
   const enrich = 'enrich' in def ? def.enrich : undefined;
   const now = new Date();
-  const get: Get = (target) => fetchHtml({ url: target, host: def.host, useProxy: def.useProxy });
+  const { host, useProxy, protection } = def;
+  const get: Get = (target) =>
+    protection
+      ? fetchProtected({ url: target, host, useProxy, protection })
+      : fetchHtml({ url: target, host, useProxy });
   // Per call, not per adapter: the adapter is shared by concurrent polls.
   let sent = 0;
   const walk = paginate({
@@ -210,7 +226,8 @@ function fetchSearch(
     logger,
     useProxy: def.useProxy,
     pinPath: def.pinPath,
-    load: load ? (target) => load(target, get) : undefined,
+    // A protected page is fetched through the ladder; paginate's own fetch is the plain one.
+    load: load ? (target) => load(target, get) : protection ? get : undefined,
   });
   return enrich && !options?.idsOnly
     ? walk.then((result) => visitItems(result, enrich, get, logger))

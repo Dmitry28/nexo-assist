@@ -51,6 +51,16 @@ export class SearchRewrittenError extends SourceUnavailableError {
 }
 
 /**
+ * A protected source could not be read because none of the paid anti-bot services could be asked
+ * — no key configured, or every one spent for the month. Our side, not the link and not the site:
+ * the scheduler does not count it against the subscription (a dead-link pause would tell the
+ * user «Проверьте ссылку» — false) and tells the owner once per run instead.
+ */
+export class PaidRungsUnavailableError extends SourceUnavailableError {
+  override readonly name = 'PaidRungsUnavailableError';
+}
+
+/**
  * The window: a fetch returns at most this many newest listings, however the source sizes its
  * pages (`paginate` enforces it). MAX_SEEN_PER_SUBSCRIPTION is sized against it: a window wider
  * than the seen cap gets its own ids pruned and re-delivered as "new" every run — which is what
@@ -127,6 +137,8 @@ export interface SourceAdapter {
   readonly volatileParams: readonly string[];
   /** A listing gone from a complete fetch was sold — tell the user (see SourceDefinition). */
   readonly reportsRemoved: boolean;
+  /** Read through paid anti-bot services — subscriptions to it are capped (MAX_PROTECTED_SUBSCRIPTIONS). */
+  readonly protected: boolean;
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /**

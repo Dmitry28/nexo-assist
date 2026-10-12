@@ -7,7 +7,10 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
-import { SourceUnavailableError } from '@/modules/sources/source-adapter';
+import {
+  PaidRungsUnavailableError,
+  SourceUnavailableError,
+} from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { Findings } from '@/modules/subscriptions/findings';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -411,6 +414,25 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('заблокировал бота'));
+  });
+
+  // No key or no credits is ours to fix: «Проверьте ссылку» after five such runs would be false.
+  it('does not count a poll with no paid service to ask against the link — one owner alert', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 2, MAX_CONSECUTIVE_FAILURES - 1),
+    ]);
+    watch.poll.mockRejectedValue(new PaidRungsUnavailableError('no key'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.bumpFailures).not.toHaveBeenCalled();
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    const alerts = telegram.notify.mock.calls.filter(([to]) => to === 99);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0][1]).toContain('Платная загрузка недоступна');
   });
 
   it('alerts the admin when a subscription is auto-paused as dead', async () => {
