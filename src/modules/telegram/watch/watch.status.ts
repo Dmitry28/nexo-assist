@@ -4,9 +4,11 @@ import { Injectable } from '@nestjs/common';
  * How long a claimed slot may go unreleased before the next claimant takes it.
  *
  * The arithmetic behind the number: one subscription costs at most ~3.5 minutes — up to 5 s of
- * pacing, five pages at the 30 s fetch timeout, and about a minute of paced sends. A run is
- * sequential, so the worst case is ~3.5 min × active subscriptions: today's couple of dozen
- * leave a fivefold margin, and the threshold starts touching a live run at about a hundred.
+ * pacing, five pages at the 30 s fetch timeout, and about a minute of paced sends. A protected
+ * source reads one page through the ladder, capped at LADDER_BUDGET_MS (3 min), so ~4 min — and
+ * there are at most MAX_PROTECTED_SUBSCRIPTIONS of those. A run is sequential, so the worst case
+ * is ~3.5 min × active subscriptions: today's couple of dozen leave a fivefold margin, and the
+ * threshold starts touching a live run at about a hundred.
  * That is a ceiling, not a target, and the margin shrinks as subscriptions grow — so the run
  * logs how long it took, rather than leaving the arithmetic to someone's memory.
  */

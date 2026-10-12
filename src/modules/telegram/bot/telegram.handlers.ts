@@ -11,7 +11,9 @@ import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
+  MAX_PROTECTED_SUBSCRIPTIONS,
   MAX_SUBSCRIPTIONS_PER_USER,
+  ProtectedLimitError,
   SubscriptionLimitError,
   SubscriptionsService,
 } from '@/modules/subscriptions/subscriptions.service';
@@ -31,6 +33,11 @@ import {
   formatStats,
   searchRewrittenNotice,
 } from './telegram.format';
+
+// The site is read through a paid anti-bot service, and the bot as a whole has a few such slots.
+const PROTECTED_LIMIT_TEXT =
+  `Этот сайт защищён от ботов и читается через платный сервис — на весь бот можно не больше ` +
+  `${MAX_PROTECTED_SUBSCRIPTIONS} таких подписок, и все заняты. Попробуйте позже.`;
 
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
 // /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected
@@ -144,6 +151,10 @@ export class TelegramHandlers {
         await ctx.editMessageText(
           `Достигнут предел — ${MAX_SUBSCRIPTIONS_PER_USER} подписок. Удалите одну через /list.`,
         );
+        return;
+      }
+      if (err instanceof ProtectedLimitError) {
+        await ctx.editMessageText(PROTECTED_LIMIT_TEXT);
         return;
       }
       throw err;
@@ -282,6 +293,10 @@ export class TelegramHandlers {
     } catch (err) {
       if (err instanceof SubscriptionLimitError) {
         await ctx.answerCallbackQuery(`Предел — ${MAX_SUBSCRIPTIONS_PER_USER} активных подписок`);
+        return;
+      }
+      if (err instanceof ProtectedLimitError) {
+        await ctx.answerCallbackQuery(PROTECTED_LIMIT_TEXT);
         return;
       }
       // TODO [L]: this rethrow leaves the callback query unanswered, so the button spins until

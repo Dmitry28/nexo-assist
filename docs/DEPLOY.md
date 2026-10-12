@@ -105,6 +105,11 @@
   вместо «6». Ссылка kufar с `?page=` теперь отдельный поиск (у kufar листание — `cursor`).
   Ещё два сайта — прейскурант ghb.by и аукционы grodnorik.gov.by; суммы с разделителем тысяч
   («1 500 – 2 000 руб.»).
+- **Ключи платной ступени** (лестница загрузки, idriver.by): зарегистрироваться на zenrows.com и
+  scrape.do (бесплатно, без карты), положить ключи в Secret — `npm run k8s:secrets
+ZENROWS_API_KEY SCRAPE_DO_API_KEY` — и в KeePassXC. Без них idriver не читается. Для проверки
+  дома — ключ **другого** аккаунта в `.env`, несколько страниц: общий ключ тратит месячный лимит
+  прода. Что это за ступень и почему так — [PRODUCT_PLAN.md](PRODUCT_PLAN.md) § «Платная ступень».
 - **Метки кликов в ключе дублей** (PR #151): `fbclid`/`gclid`/`yclid` больше не часть поиска. До
   релиза: `SELECT count(*) FROM subscriptions WHERE "normalizedUrl" ~ '(fbclid|gclid|yclid)=';` —
   0 строк, и миграция не нужна; иначе — пересчитать ключ (по образцу `RenormalizeSubscriptionUrls`).
@@ -1024,6 +1029,8 @@ API кластера не выставляем в интернет; при ут�
 | `ADMIN_TELEGRAM_ID`    | не отзывается — это id, а не секрет; вернуть можно из @userinfobot |
 | `HEARTBEAT_URL`        | healthchecks.io → проверка → новый ping-URL, старый удалить        |
 | `BACKUP_HEARTBEAT_URL` | там же, вторая проверка (бэкапы, §4.3c)                            |
+| `ZENROWS_API_KEY`      | zenrows.com → Dashboard → API Key → regenerate                     |
+| `SCRAPE_DO_API_KEY`    | scrape.do → Dashboard → API Token → regenerate                     |
 
 **Колонка «как перевыпустить» — половина ценности записи:** утечка тогда не паника, а
 процедура на минуту. Первые четыре значения отзываемы, поэтому их потеря — неудобство, а не

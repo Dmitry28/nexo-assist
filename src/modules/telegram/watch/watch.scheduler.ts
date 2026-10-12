@@ -6,7 +6,9 @@ import { CronJob } from 'cron';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
+import { PaidRungsUnavailableError } from '@/modules/sources/source-adapter';
 import type { SourceId } from '@/modules/sources/source-adapter';
+import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { countOf } from '@/modules/subscriptions/findings';
 import type { Findings } from '@/modules/subscriptions/findings';
@@ -52,7 +54,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type ProcessResult =
   | { state: 'ok'; poll: PollOutcome['kind'] }
   | { state: 'blocked' }
-  | { state: 'poll-failed'; dead: boolean };
+  | { state: 'poll-failed'; dead: boolean }
+  // A protected source with no paid service to ask — ours to fix, not the link's.
+  | { state: 'unpaid' };
 
 /**
  * The failure streak as of this run. Subscription rows are loaded before the bump, so the row in
@@ -153,6 +157,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // was sent to this run, who must not then be told «нового нет».
     const quiet: Subscription[] = [];
     const heard = new Set<string>();
+    const unpaid = new Set<SourceId>();
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
@@ -171,6 +176,11 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         tally.record({ source: sub.source, failed: false });
         continue;
       }
+      // Not tallied: the site was never asked, so it is neither down nor up.
+      if (result.state === 'unpaid') {
+        unpaid.add(sub.source);
+        continue;
+      }
       tally.record({ source: sub.source, failed: result.state === 'poll-failed' });
       if (result.state === 'poll-failed' && result.dead) dead.push(sub);
       if (result.state === 'ok' && result.poll === 'nothing') quiet.push(sub);
@@ -186,6 +196,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     );
     await this.pauseDead(dead, new Set(outages.map(({ source }) => source)), blockedUsers);
     await this.reportQuiet({ quiet, heard, blockedUsers });
+    if (unpaid.size > 0) await this.alertUnpaid([...unpaid]);
     // Last on purpose: the gauges must count the subscriptions this run just paused as paused.
     await this.recordTotals();
   }
@@ -208,6 +219,20 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
             : `✅ Источник «${source}» снова отдаёт данные — молчал ${signal.runs} прогонов.`;
       await this.notifyAdmin(text);
     }
+  }
+
+  /**
+   * Protected sources whose paid anti-bot services had nothing to answer with — no key, or the
+   * month's credits spent. Every run while it lasts: it is the owner's to fix, and its
+   * subscriptions are silent meanwhile (not paused — the link is fine).
+   */
+  private async alertUnpaid(sources: SourceId[]): Promise<void> {
+    const list = sources.map(siteName).join(', ');
+    this.logger.warn(`Paid fetch unavailable — not polled: ${list}`);
+    Sentry.captureMessage(`Paid fetch unavailable: ${list}`, 'warning');
+    await this.notifyAdmin(
+      `💳 Платная загрузка недоступна (нет ключа или кончились кредиты) — не опрошены: ${list}.`,
+    );
   }
 
   /** Send an alert to the owner if configured; a failed alert must not affect the run. */
@@ -244,6 +269,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     try {
       outcome = await this.watch.poll(sub);
     } catch (err) {
+      // No streak, no per-subscription report: every protected subscription fails alike, and
+      // the owner gets one line for the run (alertUnpaid).
+      if (err instanceof PaidRungsUnavailableError) return { state: 'unpaid' };
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
       // The scheduled run — not /check — is where site outages actually land, so this is the
       // path that has to carry `kind: source`; otherwise that split never shows up in practice.

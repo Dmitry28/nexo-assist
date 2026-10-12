@@ -126,7 +126,8 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
   (one fixed page), noise params, `requestUrl` (when the data sits behind a widget's API), for a single page
   `load`/`enrich` (a second request for the list; an item-page visit for a missing field), `parse`,
   `reportsRemoved` when leaving the page means sold (see its doc);
-  `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)).
+  `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)),
+  `protection` for a site behind anti-bot protection (the fetch ladder, paid; see its doc).
   Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its
   `pins` NOTE: changing them later needs a re-normalizing migration).
 - `__tests__/` — parser specs on a trimmed live fixture `fixtures/<id>-search.<html|json>` (or `.1.*`, `.2.*`

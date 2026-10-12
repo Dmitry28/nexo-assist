@@ -196,6 +196,21 @@ export class EnvironmentVariables {
   @Matches(/^https?:\/\/\S+$/, { message: 'SCRAPE_PROXY_URL must be an http(s) URL' })
   SCRAPE_PROXY_URL?: string;
 
+  /**
+   * Paid anti-bot services — the top rungs of the fetch ladder (sources/scraping/ladder.ts), read
+   * where used like SCRAPE_PROXY_URL. Optional: without one a protected source is not polled
+   * (PaidRungsUnavailableError). Production's keys stay in its Secret — why: .env.example.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  ZENROWS_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SCRAPE_DO_API_KEY?: string;
+
   /** Base pause between subscription polls, in ms — paces the scraper off a source. */
   @IsNumber()
   @Min(0)

@@ -17,6 +17,11 @@ export class SourceRegistry {
     return this.adapters.find((adapter) => adapter.matches(url)) ?? null;
   }
 
+  /** Sources read through paid anti-bot services — their subscriptions share one cap. */
+  protectedIds(): SourceId[] {
+    return this.adapters.filter((adapter) => adapter.protected).map((adapter) => adapter.id);
+  }
+
   /** Adapter for a known source id, or null. */
   get(id: SourceId): SourceAdapter | null {
     return this.adapters.find((adapter) => adapter.id === id) ?? null;

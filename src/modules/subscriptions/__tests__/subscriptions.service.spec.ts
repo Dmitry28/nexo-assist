@@ -13,6 +13,8 @@ import {
   MAX_SEEN_PER_SUBSCRIPTION,
   MAX_SUBSCRIPTIONS_PER_USER,
   SubscriptionLimitError,
+  MAX_PROTECTED_SUBSCRIPTIONS,
+  ProtectedLimitError,
   SubscriptionsService,
 } from '../subscriptions.service';
 
@@ -85,7 +87,10 @@ const build = () => {
     subs as unknown as Repository<Subscription>,
     seen as unknown as Repository<SeenListing>,
     users as unknown as Repository<User>,
-    { get: () => ({ volatileParams: ['page', 'sort'] }) } as unknown as SourceRegistry,
+    {
+      get: () => ({ volatileParams: ['page', 'sort'] }),
+      protectedIds: () => ['idriver'],
+    } as unknown as SourceRegistry,
   );
   return { subs, users, seen, manager, txManager, insert, txInsert, service };
 };
@@ -93,6 +98,25 @@ const build = () => {
 const addInput = { user: { telegramId: 42 }, source: 'kufar' as const, url: 'https://kufar.by/l' };
 
 describe('SubscriptionsService.add', () => {
+  // Paid anti-bot reads are bounded by free tiers — one cap for the whole bot.
+  it('refuses a protected source once the bot is at its cap, counting active ones bot-wide', async () => {
+    const { subs, service } = build();
+    subs.countBy.mockResolvedValueOnce(0).mockResolvedValueOnce(MAX_PROTECTED_SUBSCRIPTIONS);
+
+    await expect(
+      service.add({ ...addInput, source: 'idriver', url: 'https://idriver.by/auto-parts/a/b' }),
+    ).rejects.toBeInstanceOf(ProtectedLimitError);
+    expect(subs.countBy).toHaveBeenLastCalledWith({ source: In(['idriver']), pausedAt: IsNull() });
+  });
+
+  it('does not count the protected cap for an ordinary source', async () => {
+    const { subs, service } = build();
+
+    await service.add(addInput);
+
+    expect(subs.countBy).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses a fresh add once the user is at the active cap', async () => {
     const { subs, service } = build();
     subs.countBy.mockResolvedValue(MAX_SUBSCRIPTIONS_PER_USER);
