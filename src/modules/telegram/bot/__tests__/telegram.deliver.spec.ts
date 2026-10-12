@@ -8,7 +8,7 @@ import { deliverAndRecord, deliverFindings } from '../telegram.deliver';
 import { CARDS_PER_DELIVERY, DIGEST_LIMIT } from '../telegram.format';
 
 const many = (n: number) => Array.from({ length: n }, (_, i) => listing(i + 1));
-const found = (n: number) => ({ listings: many(n), priceChanges: [] });
+const found = (n: number) => ({ listings: many(n), priceChanges: [], removed: [] });
 
 /** A delivery target that records what went out as what. */
 const stubTargets = () => ({
@@ -176,7 +176,7 @@ describe('deliverAndRecord', () => {
     });
 
     expect(record).not.toHaveBeenCalled();
-    expect(delivered).toEqual({ listings: [], priceChanges: [] });
+    expect(delivered).toEqual({ listings: [], priceChanges: [], removed: [] });
     expect(error).toEqual(new Error('send failed'));
     expect(recordError).toBeUndefined();
   });
@@ -238,7 +238,7 @@ describe('price changes', () => {
     const change = { before: { link: after.link, title: after.title, priceUsd: 100_000 }, after };
 
     const run = deliverFindings(
-      { listings: many(1), priceChanges: [change] },
+      { listings: many(1), priceChanges: [change], removed: [] },
       send,
       'realt.by · x',
     );
@@ -250,7 +250,24 @@ describe('price changes', () => {
     expect(text).toContain('💸 Цена изменилась: 1');
     expect(text).toContain('realt.by · x');
     expect(text).toContain('$100\u00a0000 → $90\u00a0000');
-    expect(delivered).toEqual({ listings: [listing(1)], priceChanges: [change] });
+    expect(delivered).toEqual({ listings: [listing(1)], priceChanges: [change], removed: [] });
+  });
+});
+
+describe('removals', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('go out last, as a digest, and are reported delivered', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    const removal = { externalId: '7', last: { link: 'https://ghb.by/7', title: 'Кв. 7' } };
+
+    const run = deliverFindings({ listings: many(1), priceChanges: [], removed: [removal] }, send);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 2);
+    const { delivered } = await run;
+
+    expect(send.digest.mock.calls[0][0]).toContain('🚫 Снято с продажи: 1');
+    expect(delivered.removed).toEqual([removal]);
   });
 });
 

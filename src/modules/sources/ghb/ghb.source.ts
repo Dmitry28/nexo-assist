@@ -9,6 +9,7 @@ export const ghb = defineSource({
   about: 'жильё и офисы от застройщика (прейскурант)',
   searchPath: SEARCH_PATH,
   singlePage: true,
+  reportsRemoved: true,
   // TODO [M]: no proxy — not measured from the Hetzner host; curl ghb.by from it after deploy.
   parse: parsePage,
 });

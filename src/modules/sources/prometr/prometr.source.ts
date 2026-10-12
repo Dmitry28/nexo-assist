@@ -9,6 +9,7 @@ export const prometr = defineSource({
   about: 'новостройки: квартиры в продаже по комплексу',
   searchPath: SEARCH_PATH,
   singlePage: true,
+  reportsRemoved: true,
   // TODO [M]: no proxy — not measured from the Hetzner host; curl prometr.by from it after deploy.
   parse: parsePage,
 });

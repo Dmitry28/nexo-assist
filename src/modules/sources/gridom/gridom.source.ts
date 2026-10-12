@@ -12,6 +12,7 @@ export const gridom = defineSource({
   // The widget's own link to a unit: same page, same search.
   noise: ['unit'],
   singlePage: true,
+  reportsRemoved: true,
   // TODO [M]: no proxy — not measured from the Hetzner host; curl gridom.by from it after deploy.
   parse: parsePage,
 });

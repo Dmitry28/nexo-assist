@@ -12,6 +12,7 @@ import {
   MAX_LINE_CHARS,
   formatCurrentListings,
   priceChangeBatches,
+  removalBatches,
   searchLabel,
   tailBatches,
 } from '../telegram.format';
@@ -242,5 +243,22 @@ describe('priceChangeBatches', () => {
     const after = listing(1, { priceUsd: 90 });
     const [{ text }] = priceChangeBatches([change({ link: after.link, title: 't1' }, after)]);
     expect(text).toContain('цена не указана → $90');
+  });
+});
+
+describe('removalBatches', () => {
+  it('lists each sold listing with its last price, the text one included', () => {
+    const [{ text }] = removalBatches(
+      [
+        {
+          externalId: '1',
+          last: { link: 'https://ghb.by/x', title: 'Дом 5', priceText: '3 500 руб./м²' },
+        },
+      ],
+      'ghb.by · price_apartments',
+    );
+    expect(text).toContain('🚫 Снято с продажи: 1');
+    expect(text).toContain('ghb.by · price_apartments');
+    expect(text).toContain('Дом 5\n3 500 руб./м²\nhttps://ghb.by/x');
   });
 });

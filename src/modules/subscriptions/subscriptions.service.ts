@@ -251,6 +251,24 @@ export class SubscriptionsService {
     );
   }
 
+  /**
+   * The subscription's stored rows missing from this run — the removal candidates. Read-only: the
+   * caller decides whether a fetch was complete enough to call them gone.
+   */
+  async findGone(
+    subscriptionId: string,
+    present: string[],
+  ): Promise<{ externalId: string; snapshot: ListingSnapshot | undefined }[]> {
+    const rows = await this.seen.findBy({ subscriptionId, externalId: Not(In(present)) });
+    return rows.map((r) => ({ externalId: r.externalId, snapshot: asSnapshot(r.snapshot) }));
+  }
+
+  /** Forget listings — sold ones, delivered as such; one that comes back arrives as new. */
+  async deleteSeen(subscriptionId: string, externalIds: string[]): Promise<void> {
+    if (externalIds.length === 0) return;
+    await this.seen.delete({ subscriptionId, externalId: In(externalIds) });
+  }
+
   /** Mark listings delivered so they aren't sent again; already-seen ids are ignored. */
   // NOTE: no explicit "subscription still exists" guard — the seen_listings FK
   // (ON DELETE CASCADE) already rules out orphan rows. A subscription removed mid-run

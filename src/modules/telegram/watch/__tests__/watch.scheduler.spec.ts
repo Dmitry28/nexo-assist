@@ -88,7 +88,12 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.listActive.mockResolvedValue([sub(1), sub(2)]);
     watch.poll.mockImplementation((s: Subscription) => {
       if (s.id === '1') throw new Error('boom');
-      return Promise.resolve({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+      return Promise.resolve({
+        kind: 'fresh',
+        priceChanges: [],
+        removed: [],
+        listings: [listing(1)],
+      });
     });
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -123,6 +128,7 @@ describe('WatchScheduler.runDaily', () => {
     watch.poll.mockResolvedValue({
       kind: 'fresh',
       priceChanges: [],
+      removed: [],
       listings: Array.from({ length: fresh }, (_, i) => listing(i + 1)),
     });
 
@@ -143,6 +149,7 @@ describe('WatchScheduler.runDaily', () => {
     watch.poll.mockResolvedValue({
       kind: 'fresh',
       priceChanges: [],
+      removed: [],
       listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
     telegram.notifyCard
@@ -168,7 +175,12 @@ describe('WatchScheduler.runDaily', () => {
   it('does not mark seen when delivery fails — retried next run', async () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     telegram.notifyCard.mockRejectedValue(new Error('403: bot was blocked'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -183,7 +195,12 @@ describe('WatchScheduler.runDaily', () => {
   it('counts a delivery, logs distinctly and reports when markDelivered fails afterward', async () => {
     const { subscriptions, watch, metrics, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     watch.markDelivered.mockRejectedValue(new Error('db down')); // send succeeded, bookkeeping failed
     const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -212,7 +229,12 @@ describe('WatchScheduler.runDaily', () => {
     // Two subs owned by the same user (userId 1); pausing them affects 2 rows.
     subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 1)]);
     subscriptions.pauseAllForUser.mockResolvedValue(2);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
@@ -236,7 +258,12 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     // User 1 (403 + pause fails), then user 2 must still be delivered.
     subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
@@ -314,7 +341,12 @@ describe('WatchScheduler.runDaily', () => {
   it('does not bump the dead-link streak when delivery fails (only poll errors count)', async () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] }); // poll OK
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    }); // poll OK
     telegram.notifyCard.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -342,7 +374,12 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.countActive.mockResolvedValue(2);
     watch.poll.mockImplementation((s: Subscription) => {
       if (s.id === '1')
-        return Promise.resolve({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+        return Promise.resolve({
+          kind: 'fresh',
+          priceChanges: [],
+          removed: [],
+          listings: [listing(1)],
+        });
       throw new Error('source down');
     });
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
@@ -358,7 +395,12 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
     subscriptions.listActive.mockResolvedValue([sub(1, 1)]);
     subscriptions.pauseAllForUser.mockResolvedValue(1);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
@@ -544,7 +586,12 @@ describe('WatchScheduler.runDaily', () => {
     watch.poll.mockImplementation((s: Subscription) =>
       s.id === '1'
         ? Promise.reject(new Error('dead link'))
-        : Promise.resolve({ kind: 'fresh' as const, priceChanges: [], listings: [listing(1)] }),
+        : Promise.resolve({
+            kind: 'fresh' as const,
+            priceChanges: [],
+            removed: [],
+            listings: [listing(1)],
+          }),
     );
     telegram.notifyCard.mockRejectedValue(
       new GrammyError(
@@ -728,7 +775,7 @@ describe('WatchScheduler.runDaily — quiet report', () => {
     watch.poll.mockImplementation((s: Subscription) =>
       Promise.resolve(
         s.id === '1'
-          ? { kind: 'fresh', priceChanges: [], listings: [listing(1)] }
+          ? { kind: 'fresh', priceChanges: [], removed: [], listings: [listing(1)] }
           : { kind: 'nothing' },
       ),
     );
@@ -743,7 +790,12 @@ describe('WatchScheduler.runDaily — quiet report', () => {
     subscriptions.listActive.mockResolvedValue([quietSub(1)]);
     const after = listing(1, { priceUsd: 90_000 });
     const change = { before: { link: after.link, title: after.title, priceUsd: 100_000 }, after };
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [], priceChanges: [change] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      listings: [],
+      priceChanges: [change],
+      removed: [],
+    });
 
     await scheduler.runDaily();
 
@@ -752,6 +804,7 @@ describe('WatchScheduler.runDaily — quiet report', () => {
     expect(watch.markDelivered).toHaveBeenCalledWith(expect.anything(), {
       listings: [],
       priceChanges: [change],
+      removed: [],
     });
   });
 
@@ -791,7 +844,7 @@ describe('WatchScheduler.runDaily — quiet report', () => {
     watch.poll.mockImplementation((s: Subscription) =>
       Promise.resolve(
         s.id === '1'
-          ? { kind: 'fresh', priceChanges: [], listings: [listing(1)] }
+          ? { kind: 'fresh', priceChanges: [], removed: [], listings: [listing(1)] }
           : { kind: 'nothing' },
       ),
     );

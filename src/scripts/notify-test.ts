@@ -28,7 +28,11 @@ import {
   listingMessage,
   sendCard,
 } from '@/modules/telegram/bot/send-card';
-import { priceChangeBatches, tailBatches } from '@/modules/telegram/bot/telegram.format';
+import {
+  priceChangeBatches,
+  removalBatches,
+  tailBatches,
+} from '@/modules/telegram/bot/telegram.format';
 
 // Wikimedia placeholders: real images at realistic sizes, and no dependency on a source being up.
 const PHOTOS = [
@@ -181,6 +185,17 @@ async function main(): Promise<void> {
   }));
   for (const batch of priceChangeBatches(changes)) {
     console.info(`[price] digest of ${batch.items.length}, ${batch.text.length} chars`);
+    if (send) await wait(SEND_DELAY_MS);
+    await (live === undefined ? printing.html(batch.text) : live.text(batch.text));
+  }
+
+  // And a removal — a delivered listing gone from a fixed sale list.
+  const removed = MOCK_LISTINGS.slice(0, 1).map((l) => ({
+    externalId: l.externalId,
+    last: toSnapshot(l),
+  }));
+  for (const batch of removalBatches(removed)) {
+    console.info(`[removed] digest of ${batch.items.length}, ${batch.text.length} chars`);
     if (send) await wait(SEND_DELAY_MS);
     await (live === undefined ? printing.html(batch.text) : live.text(batch.text));
   }

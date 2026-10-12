@@ -19,10 +19,16 @@ const seenAs = (ids: string[], snapshots: Record<string, ListingSnapshot> = {}) 
 const baselined = (over: Partial<Subscription> = {}): Subscription =>
   sub({ baselinedAt: new Date(), ...over });
 
-const build = (fetched: Listing[] = [], complete = true, capped = false) => {
+const build = (
+  fetched: Listing[] = [],
+  complete = true,
+  capped = false,
+  reportsRemoved = false,
+) => {
   const adapter: SourceAdapter = {
     id: 'kufar',
     volatileParams: [],
+    reportsRemoved,
     matches: () => true,
     fetch: jest.fn().mockResolvedValue({ listings: fetched, complete, capped }),
   };
@@ -32,6 +38,8 @@ const build = (fetched: Listing[] = [], complete = true, capped = false) => {
     getSeen: jest.fn().mockResolvedValue(seenAs([])),
     updateSnapshots: jest.fn().mockResolvedValue(undefined),
     markSeen: jest.fn().mockResolvedValue(undefined),
+    findGone: jest.fn().mockResolvedValue([]),
+    deleteSeen: jest.fn().mockResolvedValue(undefined),
     markNotified: jest.fn().mockResolvedValue(undefined),
   };
   // A real registry over a stub adapter — resolving the adapter is part of what is tested.
@@ -90,7 +98,12 @@ describe('WatchService.poll — later runs (diff)', () => {
 
     const outcome = await watch.poll(baselined());
 
-    expect(outcome).toEqual({ kind: 'fresh', listings: [listing(2)], priceChanges: [] });
+    expect(outcome).toEqual({
+      kind: 'fresh',
+      listings: [listing(2)],
+      priceChanges: [],
+      removed: [],
+    });
     expect(subscriptions.getSeen).toHaveBeenCalledWith('sub-1', ['1', '2', '3']);
   });
 
@@ -134,6 +147,7 @@ describe('WatchService.poll — price changes', () => {
       kind: 'fresh',
       listings: [],
       priceChanges: [{ before, after }],
+      removed: [],
     });
     // Not refreshed now: an undelivered change must come back next run.
     expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', []);
@@ -211,6 +225,7 @@ describe('WatchService.poll — page window overflow', () => {
       kind: 'fresh',
       listings: [listing(1), listing(2)],
       priceChanges: [],
+      removed: [],
     });
     overflowed();
   });
@@ -233,6 +248,78 @@ describe('WatchService.poll — page window overflow', () => {
   });
 });
 
+describe('WatchService.poll — removals', () => {
+  const last = (id: number): ListingSnapshot => ({ link: listing(id).link, title: `t${id}` });
+  // A sale list (reportsRemoved) whose page now shows listing 1; listing 2 was delivered before.
+  const soldList = (complete = true, capped = false) => {
+    const built = build([listing(1)], complete, capped, true);
+    built.subscriptions.getSeen.mockResolvedValue(seenAs(['1'], { '1': last(1) }));
+    built.subscriptions.findGone.mockResolvedValue([{ externalId: '2', snapshot: last(2) }]);
+    return built;
+  };
+
+  it('reports a delivered listing gone from a page read whole, keeping its row until delivered', async () => {
+    const { subscriptions, watch } = soldList();
+
+    await expect(watch.poll(baselined())).resolves.toEqual({
+      kind: 'fresh',
+      listings: [],
+      priceChanges: [],
+      removed: [{ externalId: '2', last: last(2) }],
+    });
+    expect(subscriptions.findGone).toHaveBeenCalledWith('sub-1', ['1']);
+    expect(subscriptions.deleteSeen).not.toHaveBeenCalledWith('sub-1', ['2']);
+  });
+
+  // The prototype once «sold» 45 cars when Cloudflare returned an empty page.
+  it.each([
+    ['a partial fetch', false, false],
+    ['a capped fetch', true, true],
+  ])('never removes on %s', async (_, complete, capped) => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { subscriptions, watch } = soldList(complete, capped);
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.findGone).not.toHaveBeenCalled();
+  });
+
+  it('never removes on an empty page', async () => {
+    const { subscriptions, watch } = build([], true, false, true);
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.findGone).not.toHaveBeenCalled();
+  });
+
+  it('never removes on a source where leaving the page is no sale', async () => {
+    const { subscriptions, watch } = build([listing(1)]);
+
+    await watch.poll(baselined());
+    expect(subscriptions.findGone).not.toHaveBeenCalled();
+  });
+
+  it('forgets a gone row with nothing to show, without telling anyone', async () => {
+    const { subscriptions, watch } = soldList();
+    subscriptions.findGone.mockResolvedValue([{ externalId: '2', snapshot: undefined }]);
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.deleteSeen).toHaveBeenCalledWith('sub-1', ['2']);
+  });
+
+  it('reports instead of removing when over half the list vanished at once', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { subscriptions, watch } = soldList();
+    const gone = Array.from({ length: 10 }, (_, i) => ({ externalId: `g${i}`, snapshot: last(i) }));
+    subscriptions.findGone.mockResolvedValue(gone);
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.deleteSeen).not.toHaveBeenCalledWith('sub-1', ['g0']);
+    expect(sentryMessage()).toHaveBeenCalledWith(
+      expect.stringContaining('Mass removal'),
+      'warning',
+    );
+  });
+});
+
 describe('WatchService — the rest of the contract', () => {
   it('propagates a fetch failure instead of reporting an empty search', async () => {
     const { adapter, watch } = build();
@@ -247,6 +334,18 @@ describe('WatchService — the rest of the contract', () => {
     await expect(watch.poll(baselined({ source: 'realt' }))).rejects.toThrow('realt');
   });
 
+  it('markDelivered forgets a delivered removal', async () => {
+    const { subscriptions, watch } = build();
+
+    await watch.markDelivered(sub(), {
+      listings: [],
+      priceChanges: [],
+      removed: [{ externalId: '4', last: { link: 'l', title: 't' } }],
+    });
+
+    expect(subscriptions.deleteSeen).toHaveBeenCalledWith('sub-1', ['4']);
+  });
+
   it('markDelivered records new listings as seen and delivered changes as the stored price', async () => {
     const { subscriptions, watch } = build();
     const after = listing(3, { priceUsd: 90 });
@@ -254,6 +353,7 @@ describe('WatchService — the rest of the contract', () => {
     await watch.markDelivered(sub(), {
       listings: [listing(7), listing(9)],
       priceChanges: [{ before: { link: after.link, title: after.title, priceUsd: 100 }, after }],
+      removed: [],
     });
 
     expect(subscriptions.markSeen).toHaveBeenCalledWith('sub-1', [listing(7), listing(9)]);
@@ -264,10 +364,10 @@ describe('WatchService — the rest of the contract', () => {
   it('stamps the user as notified after a delivery, and not when nothing was delivered', async () => {
     const { subscriptions, watch } = build();
 
-    await watch.markDelivered(sub(), { listings: [], priceChanges: [] });
+    await watch.markDelivered(sub(), { listings: [], priceChanges: [], removed: [] });
     expect(subscriptions.markNotified).not.toHaveBeenCalled();
 
-    await watch.markDelivered(sub(), { listings: [listing(7)], priceChanges: [] });
+    await watch.markDelivered(sub(), { listings: [listing(7)], priceChanges: [], removed: [] });
     expect(subscriptions.markNotified).toHaveBeenCalledWith('user-1');
   });
 

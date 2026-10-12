@@ -7,15 +7,20 @@ import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from './entities/subscription.entity';
 import { isEmpty } from './findings';
-import type { Findings } from './findings';
+import type { Findings, Removal } from './findings';
 import { hasPriceChanged, replacesSnapshot } from './price-change';
 import type { PriceChange } from './price-change';
 import { MAX_SEEN_PER_SUBSCRIPTION, SubscriptionsService } from './subscriptions.service';
 
-// A mass price change: at least this many listings, and over half of those with a stored price.
-// That is a parser fix or a site rewriting its prices (minor units, another field), not sellers
-// — absorbed silently and reported, instead of a digest of a hundred false «💸» to every user.
+// A mass event: over half of the listings it could have hit, and at least a floor of them. A
+// hundred prices changing at once is a parser fix or a site rewriting its prices (minor units,
+// another field); half a sale list gone in a day is a layout change hiding cards — not sellers.
+// Reported instead of a digest of false «💸»/«🚫» to every user. The removal floor is low: sale
+// lists are short (ghb ~13 objects), and a false «sold» costs twice — the card returns as «new».
 const MASS_PRICE_CHANGE_MIN = 10;
+const MASS_REMOVAL_MIN = 3;
+
+const isMass = (hits: number, of: number, floor: number): boolean => hits >= floor && hits * 2 > of;
 
 /** Result of one `poll` pass — what the caller should tell the user, if anything. */
 export type PollOutcome =
@@ -81,7 +86,8 @@ export class WatchService {
    * edit or a parser fix must reach storage; sub-floor drift is absorbed run by run).
    */
   async check(sub: Subscription): Promise<Findings> {
-    const { listings, capped } = await this.fetchListings(sub);
+    const result = await this.fetchListings(sub);
+    const { listings, capped } = result;
     const seen = await this.subscriptions.getSeen(
       sub.id,
       listings.map((l) => l.externalId),
@@ -103,7 +109,7 @@ export class WatchService {
       if (before && hasPriceChanged(before, listing)) priceChanges.push({ before, after: listing });
       else if (!before || replacesSnapshot(before, listing)) refreshed.push(listing);
     }
-    if (priceChanges.length >= MASS_PRICE_CHANGE_MIN && priceChanges.length * 2 > compared) {
+    if (isMass(priceChanges.length, compared, MASS_PRICE_CHANGE_MIN)) {
       this.warn(sub, `Mass price change for ${sub.source}: ${priceChanges.length} of ${compared}`);
       refreshed.push(...priceChanges.map((change) => change.after));
       priceChanges = [];
@@ -118,7 +124,47 @@ export class WatchService {
     if (capped && fresh.length === listings.length) {
       this.warn(sub, `Page window overflowed for ${sub.source}`);
     }
-    return { listings: fresh, priceChanges };
+    const removed = await this.findRemoved(sub, result, seen.size);
+    return { listings: fresh, priceChanges, removed };
+  }
+
+  /**
+   * Delivered listings gone from this fetch — sold, on a source that declares it (reportsRemoved).
+   * Gone from the page means sold only when the page was read whole: an empty, partial or capped
+   * fetch never removes (the prototype once «sold» 45 cars when Cloudflare returned 0). So a list
+   * past the window (a complex over MAX_LISTINGS units) reports no removals, and neither does the
+   * last unit of a sold-out list (its page comes back empty). A gone row stays until its removal
+   * is delivered (markDelivered) — unless it has nothing to show.
+   */
+  private async findRemoved(
+    sub: Subscription,
+    { listings, complete, capped }: FetchResult,
+    stillThere: number,
+  ): Promise<Removal[]> {
+    if (!this.adapter(sub).reportsRemoved || !complete || capped || listings.length === 0) {
+      return [];
+    }
+    const gone = await this.subscriptions.findGone(
+      sub.id,
+      listings.map((l) => l.externalId),
+    );
+    // Rows kept, so this warns every run until the page is fixed or the rows age out — on purpose:
+    // deleting them would bring the hidden listings back as «new» once the page shows them again.
+    if (isMass(gone.length, stillThere + gone.length, MASS_REMOVAL_MIN)) {
+      this.warn(
+        sub,
+        `Mass removal for ${sub.source}: ${gone.length} of ${stillThere + gone.length}`,
+      );
+      return [];
+    }
+    // No snapshot (a baseline row the first poll never filled): nothing to show — forgotten.
+    await this.subscriptions.deleteSeen(
+      sub.id,
+      gone.filter((row) => !row.snapshot).map((row) => row.externalId),
+    );
+    return gone.flatMap(({ externalId, snapshot }) =>
+      snapshot ? [{ externalId, last: snapshot }] : [],
+    );
   }
 
   /** Current listings for a subscription, read-only (does not touch the seen set). */
@@ -129,7 +175,8 @@ export class WatchService {
 
   /**
    * Record what reached the user so it is not sent again — call after a successful send: new
-   * listings join the seen set, a delivered price change becomes the stored price.
+   * listings join the seen set, a delivered price change becomes the stored price, a delivered
+   * removal is forgotten.
    *
    * Also stamps the user as just notified: every unsolicited delivery (the daily run and /check)
    * ends here, so this is the one writer the quiet report can count from. «Показать текущие»
@@ -144,6 +191,10 @@ export class WatchService {
     await this.subscriptions.updateSnapshots(
       sub.id,
       delivered.priceChanges.map((change) => change.after),
+    );
+    await this.subscriptions.deleteSeen(
+      sub.id,
+      delivered.removed.map((removal) => removal.externalId),
     );
     await this.subscriptions.markNotified(sub.userId);
   }

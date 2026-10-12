@@ -8,6 +8,7 @@ import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
 import type { SourceId } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import { countOf } from '@/modules/subscriptions/findings';
 import type { Findings } from '@/modules/subscriptions/findings';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
@@ -281,7 +282,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       record: (items) => this.watch.markDelivered(sub, items),
     });
 
-    const count = delivered.listings.length + delivered.priceChanges.length;
+    const count = countOf(delivered);
     if (recordError) {
       this.logger.error(
         { err: recordError },

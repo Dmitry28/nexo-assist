@@ -125,6 +125,8 @@ export interface SourceAdapter {
   readonly id: SourceId;
   /** Query params that name no search on this source — the duplicate check drops them. */
   readonly volatileParams: readonly string[];
+  /** A listing gone from a complete fetch was sold — tell the user (see SourceDefinition). */
+  readonly reportsRemoved: boolean;
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /**

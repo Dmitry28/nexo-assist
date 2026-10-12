@@ -4,7 +4,12 @@ import type { Findings } from '@/modules/subscriptions/findings';
 
 import type { ListingMessage } from './send-card';
 import { SEND_DELAY_MS, isBotBlocked, listingMessage } from './send-card';
-import { CARDS_PER_DELIVERY, priceChangeBatches, tailBatches } from './telegram.format';
+import {
+  CARDS_PER_DELIVERY,
+  priceChangeBatches,
+  removalBatches,
+  tailBatches,
+} from './telegram.format';
 
 /** What actually reached the user, plus whatever went wrong around it. */
 export interface DeliveryResult {
@@ -35,7 +40,7 @@ export interface DeliveryTargets {
   digest: (text: string) => Promise<unknown>;
 }
 
-const nothing = (): Findings => ({ listings: [], priceChanges: [] });
+const nothing = (): Findings => ({ listings: [], priceChanges: [], removed: [] });
 
 /** One message to send, and what it accounts for once it lands. */
 interface DeliveryStep {
@@ -45,7 +50,7 @@ interface DeliveryStep {
 
 /**
  * The messages one delivery consists of: a full card for the first CARDS_PER_DELIVERY new
- * listings, the rest of them as digest messages, then the price changes as digest messages.
+ * listings, the rest of them as digest messages, then price changes and removals as digests.
  * Everything found goes out in the same run.
  */
 function plan(found: Findings, send: DeliveryTargets, search?: string): DeliveryStep[] {
@@ -61,6 +66,10 @@ function plan(found: Findings, send: DeliveryTargets, search?: string): Delivery
     })),
     ...priceChangeBatches(found.priceChanges, search).map((batch) => ({
       carries: { priceChanges: batch.items },
+      send: () => send.digest(batch.text),
+    })),
+    ...removalBatches(found.removed, search).map((batch) => ({
+      carries: { removed: batch.items },
       send: () => send.digest(batch.text),
     })),
   ];
@@ -109,6 +118,7 @@ export async function deliverFindings(
     streak = 0;
     delivered.listings.push(...(step.carries.listings ?? []));
     delivered.priceChanges.push(...(step.carries.priceChanges ?? []));
+    delivered.removed.push(...(step.carries.removed ?? []));
   }
   return { delivered, error: failure, failures };
 }
