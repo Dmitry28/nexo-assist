@@ -19,7 +19,7 @@ start; more frequent once throttling/dedupe land).
   a run looks at its **newest 150 listings** (up to 5 pages) — a pasted sort or page number is
   overridden. A search that gains more than that between two runs loses the rest (the owner is
   told via Sentry).
-- Events: **new only**, delivered as **one card per listing**: photos (up to 10, as an album),
+- Events: **new listings and price changes**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies (or as the site words it — a salary range), address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's
   searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
@@ -27,6 +27,10 @@ start; more frequent once throttling/dedupe land).
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
   Messages are paced one per second. A refused photo falls back to the text card; a refused pin
   is ignored — the listing already arrived.
+- **Price changes** on listings already delivered come after the cards as a text digest
+  «💸 Цена изменилась: N» — title, `old → new`, link. Only a seller's change: exchange-rate drift
+  and text prices (salaries, ghb's per-m² range) are not reported, and the first poll after
+  subscribing only records prices (rule: [PRODUCT_PLAN.md § 2.4](PRODUCT_PLAN.md)).
 - A realt link the site **rewrites with a redirect** (any `addressV2` address filter is sent to a
   much wider search) is refused on subscribe, with the reason and how to fix the link —
   following it would hand the user someone else's search as theirs.
@@ -132,8 +136,7 @@ that recognizes the link and fetches normalized listings
 diff → notify), the bot, and the DB schema know nothing about specific sites.
 `fetch` returns `Listing`s with a stable `externalId` — the diff/dedup key.
 
-Deferred until needed (kept out of the contract for now): `capabilities: EventKind[]`
-(with removed/price events). URL dedupe shipped instead as `normalizeUrl` in `common/url.ts`,
+URL dedupe shipped as `normalizeUrl` in `common/url.ts`,
 source-agnostic and backed by a unique index — not as part of the adapter contract.
 Parsing is an adapter-internal detail; message formatting lives in the telegram
 layer, not the adapter.

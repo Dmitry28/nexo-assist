@@ -4,12 +4,14 @@ import { In, IsNull, Not, QueryFailedError } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
 import { normalizeUrl } from '@/common/url';
-import type { SourceId } from '@/modules/sources/source-adapter';
+import type { Listing, SourceId } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import { SeenListing } from './entities/seen-listing.entity';
 import { Subscription } from './entities/subscription.entity';
 import { User } from './entities/user.entity';
+import { asSnapshot, toSnapshot } from './price-change';
+import type { ListingSnapshot } from './price-change';
 
 // Cap on stored seen rows per subscription. Kept well above the window one fetch can return
 // (MAX_LISTINGS, sources/source-adapter.ts) so ids still reachable are never pruned.
@@ -206,16 +208,20 @@ export class SubscriptionsService {
   }
 
   /**
-   * Which of this run's candidate ids were already delivered ("seen" — the diff skips them).
-   * Only the candidates are queried, never the whole set: the table is window-pruned (3.4).
+   * Which of this run's candidate ids were already delivered ("seen" — the diff skips them), each
+   * with its stored snapshot (undefined when the row has none yet). Only the candidates are
+   * queried, never the whole set: the table is window-pruned (3.4).
    *
    * WRITES, despite the name: it also refreshes `seenAt` on the rows it found, which keeps the
    * prune's "keep the newest N" aligned with the page window — without it a listing bumped back
    * into the window could lose its seen row and be re-delivered as "new". One call, because
    * both halves must cover exactly the same ids.
    */
-  async getSeen(subscriptionId: string, candidates: string[]): Promise<ReadonlySet<string>> {
-    if (candidates.length === 0) return new Set();
+  async getSeen(
+    subscriptionId: string,
+    candidates: string[],
+  ): Promise<ReadonlyMap<string, ListingSnapshot | undefined>> {
+    if (candidates.length === 0) return new Map();
     const rows = await this.seen.findBy({ subscriptionId, externalId: In(candidates) });
     if (rows.length > 0) {
       await this.seen.update(
@@ -223,15 +229,38 @@ export class SubscriptionsService {
         { seenAt: new Date() },
       );
     }
-    return new Set(rows.map((r) => r.externalId));
+    return new Map(rows.map((r) => [r.externalId, asSnapshot(r.snapshot)]));
+  }
+
+  /**
+   * Replace the stored snapshots of already-seen listings with what the site shows now — one
+   * statement for the whole run. An UPDATE, never an upsert: a row gone (subscription removed
+   * mid-run, pruned) stays gone. Unchanged snapshots are not rewritten.
+   */
+  async updateSnapshots(subscriptionId: string, listings: Listing[]): Promise<void> {
+    if (listings.length === 0) return;
+    const rows = listings.map((l) => ({ externalId: l.externalId, snapshot: toSnapshot(l) }));
+    // Raw SQL: TypeORM has no bulk UPDATE with a value per row (camelCase columns, as pruneSeen).
+    await this.seen.query(
+      `UPDATE seen_listings s SET snapshot = v.snapshot
+       FROM jsonb_to_recordset($2::jsonb) AS v("externalId" varchar, snapshot jsonb)
+       WHERE s."subscriptionId" = $1
+         AND s."externalId" = v."externalId"
+         AND s.snapshot IS DISTINCT FROM v.snapshot`,
+      [subscriptionId, JSON.stringify(rows)],
+    );
   }
 
   /** Mark listings delivered so they aren't sent again; already-seen ids are ignored. */
   // NOTE: no explicit "subscription still exists" guard — the seen_listings FK
   // (ON DELETE CASCADE) already rules out orphan rows. A subscription removed mid-run
   // surfaces as a caught insert error in the caller, not a silent no-op.
-  markSeen(subscriptionId: string, externalIds: string[]): Promise<void> {
-    return this.insertSeen({ manager: this.seen.manager, subscriptionId, externalIds });
+  markSeen(subscriptionId: string, listings: Listing[]): Promise<void> {
+    return this.insertSeen({
+      manager: this.seen.manager,
+      subscriptionId,
+      rows: listings.map((l) => ({ externalId: l.externalId, snapshot: toSnapshot(l) })),
+    });
   }
 
   /** Stamp that the user was just sent something — what the quiet report counts from. */
@@ -242,10 +271,13 @@ export class SubscriptionsService {
   /**
    * Seed the seen set and flag the subscription baselined atomically — a crash must not
    * leave a half-seeded baseline marked done (it would then never re-seed).
+   * No snapshots: a baseline may skip item pages, so its prices would be partial — the first
+   * poll fills them silently.
    */
   async seedBaseline(subscriptionId: string, externalIds: string[]): Promise<void> {
     await this.subs.manager.transaction(async (manager) => {
-      await this.insertSeen({ manager, subscriptionId, externalIds });
+      const rows = externalIds.map((externalId) => ({ externalId, snapshot: null }));
+      await this.insertSeen({ manager, subscriptionId, rows });
       await manager.update(Subscription, { id: subscriptionId }, { baselinedAt: new Date() });
     });
   }
@@ -254,18 +286,18 @@ export class SubscriptionsService {
   private async insertSeen({
     manager,
     subscriptionId,
-    externalIds,
+    rows,
   }: {
     manager: EntityManager;
     subscriptionId: Subscription['id'];
-    externalIds: string[];
+    rows: Pick<SeenListing, 'externalId' | 'snapshot'>[];
   }): Promise<void> {
-    if (externalIds.length === 0) return;
+    if (rows.length === 0) return;
     await manager
       .createQueryBuilder()
       .insert()
       .into(SeenListing)
-      .values(externalIds.map((externalId) => ({ subscriptionId, externalId })))
+      .values(rows.map((row) => ({ subscriptionId, ...row })))
       .orIgnore()
       .execute();
     await this.pruneSeen(manager, subscriptionId);

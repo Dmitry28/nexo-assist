@@ -15,6 +15,7 @@ import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/17859
 import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
 import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
 import { RenormalizeSubscriptionUrls1791417600000 } from '@/database/migrations/1791417600000-RenormalizeSubscriptionUrls';
+import { AddListingSnapshot1791504000000 } from '@/database/migrations/1791504000000-AddListingSnapshot';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { User } from '@/modules/subscriptions/entities/user.entity';
@@ -27,6 +28,9 @@ import {
   SubscriptionsService,
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
+
+// Listings with just these ids, for the seen-set writes.
+const asListings = (ids: string[]) => ids.map((externalId) => listing(0, { externalId }));
 
 // Data-layer + watch flow against a real Postgres (docker locally, service in CI).
 // Runs the real migration, so schema/entities/FK cascade are exercised for real.
@@ -57,6 +61,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             AddLastNotifiedAt1791244800000,
             MoveTravelSubscriptions1791331200000,
             RenormalizeSubscriptionUrls1791417600000,
+            AddListingSnapshot1791504000000,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -133,7 +138,40 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       capped: false,
     });
     const fresh = await watch.check(sub);
-    expect(fresh.map((l) => l.externalId)).toEqual(['2']);
+    expect(fresh.listings.map((l) => l.externalId)).toEqual(['2']);
+  });
+
+  // The whole loop on real rows: the jsonb snapshot, the one-statement refresh, the record step.
+  it('reports a price change once, after a silent first fill, and not again once delivered', async () => {
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+    const fetch = jest.spyOn(kufar, 'fetch');
+    const priced = (byn: number, usd: number) => ({
+      listings: [listing(1, { priceByn: byn, priceUsd: usd })],
+      complete: true,
+      capped: false,
+    });
+    fetch.mockResolvedValueOnce(priced(300_000, 100_000));
+    await watch.baseline(sub);
+
+    // The baseline stored no snapshot: the first check fills it without a word.
+    fetch.mockResolvedValueOnce(priced(300_000, 100_000));
+    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [] });
+
+    fetch.mockResolvedValueOnce(priced(270_000, 90_000));
+    const { priceChanges } = await watch.check(sub);
+    expect(priceChanges).toHaveLength(1);
+    expect(priceChanges[0].before).toMatchObject({ priceByn: 300_000, priceUsd: 100_000 });
+
+    // Undelivered: it comes back. Delivered: the new price is the stored one.
+    fetch.mockResolvedValueOnce(priced(270_000, 90_000));
+    expect((await watch.check(sub)).priceChanges).toHaveLength(1);
+    await watch.markDelivered(sub, { listings: [], priceChanges });
+    fetch.mockResolvedValueOnce(priced(270_000, 90_000));
+    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [] });
   });
 
   it('seedBaseline records seen and marks baselined atomically', async () => {
@@ -155,10 +193,13 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
-    await subscriptions.markSeen(sub.id, ['1', '2']);
-    await subscriptions.markSeen(sub.id, ['2', '3']); // '2' already seen — ignored, no error
+    await subscriptions.markSeen(sub.id, asListings(['1', '2']));
+    await subscriptions.markSeen(sub.id, asListings(['2', '3'])); // '2' already seen — ignored, no error
 
-    expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4']))].sort()).toEqual(['2', '3']);
+    expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4'])).keys()].sort()).toEqual([
+      '2',
+      '3',
+    ]);
   });
 
   it('MoveTravelSubscriptions re-points old travel links to kufar-travel and re-baselines them', async () => {
@@ -234,7 +275,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
-    await subscriptions.markSeen(sub.id, ['1']);
+    await subscriptions.markSeen(sub.id, asListings(['1']));
     const [{ seenAt: before }] = await dataSource.query<{ seenAt: Date }[]>(
       `SELECT "seenAt" FROM seen_listings WHERE "subscriptionId" = $1`,
       [sub.id],
@@ -257,7 +298,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       url: 'https://kufar.by/l/x',
     });
     const ids = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION + 5 }, (_, i) => `e${i}`);
-    await subscriptions.markSeen(sub.id, ids);
+    await subscriptions.markSeen(sub.id, asListings(ids));
 
     expect((await subscriptions.getSeen(sub.id, ids)).size).toBe(MAX_SEEN_PER_SUBSCRIPTION);
   });
@@ -454,7 +495,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
-    await subscriptions.markSeen(sub.id, ['1']);
+    await subscriptions.markSeen(sub.id, asListings(['1']));
 
     expect(await subscriptions.remove(sub.id, 999)).toBe(false); // not the owner
     expect(await subscriptions.remove(sub.id, 1)).toBe(true);

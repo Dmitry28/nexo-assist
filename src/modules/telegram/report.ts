@@ -10,7 +10,7 @@ export type UserAction = 'subscribe' | 'check' | 'show-current' | 'bot-update' |
 
 /** Which operation failed. A closed set: a typo here silently empties a Sentry filter. */
 export type ReportOp =
-  'poll' | 'deliver' | 'mark-seen' | 'process' | 'record-failure' | 'pause' | 'quiet-report';
+  'poll' | 'deliver' | 'record' | 'process' | 'record-failure' | 'pause' | 'quiet-report';
 
 /**
  * Report an error that affects a user, with who and what attached.

@@ -6,13 +6,14 @@ import { CronJob } from 'cron';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
-import type { Listing, SourceId } from '@/modules/sources/source-adapter';
+import type { SourceId } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import type { Findings } from '@/modules/subscriptions/findings';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import { isBotBlocked } from '@/modules/telegram/bot/send-card';
-import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
+import { deliverAndRecord } from '@/modules/telegram/bot/telegram.deliver';
 import {
   deadSubscriptionNotice,
   quietReport,
@@ -260,39 +261,35 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     }
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
     if (sub.consecutiveFailures > 0) await this.subscriptions.resetFailures(sub.id);
-    // A pending baseline was just seeded silently — deliver only fresh listings.
+    // A pending baseline was just seeded silently — deliver only what a check found.
     if (outcome.kind !== 'fresh') return { state: 'ok', poll: outcome.kind };
-    return (await this.deliverFresh(sub, outcome.listings))
+    return (await this.deliverFresh(sub, outcome))
       ? { state: 'blocked' }
       : { state: 'ok', poll: 'fresh' };
   }
 
-  /** Send the fresh digest. Returns true if the user blocked us; other send failures are
-   *  logged and retried next run (markSeen only after a successful send). */
-  private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
-    const { delivered, error, failures, markSeenError } = await deliverAndMark({
+  /** Send what the check found. Returns true if the user blocked us; other send failures are
+   *  logged and retried next run (recorded only after a successful send). */
+  private async deliverFresh(sub: Subscription, found: Findings): Promise<boolean> {
+    const { delivered, error, failures, recordError } = await deliverAndRecord({
       search: searchLabel(sub),
-      listings,
+      found,
       send: {
         card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),
         digest: (text) => this.telegram.notify(sub.user.telegramId, text),
       },
-      markSeen: (items) => this.watch.markSeen(sub, items),
+      record: (items) => this.watch.markDelivered(sub, items),
     });
 
-    if (markSeenError) {
+    const count = delivered.listings.length + delivered.priceChanges.length;
+    if (recordError) {
       this.logger.error(
-        { err: markSeenError },
-        `markSeen failed after delivery for subscription ${sub.id}`,
+        { err: recordError },
+        `Recording failed after delivery for subscription ${sub.id}`,
       );
-      this.report({
-        err: markSeenError,
-        sub,
-        op: 'mark-seen',
-        details: { resending: delivered.length },
-      });
+      this.report({ err: recordError, sub, op: 'record', details: { resending: count } });
     }
-    if (delivered.length > 0) this.metrics.recordDelivery(sub.source);
+    if (count > 0) this.metrics.recordDelivery(sub.source);
 
     if (!error) return false;
     // A 403 is an expected state (the user blocked us) handled by pausing them, not a defect —
@@ -310,7 +307,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       op: 'deliver',
       // `failures` alongside the count delivered: only the first error is kept, so without it one
       // refused card and nine read the same in Sentry.
-      details: { delivered: delivered.length, failures },
+      details: { delivered: count, failures },
     });
     return false;
   }

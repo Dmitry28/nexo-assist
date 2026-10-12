@@ -1,6 +1,7 @@
 import { In, IsNull } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
+import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { SourceRegistry } from '@/modules/sources/source-registry';
 
@@ -78,6 +79,7 @@ const build = () => {
     manager,
     findBy: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn().mockResolvedValue(undefined),
   };
   const service = new SubscriptionsService(
     subs as unknown as Repository<Subscription>,
@@ -229,15 +231,24 @@ describe('SubscriptionsService — the seen set', () => {
   it('asks the database nothing when the run produced no candidates', async () => {
     const { seen, service } = build();
 
-    await expect(service.getSeen('sub-1', [])).resolves.toEqual(new Set());
+    await expect(service.getSeen('sub-1', [])).resolves.toEqual(new Map());
     expect(seen.findBy).not.toHaveBeenCalled();
   });
 
-  it('returns the already-delivered ids and refreshes their timestamps', async () => {
+  it('returns the already-delivered ids with their snapshots and refreshes their timestamps', async () => {
     const { seen, service } = build();
-    seen.findBy.mockResolvedValue([{ externalId: 'a' }, { externalId: 'b' }]);
+    const snapshot = { link: 'l', title: 't', priceUsd: 5 };
+    seen.findBy.mockResolvedValue([
+      { externalId: 'a', snapshot },
+      { externalId: 'b', snapshot: null },
+    ]);
 
-    await expect(service.getSeen('sub-1', ['a', 'b', 'c'])).resolves.toEqual(new Set(['a', 'b']));
+    await expect(service.getSeen('sub-1', ['a', 'b', 'c'])).resolves.toEqual(
+      new Map([
+        ['a', snapshot],
+        ['b', undefined],
+      ]),
+    );
     // The rows and the field, not merely that some update ran: refreshing seenAt keeps ids
     // still inside the page window out of the prune's reach — otherwise a bumped listing
     // could lose its row and be re-delivered as new.
@@ -259,17 +270,42 @@ describe('SubscriptionsService — the seen set', () => {
   it('inserts ignoring duplicates, then prunes the window', async () => {
     const { insert, manager, service } = build();
 
-    await service.markSeen('sub-1', ['a', 'b']);
+    await service.markSeen('sub-1', [listing(1, { priceUsd: 5 }), listing(2)]);
 
+    // With the snapshot a later price change is measured against.
     expect(insert.values).toHaveBeenCalledWith([
-      { subscriptionId: 'sub-1', externalId: 'a' },
-      { subscriptionId: 'sub-1', externalId: 'b' },
+      {
+        subscriptionId: 'sub-1',
+        externalId: '1',
+        snapshot: { link: listing(1).link, title: 't1', priceByn: undefined, priceUsd: 5 },
+      },
+      {
+        subscriptionId: 'sub-1',
+        externalId: '2',
+        snapshot: { link: listing(2).link, title: 't2', priceByn: undefined, priceUsd: undefined },
+      },
     ]);
     expect(insert.orIgnore).toHaveBeenCalled(); // re-marking a delivered id must not throw
     expect(manager.query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM seen_listings'),
       ['sub-1', MAX_SEEN_PER_SUBSCRIPTION],
     );
+  });
+
+  it('updates snapshots in one statement, skipping an empty run', async () => {
+    const { seen, service } = build();
+
+    await service.updateSnapshots('sub-1', []);
+    expect(seen.query).not.toHaveBeenCalled();
+
+    await service.updateSnapshots('sub-1', [listing(1, { priceByn: 7 })]);
+    expect(seen.query).toHaveBeenCalledTimes(1);
+    expect(seen.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE seen_listings'), [
+      'sub-1',
+      JSON.stringify([
+        { externalId: '1', snapshot: { link: listing(1).link, title: 't1', priceByn: 7 } },
+      ]),
+    ]);
   });
 
   it('seeds and flags the baseline inside ONE transaction, not around it', async () => {
@@ -281,6 +317,10 @@ describe('SubscriptionsService — the seen set', () => {
     // never re-seed — so BOTH writes must go through the transactional manager. Asserting
     // that they happened is not enough; they must not have happened on the base one.
     expect(manager.transaction).toHaveBeenCalledTimes(1);
+    // No snapshot: a baseline may skip item pages, so its prices would be partial.
+    expect(txInsert.values).toHaveBeenCalledWith([
+      { subscriptionId: 'sub-1', externalId: 'a', snapshot: null },
+    ]);
     expect(txInsert.execute).toHaveBeenCalled();
     expect(txManager.update).toHaveBeenCalledWith(
       Subscription,
