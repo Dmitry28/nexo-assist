@@ -17,7 +17,7 @@ import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 import { isAdmin } from './admin';
 import type { CardSender } from './send-card';
 import { sendCard } from './send-card';
-import { deliverAndMark } from './telegram.deliver';
+import { deliverAndRecord } from './telegram.deliver';
 import { NO_LINK_PREVIEW, PROMPT, formatCurrentListings, searchLabel } from './telegram.format';
 
 // Refusal for both on-demand pollers (/check, which claims the slot, and the «Показать текущие»
@@ -116,9 +116,9 @@ export class CheckHandlers {
         );
         return true;
       }
-      const { delivered, error, markSeenError } = await deliverAndMark({
+      const { delivered, error, recordError } = await deliverAndRecord({
         search: searchLabel(sub),
-        listings: outcome.listings,
+        found: outcome,
         send: {
           card: (message) =>
             sendCard(this.replySender(ctx), message, this.logger, () =>
@@ -126,21 +126,22 @@ export class CheckHandlers {
             ),
           digest: (text) => ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW }),
         },
-        markSeen: (items) => this.watch.markSeen(sub, items),
+        record: (items) => this.watch.markDelivered(sub, items),
       });
-      // A markSeen failure must not surface to the user as "could not check" (that would
+      const count = delivered.listings.length + delivered.priceChanges.length;
+      // A recording failure must not surface to the user as "could not check" (that would
       // contradict the digest they just read) — only log and report it.
-      if (markSeenError) {
+      if (recordError) {
         this.logger.error(
-          { err: markSeenError },
-          `markSeen failed after /check delivery for ${sub.url}`,
+          { err: recordError },
+          `Recording failed after /check delivery for ${sub.url}`,
         );
         this.reportCheck({
-          err: markSeenError,
+          err: recordError,
           ctx,
           sub,
-          op: 'mark-seen',
-          details: { resending: delivered.length },
+          op: 'record',
+          details: { resending: count },
         });
       }
       if (error) {
@@ -150,13 +151,13 @@ export class CheckHandlers {
           ctx,
           sub,
           op: 'deliver',
-          details: { deliveredBefore: delivered.length },
+          details: { deliveredBefore: count },
         });
         // Telegram itself may be what broke — an unguarded apology would throw too, abort the
         // rest of the /check loop and file a third Sentry event.
         await ctx
           .reply(
-            delivered.length > 0
+            count > 0
               ? 'Часть объявлений не отправилась — пришлю в следующую проверку.'
               : `Не получилось отправить объявления по поиску на ${siteName(sub.source)} — попробуйте позже.`,
           )

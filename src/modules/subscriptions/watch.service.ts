@@ -6,17 +6,24 @@ import type { FetchResult, Listing, SourceAdapter } from '@/modules/sources/sour
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from './entities/subscription.entity';
+import { isEmpty } from './findings';
+import type { Findings } from './findings';
+import { hasPriceChanged, replacesSnapshot } from './price-change';
+import type { PriceChange } from './price-change';
 import { MAX_SEEN_PER_SUBSCRIPTION, SubscriptionsService } from './subscriptions.service';
+
+// A mass price change: at least this many listings, and over half of those with a stored price.
+// That is a parser fix or a site rewriting its prices (minor units, another field), not sellers
+// — absorbed silently and reported, instead of a digest of a hundred false «💸» to every user.
+const MASS_PRICE_CHANGE_MIN = 10;
 
 /** Result of one `poll` pass — what the caller should tell the user, if anything. */
 export type PollOutcome =
-  | { kind: 'baselined'; count: number }
-  | { kind: 'fresh'; listings: Listing[] }
-  | { kind: 'nothing' };
+  { kind: 'baselined'; count: number } | ({ kind: 'fresh' } & Findings) | { kind: 'nothing' };
 
 /**
  * Diffs a subscription's source against what was already delivered. Callers drive
- * it via `poll` and call `markSeen` only after a successful delivery, so a failed
+ * it via `poll` and call `markDelivered` only after a successful delivery, so a failed
  * send is retried next run (PRODUCT.md: persist only what was sent).
  */
 @Injectable()
@@ -30,8 +37,8 @@ export class WatchService {
 
   /**
    * One polling pass. A subscription whose baseline failed earlier is seeded here
-   * instead of flooding its whole backlog as "new". Fresh listings are NOT marked
-   * seen — the caller delivers them and marks only what was actually sent.
+   * instead of flooding its whole backlog as "new". Findings are NOT recorded — the caller
+   * delivers them and records only what was actually sent (markDelivered).
    */
   async poll(sub: Subscription): Promise<PollOutcome> {
     // NOTE: both branches re-check `has` after the fetch — the user may remove the
@@ -43,9 +50,9 @@ export class WatchService {
         ? { kind: 'baselined', count }
         : { kind: 'nothing' };
     }
-    const fresh = await this.check(sub);
-    if (fresh.length === 0 || !(await this.subscriptions.has(sub.id))) return { kind: 'nothing' };
-    return { kind: 'fresh', listings: fresh };
+    const found = await this.check(sub);
+    if (isEmpty(found) || !(await this.subscriptions.has(sub.id))) return { kind: 'nothing' };
+    return { kind: 'fresh', ...found };
   }
 
   /**
@@ -68,16 +75,40 @@ export class WatchService {
   }
 
   /**
-   * Fetch current listings and return those not seen before. Marks nothing seen
-   * (getSeen only refreshes `seenAt` on already-delivered ids for the prune window).
+   * Fetch current listings: those not seen before, and seen ones whose price changed. Records
+   * nothing undelivered — a change keeps its old snapshot until markDelivered, so an unsent one
+   * comes back next run. Every other seen listing gets its snapshot replaced now (a seller's
+   * edit or a parser fix must reach storage; sub-floor drift is absorbed run by run).
    */
-  async check(sub: Subscription): Promise<Listing[]> {
+  async check(sub: Subscription): Promise<Findings> {
     const { listings, capped } = await this.fetchListings(sub);
     const seen = await this.subscriptions.getSeen(
       sub.id,
       listings.map((l) => l.externalId),
     );
-    const fresh = listings.filter((l) => !seen.has(l.externalId));
+    const fresh: Listing[] = [];
+    let priceChanges: PriceChange[] = [];
+    const refreshed: Listing[] = [];
+    let compared = 0;
+    for (const listing of listings) {
+      if (!seen.has(listing.externalId)) {
+        fresh.push(listing);
+        continue;
+      }
+      // No snapshot yet (a baseline row, a row from before snapshots): filled silently.
+      // TODO [L]: one currency vanishing (BYN+USD → BYN) replaces the snapshot whole, so a later
+      // USD return compares against nothing; merge the missing fields from `before` instead.
+      const before = seen.get(listing.externalId);
+      if (before) compared += 1;
+      if (before && hasPriceChanged(before, listing)) priceChanges.push({ before, after: listing });
+      else if (!before || replacesSnapshot(before, listing)) refreshed.push(listing);
+    }
+    if (priceChanges.length >= MASS_PRICE_CHANGE_MIN && priceChanges.length * 2 > compared) {
+      this.warn(sub, `Mass price change for ${sub.source}: ${priceChanges.length} of ${compared}`);
+      refreshed.push(...priceChanges.map((change) => change.after));
+      priceChanges = [];
+    }
+    await this.subscriptions.updateSnapshots(sub.id, refreshed);
     // The whole window turned over since the last run: the source had more pages, and not one
     // listing in it was seen before — so whatever was published between it and the last
     // run's window was never fetched. Lost for good; this makes the loss visible (backlog,
@@ -87,7 +118,7 @@ export class WatchService {
     if (capped && fresh.length === listings.length) {
       this.warn(sub, `Page window overflowed for ${sub.source}`);
     }
-    return fresh;
+    return { listings: fresh, priceChanges };
   }
 
   /** Current listings for a subscription, read-only (does not touch the seen set). */
@@ -97,20 +128,22 @@ export class WatchService {
   }
 
   /**
-   * Mark listings as delivered so they are not sent again — call after a successful send.
+   * Record what reached the user so it is not sent again — call after a successful send: new
+   * listings join the seen set, a delivered price change becomes the stored price.
    *
    * Also stamps the user as just notified: every unsolicited delivery (the daily run and /check)
    * ends here, so this is the one writer the quiet report can count from. «Показать текущие»
    * does not come through here — the user asked for that look, it proves nothing about the bot.
-   * NOTE: a failed stamp after the insert only brings the next quiet report forward — not worth
+   * NOTE: a failed stamp after the writes only brings the next quiet report forward — not worth
    * a transaction around what was already delivered.
    */
-  async markSeen(sub: Subscription, listings: Listing[]): Promise<void> {
-    // NOTE: nothing delivered → no stamp; insertSeen's own empty guard does not cover the stamp.
-    if (listings.length === 0) return;
-    await this.subscriptions.markSeen(
+  async markDelivered(sub: Subscription, delivered: Findings): Promise<void> {
+    // NOTE: nothing delivered → no stamp; the writes' own empty guards do not cover the stamp.
+    if (isEmpty(delivered)) return;
+    await this.subscriptions.markSeen(sub.id, delivered.listings);
+    await this.subscriptions.updateSnapshots(
       sub.id,
-      listings.map((l) => l.externalId),
+      delivered.priceChanges.map((change) => change.after),
     );
     await this.subscriptions.markNotified(sub.userId);
   }

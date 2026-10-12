@@ -1,5 +1,7 @@
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import type { Listing } from '@/modules/sources/source-adapter';
 import { SOURCES } from '@/modules/sources/sources';
+import type { ListingSnapshot } from '@/modules/subscriptions/price-change';
 
 import {
   deadSubscriptionNotice,
@@ -9,6 +11,7 @@ import {
   MAX_LABEL_CHARS,
   MAX_LINE_CHARS,
   formatCurrentListings,
+  priceChangeBatches,
   searchLabel,
   tailBatches,
 } from '../telegram.format';
@@ -38,9 +41,9 @@ describe('tailBatches', () => {
 
     expect(batches).toHaveLength(2);
     expect(batches[0].text).toContain(`🆕 Ещё объявлений: ${DIGEST_LIMIT + 2} (1/2)`);
-    expect(batches[1].listings).toHaveLength(2);
+    expect(batches[1].items).toHaveLength(2);
     // Every listing ends up in exactly one message — nothing silently lost.
-    expect(batches.flatMap((b) => b.listings.map((l) => l.externalId))).toEqual(
+    expect(batches.flatMap((b) => b.items.map((l) => l.externalId))).toEqual(
       many.map((l) => l.externalId),
     );
   });
@@ -52,7 +55,7 @@ describe('tailBatches', () => {
 
     const batches = tailBatches(many);
 
-    expect(batches.flatMap((b) => b.listings)).toHaveLength(120);
+    expect(batches.flatMap((b) => b.items)).toHaveLength(120);
     expect(batches.map((b) => b.text).join()).not.toContain('в следующую проверку');
   });
 
@@ -66,7 +69,7 @@ describe('tailBatches', () => {
   it('truncates a pathological title but keeps the price and link intact', () => {
     const link = 'https://re.kufar.by/vi/1';
 
-    const [{ text, listings: delivered }] = tailBatches([
+    const [{ text, items: delivered }] = tailBatches([
       listing(1, { title: 't'.repeat(5000), priceUsd: 5000, link }),
     ]);
 
@@ -89,7 +92,7 @@ describe('tailBatches', () => {
   });
 
   it('clamps a pathological link too — a single huge link still delivers one item', () => {
-    const [{ text, listings: delivered }] = tailBatches([
+    const [{ text, items: delivered }] = tailBatches([
       listing(1, { link: `https://x.by/${'x'.repeat(5000)}` }),
     ]);
 
@@ -120,7 +123,7 @@ describe('tailBatches', () => {
 
     expect(batches.length).toBeGreaterThan(1); // char budget, not the item count, forced the split
     for (const batch of batches) expect(batch.text.length).toBeLessThan(4096);
-    expect(batches.flatMap((b) => b.listings)).toHaveLength(10);
+    expect(batches.flatMap((b) => b.items)).toHaveLength(10);
   });
 
   it('falls back through the price options', () => {
@@ -213,5 +216,31 @@ describe('deadSubscriptionNotice', () => {
     expect(
       deadSubscriptionNotice({ source: 'kufar-travel', url: 'https://travel.kufar.by/l' }),
     ).toContain('Поиск на travel.kufar.by перестал отвечать');
+  });
+});
+
+describe('priceChangeBatches', () => {
+  const change = (before: ListingSnapshot, after: Listing) => ({ before, after });
+
+  it('shows both sides in a currency both carry', () => {
+    const after = listing(1, { priceByn: 270_000, priceUsd: 90_000 });
+    const [{ text }] = priceChangeBatches([
+      change({ link: after.link, title: 't1', priceByn: 300_000 }, after),
+    ]);
+    expect(text).toContain('300\u00a0000 BYN → 270\u00a0000 BYN');
+  });
+
+  it('ignores a text price on the new side — the change was measured on numbers', () => {
+    const after = listing(1, { priceUsd: 90, priceText: '90 у.е.' });
+    const [{ text }] = priceChangeBatches([
+      change({ link: after.link, title: 't1', priceUsd: 100 }, after),
+    ]);
+    expect(text).toContain('$100 → $90');
+  });
+
+  it('says a price appeared', () => {
+    const after = listing(1, { priceUsd: 90 });
+    const [{ text }] = priceChangeBatches([change({ link: after.link, title: 't1' }, after)]);
+    expect(text).toContain('цена не указана → $90');
   });
 });

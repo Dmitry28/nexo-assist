@@ -3,6 +3,7 @@ import type { BotCommand } from 'grammy/types';
 import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
 import { SOURCES, siteName } from '@/modules/sources/sources';
+import type { PriceChange } from '@/modules/subscriptions/price-change';
 
 /** Reusable "no link preview" message option. */
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
@@ -33,52 +34,86 @@ export const truncate = (text: string, max: number, dropTrailing?: RegExp): stri
 
 // One currency keeps the compact line short; the grouping matches the cards in the same delivery
 // (listing-card.ts formatPrice), which otherwise print the same number two ways.
-function price(listing: Listing): string {
+function price(listing: Pick<Listing, 'priceText' | 'priceByn' | 'priceUsd'>): string {
   if (listing.priceText !== undefined) return listing.priceText;
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd.toLocaleString(LOCALE)}`;
   if (listing.priceByn !== undefined) return `${listing.priceByn.toLocaleString(LOCALE)} BYN`;
   return 'цена не указана';
 }
 
-function formatOne(listing: Listing): string {
+/** One digest item: title, a price line, link. */
+function formatItem({
+  title,
+  price,
+  link,
+}: {
+  title: string;
+  price: string;
+  link: string;
+}): string {
   // Truncate the TITLE first and keep the link whole: the item is marked seen once delivered, so
   // a listing that arrives without its link is lost for good. Only when trimming the title still
   // can't fit the line does the backstop below cut the whole line, link included.
-  const tail = `\n${price(listing)}\n${listing.link}`;
+  const tail = `\n${price}\n${link}`;
   const titleBudget = MAX_LINE_CHARS - tail.length;
-  const title =
-    listing.title.length > titleBudget ? truncate(listing.title, titleBudget) : listing.title;
-  const line = `${title}${tail}`;
+  const shown = title.length > titleBudget ? truncate(title, titleBudget) : title;
+  const line = `${shown}${tail}`;
   // Backstop for an absurdly long link, where trimming the title alone can't bring the line down.
   // Nothing useful survives such a link anyway; the cap keeps one item from starving the digest.
   return line.length > MAX_LINE_CHARS ? truncate(line, MAX_LINE_CHARS) : line;
 }
 
+const formatListing = (listing: Listing): string =>
+  formatItem({ title: listing.title, price: price(listing), link: listing.link });
+
+type Prices = Pick<Listing, 'priceByn' | 'priceUsd'>;
+
+// Both sides in a currency both carry — `price` picks one per listing, and «1 000 BYN → $300»
+// reads as nonsense. Numbers only: the change was measured on them, not on a text price.
+function inOneCurrency(before: Prices, after: Prices): [Prices, Prices] {
+  if (before.priceUsd !== undefined && after.priceUsd !== undefined) {
+    return [{ priceUsd: before.priceUsd }, { priceUsd: after.priceUsd }];
+  }
+  if (before.priceByn !== undefined && after.priceByn !== undefined) {
+    return [{ priceByn: before.priceByn }, { priceByn: after.priceByn }];
+  }
+  return [before, { priceByn: after.priceByn, priceUsd: after.priceUsd }];
+}
+
+function formatPriceChange({ before, after }: PriceChange): string {
+  const [was, now] = inOneCurrency(before, after);
+  return formatItem({
+    title: after.title,
+    price: `${price(was)} → ${price(now)}`,
+    link: after.link,
+  });
+}
+
 /**
- * As many listings as fit `budget` chars (and DIGEST_LIMIT items). Always takes at least one:
- * formatOne clamps a line to MAX_LINE_CHARS, which is far below any budget we pass — so callers
+ * As many items as fit `budget` chars (and DIGEST_LIMIT items). Always takes at least one:
+ * formatItem clamps a line to MAX_LINE_CHARS, which is far below any budget we pass — so callers
  * that loop over the remainder always make progress.
  */
-function takeChunk(listings: Listing[], budget: number): Listing[] {
-  const shown: Listing[] = [];
+function takeChunk<T>(items: T[], budget: number, format: (item: T) => string): T[] {
+  const shown: T[] = [];
   let length = 0;
-  for (const listing of listings) {
+  for (const item of items) {
     if (shown.length >= DIGEST_LIMIT) break;
-    const line = formatOne(listing);
+    const line = format(item);
     if (shown.length > 0 && length + line.length > budget) break;
-    shown.push(listing);
+    shown.push(item);
     length += line.length + '\n\n'.length;
   }
   return shown;
 }
 
 /**
- * One message: header, blank line, the formatted items, an optional footer. Both digest builders
- * assemble the same shape, and the separator is load-bearing — takeChunk measures the budget with
+ * One message: header, blank line, the formatted items, an optional footer. Every digest builder
+ * assembles the same shape, and the separator is load-bearing — takeChunk measures the budget with
  * `'\n\n'.length` between items, so a change here has to be a change there.
  */
-function compose(header: string, listings: Listing[], footer = ''): string {
-  return `${header}\n\n${listings.map(formatOne).join('\n\n')}${footer}`;
+function compose<T>(header: string, items: T[], format: (item: T) => string, footer = ''): string {
+  return `${header}\n\n${items.map(format).join('\n\n')}${footer}`;
 }
 
 /** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
@@ -86,10 +121,10 @@ function compose(header: string, listings: Listing[], footer = ''): string {
 // tailBatches reserves HEADER_RESERVE_CHARS for. Safe only thanks to the 596-char slack under
 // Telegram's 4096; reserve the footer too before MAX_MESSAGE_BUDGET_CHARS is raised.
 function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
-  const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length);
+  const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length, formatListing);
   const more = listings.length - shown.length;
   const footer = more > 0 ? `\n\n…и ещё ${more}` : '';
-  return { text: compose(header, shown, footer), shown };
+  return { text: compose(header, shown, formatListing, footer), shown };
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
@@ -110,10 +145,38 @@ export const CARDS_PER_DELIVERY = 30;
 // listings are chunked.
 const HEADER_RESERVE_CHARS = 120;
 
-/** One message of a batched digest and the listings it carries. */
-export interface DigestBatch {
+/** One message of a batched digest and the items it carries. */
+export interface DigestBatch<T> {
   text: string;
-  listings: Listing[];
+  items: T[];
+}
+
+/**
+ * Items as however many digest messages they take, every one headed `title(count)` plus the part
+ * number and the search label. Callers must record only the batches that were actually sent.
+ */
+function batches<T>(
+  items: T[],
+  { title, format, search }: { title: string; format: (item: T) => string; search?: string },
+): DigestBatch<T>[] {
+  const label = search === undefined ? '' : `\n${search}`;
+  const chunks: T[][] = [];
+  let rest = items;
+  while (rest.length > 0) {
+    // Reserve room for the header (counter line plus the search label), added after chunking —
+    // otherwise the measured string is not the string sent, and an oversized message fails on
+    // every retry.
+    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS, format);
+    chunks.push(chunk);
+    rest = rest.slice(chunk.length);
+  }
+  return chunks.map((chunk, i) => {
+    const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
+    return {
+      text: compose(`${title}: ${items.length}${part}${label}`, chunk, format),
+      items: chunk,
+    };
+  });
 }
 
 /**
@@ -123,29 +186,16 @@ export interface DigestBatch {
  * CARDS_PER_DELIVERY and this carries the rest, so nothing is deferred to "the next check" —
  * a promise the page window could not keep, since a deferred tail can age out of it and be
  * lost (PRODUCT_PLAN.md § Технический бэклог).
- *
- * Callers must markSeen only the batches that were actually sent.
  */
-export function tailBatches(listings: Listing[], search?: string): DigestBatch[] {
-  const label = search === undefined ? '' : `\n${search}`;
-  const chunks: Listing[][] = [];
-  let rest = listings;
-  while (rest.length > 0) {
-    // Reserve room for the header (counter line plus the search label), added after chunking — otherwise the measured
-    // string is not the string sent, and an oversized message fails on every retry.
-    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS);
-    chunks.push(chunk);
-    rest = rest.slice(chunk.length);
-  }
+export const tailBatches = (listings: Listing[], search?: string): DigestBatch<Listing>[] =>
+  batches(listings, { title: '🆕 Ещё объявлений', format: formatListing, search });
 
-  return chunks.map((chunk, i) => {
-    const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
-    return {
-      text: compose(`🆕 Ещё объявлений: ${listings.length}${part}${label}`, chunk),
-      listings: chunk,
-    };
-  });
-}
+/** Price changes on listings already delivered: title, `old → new`, link. */
+export const priceChangeBatches = (
+  changes: PriceChange[],
+  search?: string,
+): DigestBatch<PriceChange>[] =>
+  batches(changes, { title: '💸 Цена изменилась', format: formatPriceChange, search });
 
 /** Longest path a label will show. In a card the header shares the caption budget with the
  *  listing itself; in a digest it is a line of its own. */

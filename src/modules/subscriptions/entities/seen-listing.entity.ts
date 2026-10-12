@@ -1,5 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 
+import type { ListingSnapshot } from '../price-change';
+
 import { Subscription } from './subscription.entity';
 
 /**
@@ -23,6 +25,14 @@ export class SeenListing {
    */
   @Column({ type: 'timestamptz', default: () => 'now()' })
   seenAt: Date;
+
+  /**
+   * The listing as last recorded — what a price change is measured against (price-change.ts).
+   * NULL until a poll fills it: rows from before snapshots, and baseline rows (the baseline may
+   * skip item pages, so its prices would be partial). Read it through `asSnapshot`.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  snapshot: ListingSnapshot | null;
 
   // NOTE: FK only for the cascade — deleting a subscription drops its seen rows.
   // Reuses the subscriptionId PK column (no separate FK column).

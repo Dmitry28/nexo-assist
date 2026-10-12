@@ -8,8 +8,13 @@ import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { Subscription } from '../entities/subscription.entity';
+import type { ListingSnapshot } from '../price-change';
 import type { SubscriptionsService } from '../subscriptions.service';
 import { WatchService } from '../watch.service';
+
+// The seen set as getSeen returns it: id → stored snapshot (undefined: none yet).
+const seenAs = (ids: string[], snapshots: Record<string, ListingSnapshot> = {}) =>
+  new Map(ids.map((id) => [id, snapshots[id]]));
 
 const baselined = (over: Partial<Subscription> = {}): Subscription =>
   sub({ baselinedAt: new Date(), ...over });
@@ -24,7 +29,8 @@ const build = (fetched: Listing[] = [], complete = true, capped = false) => {
   const subscriptions = {
     has: jest.fn().mockResolvedValue(true),
     seedBaseline: jest.fn().mockResolvedValue(undefined),
-    getSeen: jest.fn().mockResolvedValue(new Set<string>()),
+    getSeen: jest.fn().mockResolvedValue(seenAs([])),
+    updateSnapshots: jest.fn().mockResolvedValue(undefined),
     markSeen: jest.fn().mockResolvedValue(undefined),
     markNotified: jest.fn().mockResolvedValue(undefined),
   };
@@ -80,17 +86,17 @@ describe('WatchService.poll — first run (baseline)', () => {
 describe('WatchService.poll — later runs (diff)', () => {
   it('returns only the listings that were never delivered', async () => {
     const { subscriptions, watch } = build([listing(1), listing(2), listing(3)]);
-    subscriptions.getSeen.mockResolvedValue(new Set(['1', '3']));
+    subscriptions.getSeen.mockResolvedValue(seenAs(['1', '3']));
 
     const outcome = await watch.poll(baselined());
 
-    expect(outcome).toEqual({ kind: 'fresh', listings: [listing(2)] });
+    expect(outcome).toEqual({ kind: 'fresh', listings: [listing(2)], priceChanges: [] });
     expect(subscriptions.getSeen).toHaveBeenCalledWith('sub-1', ['1', '2', '3']);
   });
 
   it('reports nothing when every listing was already delivered', async () => {
     const { subscriptions, watch } = build([listing(1)]);
-    subscriptions.getSeen.mockResolvedValue(new Set(['1']));
+    subscriptions.getSeen.mockResolvedValue(seenAs(['1']));
 
     await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
   });
@@ -111,6 +117,79 @@ describe('WatchService.poll — later runs (diff)', () => {
   });
 });
 
+describe('WatchService.poll — price changes', () => {
+  const snap = (id: number, prices: Partial<ListingSnapshot>): ListingSnapshot => ({
+    link: listing(id).link,
+    title: listing(id).title,
+    ...prices,
+  });
+
+  it('reports a seller change on a delivered listing, keeping its stored price until delivered', async () => {
+    const after = listing(1, { priceByn: 270_000, priceUsd: 90_000 });
+    const { subscriptions, watch } = build([after]);
+    const before = snap(1, { priceByn: 300_000, priceUsd: 100_000 });
+    subscriptions.getSeen.mockResolvedValue(seenAs(['1'], { '1': before }));
+
+    await expect(watch.poll(baselined())).resolves.toEqual({
+      kind: 'fresh',
+      listings: [],
+      priceChanges: [{ before, after }],
+    });
+    // Not refreshed now: an undelivered change must come back next run.
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', []);
+  });
+
+  it('absorbs drift into the stored snapshot without telling anyone', async () => {
+    const now = listing(1, { priceByn: 318_000, priceUsd: 100_000 });
+    const { subscriptions, watch } = build([now]);
+    subscriptions.getSeen.mockResolvedValue(
+      seenAs(['1'], { '1': snap(1, { priceByn: 300_000, priceUsd: 100_000 }) }),
+    );
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', [now]);
+  });
+
+  // A baseline row, or one from before snapshots: no price to compare with yet.
+  it('fills a missing snapshot silently', async () => {
+    const now = listing(1, { priceByn: 34_294 });
+    const { subscriptions, watch } = build([now]);
+    subscriptions.getSeen.mockResolvedValue(seenAs(['1']));
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', [now]);
+  });
+
+  // A parser fix or a site rewriting its prices moves everything at once — not sellers.
+  it('absorbs a mass change silently and warns, instead of a digest of false changes', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const ids = Array.from({ length: 10 }, (_, i) => i + 1);
+    const now = ids.map((id) => listing(id, { priceByn: 100 }));
+    const { subscriptions, watch } = build(now);
+    subscriptions.getSeen.mockResolvedValue(
+      seenAs(
+        ids.map(String),
+        Object.fromEntries(ids.map((id) => [String(id), snap(id, { priceByn: 10_000 })])),
+      ),
+    );
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', now);
+    expect(sentryMessage()).toHaveBeenCalledWith(
+      expect.stringContaining('Mass price change'),
+      'warning',
+    );
+  });
+
+  it('keeps the old snapshot while the price is missing, so its return is no change', async () => {
+    const { subscriptions, watch } = build([listing(1)]);
+    subscriptions.getSeen.mockResolvedValue(seenAs(['1'], { '1': snap(1, { priceByn: 5 }) }));
+
+    await expect(watch.poll(baselined())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', []);
+  });
+});
+
 // What `capped` is for: listings published past the page window between two runs are never
 // fetched, and nothing else would ever say so (backlog, «Больше 150 новых за сутки…»).
 describe('WatchService.poll — page window overflow', () => {
@@ -128,13 +207,17 @@ describe('WatchService.poll — page window overflow', () => {
     const outcome = await watch.poll(baselined());
 
     // Still delivered as usual — the signal reports the loss, it does not change delivery.
-    expect(outcome).toEqual({ kind: 'fresh', listings: [listing(1), listing(2)] });
+    expect(outcome).toEqual({
+      kind: 'fresh',
+      listings: [listing(1), listing(2)],
+      priceChanges: [],
+    });
     overflowed();
   });
 
   it('stays quiet when the window still overlaps what was delivered', async () => {
     const { subscriptions, watch } = build([listing(1), listing(2)], true, true);
-    subscriptions.getSeen.mockResolvedValue(new Set(['2']));
+    subscriptions.getSeen.mockResolvedValue(seenAs(['2']));
 
     await watch.poll(baselined());
 
@@ -164,22 +247,27 @@ describe('WatchService — the rest of the contract', () => {
     await expect(watch.poll(baselined({ source: 'realt' }))).rejects.toThrow('realt');
   });
 
-  it('markSeen persists exactly the ids of the listings it was handed', async () => {
+  it('markDelivered records new listings as seen and delivered changes as the stored price', async () => {
     const { subscriptions, watch } = build();
+    const after = listing(3, { priceUsd: 90 });
 
-    await watch.markSeen(sub(), [listing(7), listing(9)]);
+    await watch.markDelivered(sub(), {
+      listings: [listing(7), listing(9)],
+      priceChanges: [{ before: { link: after.link, title: after.title, priceUsd: 100 }, after }],
+    });
 
-    expect(subscriptions.markSeen).toHaveBeenCalledWith('sub-1', ['7', '9']);
+    expect(subscriptions.markSeen).toHaveBeenCalledWith('sub-1', [listing(7), listing(9)]);
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', [after]);
   });
 
-  // The quiet report counts from this stamp; an empty markSeen delivered nothing.
+  // The quiet report counts from this stamp; an empty delivery delivered nothing.
   it('stamps the user as notified after a delivery, and not when nothing was delivered', async () => {
     const { subscriptions, watch } = build();
 
-    await watch.markSeen(sub(), []);
+    await watch.markDelivered(sub(), { listings: [], priceChanges: [] });
     expect(subscriptions.markNotified).not.toHaveBeenCalled();
 
-    await watch.markSeen(sub(), [listing(7)]);
+    await watch.markDelivered(sub(), { listings: [listing(7)], priceChanges: [] });
     expect(subscriptions.markNotified).toHaveBeenCalledWith('user-1');
   });
 
