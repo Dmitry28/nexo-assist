@@ -1,14 +1,17 @@
 import type { Listing } from '@/modules/sources/source-adapter';
 
 /**
- * What a subscription remembers of a listing it delivered — enough to tell a price change and to
- * show it. A narrow pick, not the whole Listing: the stored jsonb outlives today's Listing shape.
+ * What a subscription remembers of a listing it delivered — enough to tell a price change or a
+ * removal and to show it. A narrow pick, not the whole Listing: the stored jsonb outlives today's
+ * Listing shape.
  */
 export interface ListingSnapshot {
   link: string;
   title: string;
   priceByn?: number;
   priceUsd?: number;
+  /** Shown as the last price of a removed listing; never compared (see hasPriceChanged). */
+  priceText?: string;
 }
 
 /** A listing whose seller changed the price since it was last recorded. */
@@ -17,12 +20,13 @@ export interface PriceChange {
   after: Listing;
 }
 
-export const toSnapshot = ({ link, title, priceByn, priceUsd }: Listing): ListingSnapshot => ({
+export const toSnapshot = ({
   link,
   title,
   priceByn,
   priceUsd,
-});
+  priceText,
+}: Listing): ListingSnapshot => ({ link, title, priceByn, priceUsd, priceText });
 
 const optionalNumber = (value: unknown): boolean =>
   value === undefined || (typeof value === 'number' && Number.isFinite(value));
@@ -30,14 +34,16 @@ const optionalNumber = (value: unknown): boolean =>
 /** A stored snapshot, or undefined for a row that has none or one this code cannot read. */
 export function asSnapshot(value: unknown): ListingSnapshot | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
-  const { link, title, priceByn, priceUsd } = value as Record<string, unknown>;
+  const { link, title, priceByn, priceUsd, priceText } = value as Record<string, unknown>;
   if (typeof link !== 'string' || typeof title !== 'string') return undefined;
   if (!optionalNumber(priceByn) || !optionalNumber(priceUsd)) return undefined;
+  if (priceText !== undefined && typeof priceText !== 'string') return undefined;
   return {
     link,
     title,
     priceByn: priceByn as number | undefined,
     priceUsd: priceUsd as number | undefined,
+    priceText,
   };
 }
 

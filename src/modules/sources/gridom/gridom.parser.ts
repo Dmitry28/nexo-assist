@@ -47,8 +47,8 @@ interface RawUnit {
 /**
  * Units on sale now: `free`, and `shared` — «долевое строительство», a unit sold by a share deal
  * (the widget lists both as on sale; measured 2026-10-07: 6 free, 33 shared). Not `reserved`: it
- * can't be bought, and delivering it would mark it seen — if the reservation falls through, the
- * user would never hear it came back. Never `sold`.
+ * can't be bought — a unit going reserved reads as «снято», and one whose reservation falls
+ * through comes back as new. Never `sold`.
  */
 export function parsePage(json: string, { url }: PageContext): Omit<SearchPage<never>, 'next'> {
   const config = asRecord(parseJson(json));

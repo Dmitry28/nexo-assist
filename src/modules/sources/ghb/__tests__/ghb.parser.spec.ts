@@ -12,17 +12,13 @@ describe('ghb parsePage', () => {
 
   // Live: three path kinds, one object linked twice, hrefs mixing http/https and www.
   it('reads every object once, keyed by its path', () => {
-    expect([...byId.keys()]).toEqual(
-      expect.arrayContaining(['nedvizhimost-dogovor/9291', 'apartments/7782', 'nedvizhimost/8760']),
-    );
-    expect(listings.filter((l) => l.externalId === 'nedvizhimost/8760')).toHaveLength(1);
-    expect(byId.get('apartments/7782')?.link).toBe(
-      'https://ghb.by/ru/construction/apartments/7782/',
-    );
+    expect([...byId.keys()]).toEqual(expect.arrayContaining(['9291', '7782', '8760']));
+    expect(listings.filter((l) => l.externalId === '8760')).toHaveLength(1);
+    expect(byId.get('7782')?.link).toBe('https://ghb.by/ru/construction/apartments/7782/');
   });
 
   it('prices per m² from the table cells, the sales line and the kind', () => {
-    expect(byId.get('nedvizhimost-dogovor/9291')).toMatchObject({
+    expect(byId.get('9291')).toMatchObject({
       priceText: '2 200 – 2 600 руб./м²',
       listTime: '',
       details: [
@@ -30,7 +26,7 @@ describe('ghb parsePage', () => {
         { label: 'Продажи', value: 'Онлайн регистрация проходила 01.10.2026г.' },
       ],
     });
-    expect(byId.get('nedvizhimost/8760')?.details[0]).toEqual({ label: 'Тип', value: 'Офисы' });
+    expect(byId.get('8760')?.details[0]).toEqual({ label: 'Тип', value: 'Офисы' });
   });
 
   // An office table also lists each unit's total cost («98 824,87») — not a price per m².

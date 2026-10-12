@@ -142,6 +142,36 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   });
 
   // The whole loop on real rows: the jsonb snapshot, the one-statement refresh, the record step.
+  // ghb declares reportsRemoved: a unit gone from its price list was sold.
+  it('reports a sold listing once its page was read whole, and forgets it once delivered', async () => {
+    const ghb = sourceAdapter('ghb');
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'ghb',
+      url: 'https://ghb.by/ru/construction/price_apartments/',
+    });
+    const page = (...ids: number[]) => ({
+      listings: ids.map((id) => listing(id, { priceText: `${id} руб./м²` })),
+      complete: true,
+      capped: false,
+    });
+    const fetch = jest.spyOn(ghb, 'fetch');
+    fetch.mockResolvedValueOnce(page(1, 2));
+    await watch.baseline(sub);
+    fetch.mockResolvedValueOnce(page(1, 2)); // fills the snapshots
+    await watch.check(sub);
+
+    fetch.mockResolvedValueOnce(page(1));
+    const found = await watch.check(sub);
+    expect(found.removed).toEqual([
+      { externalId: '2', last: expect.objectContaining({ title: 't2', priceText: '2 руб./м²' }) },
+    ]);
+
+    await watch.markDelivered(sub, found);
+    fetch.mockResolvedValueOnce(page(1));
+    expect((await watch.check(sub)).removed).toEqual([]);
+  });
+
   it('reports a price change once, after a silent first fill, and not again once delivered', async () => {
     const sub = await subscriptions.add({
       user: { telegramId: 1 },
@@ -159,7 +189,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
 
     // The baseline stored no snapshot: the first check fills it without a word.
     fetch.mockResolvedValueOnce(priced(300_000, 100_000));
-    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [] });
+    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [], removed: [] });
 
     fetch.mockResolvedValueOnce(priced(270_000, 90_000));
     const { priceChanges } = await watch.check(sub);
@@ -169,9 +199,9 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     // Undelivered: it comes back. Delivered: the new price is the stored one.
     fetch.mockResolvedValueOnce(priced(270_000, 90_000));
     expect((await watch.check(sub)).priceChanges).toHaveLength(1);
-    await watch.markDelivered(sub, { listings: [], priceChanges });
+    await watch.markDelivered(sub, { listings: [], priceChanges, removed: [] });
     fetch.mockResolvedValueOnce(priced(270_000, 90_000));
-    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [] });
+    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [], removed: [] });
   });
 
   it('seedBaseline records seen and marks baselined atomically', async () => {

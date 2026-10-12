@@ -3,6 +3,7 @@ import type { BotCommand } from 'grammy/types';
 import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
 import { SOURCES, siteName } from '@/modules/sources/sources';
+import type { Removal } from '@/modules/subscriptions/findings';
 import type { PriceChange } from '@/modules/subscriptions/price-change';
 
 /** Reusable "no link preview" message option. */
@@ -88,6 +89,9 @@ function formatPriceChange({ before, after }: PriceChange): string {
     link: after.link,
   });
 }
+
+const formatRemoval = ({ last }: Removal): string =>
+  formatItem({ title: last.title, price: price(last), link: last.link });
 
 /**
  * As many items as fit `budget` chars (and DIGEST_LIMIT items). Always takes at least one:
@@ -196,6 +200,10 @@ export const priceChangeBatches = (
   search?: string,
 ): DigestBatch<PriceChange>[] =>
   batches(changes, { title: '💸 Цена изменилась', format: formatPriceChange, search });
+
+/** Delivered listings gone from their sale list: title, last price, link. */
+export const removalBatches = (removed: Removal[], search?: string): DigestBatch<Removal>[] =>
+  batches(removed, { title: '🚫 Снято с продажи', format: formatRemoval, search });
 
 /** Longest path a label will show. In a card the header shares the caption budget with the
  *  listing itself; in a digest it is a line of its own. */

@@ -19,7 +19,7 @@ start; more frequent once throttling/dedupe land).
   a run looks at its **newest 150 listings** (up to 5 pages) — a pasted sort or page number is
   overridden. A search that gains more than that between two runs loses the rest (the owner is
   told via Sentry).
-- Events: **new listings and price changes**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
+- Events: **new listings, price changes and removals**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies (or as the site words it — a salary range), address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's
   searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
@@ -31,6 +31,10 @@ start; more frequent once throttling/dedupe land).
   «💸 Цена изменилась: N» — title, `old → new`, link. Only a seller's change: exchange-rate drift
   and text prices (salaries, ghb's per-m² range) are not reported, and the first poll after
   subscribing only records prices (rule: [PRODUCT_PLAN.md § 2.4](PRODUCT_PLAN.md)).
+- **Removals** — «🚫 Снято с продажи: N» (title, last price, link), last in the delivery — only
+  on fixed sale lists (ghb, prometr, gridom), and only when the page was read whole. Elsewhere a
+  listing leaving the page is no sale (a search window, an auction archive). One that comes back
+  arrives as new.
 - A realt link the site **rewrites with a redirect** (any `addressV2` address filter is sent to a
   much wider search) is refused on subscribe, with the reason and how to fix the link —
   following it would hand the user someone else's search as theirs.

@@ -87,6 +87,7 @@ describe('CheckHandlers', () => {
     watch.poll.mockResolvedValue({
       kind: 'fresh',
       priceChanges: [],
+      removed: [],
       listings: [listing(1), listing(2)],
     });
 
@@ -103,6 +104,7 @@ describe('CheckHandlers', () => {
     expect(watch.markDelivered).toHaveBeenCalledWith(s, {
       listings: [listing(1), listing(2)],
       priceChanges: [],
+      removed: [],
     });
   });
 
@@ -112,6 +114,7 @@ describe('CheckHandlers', () => {
     watch.poll.mockResolvedValue({
       kind: 'fresh',
       priceChanges: [],
+      removed: [],
       listings: [listing(1, { images: ['https://example.test/dead.jpg'] })],
     });
     const ctx = makeCtx({ userId: 1 });
@@ -132,7 +135,12 @@ describe('CheckHandlers', () => {
   it('/check keeps the delivered digest when markDelivered fails — no contradictory error', async () => {
     const s = sub({ url: 'u1' });
     subscriptions.listByUser.mockResolvedValue([s]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     watch.markDelivered.mockRejectedValue(new Error('db down'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -165,7 +173,12 @@ describe('CheckHandlers', () => {
 
   it('/check says the digest did not go out when the send fails outright', async () => {
     subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', priceChanges: [], listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const ctx = makeCtx({ userId: 1 });
     ctx.reply.mockRejectedValueOnce(new Error('telegram 500')); // the digest message itself
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -185,6 +198,7 @@ describe('CheckHandlers', () => {
     watch.poll.mockResolvedValue({
       kind: 'fresh',
       priceChanges: [],
+      removed: [],
       listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
     const ctx = makeCtx({ userId: 1 });

@@ -124,7 +124,8 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
   renamed), host, a real `sample` search, `about` (a few words for /help), optional search path,
   pinned params (newest-first sort, page size), page or cursor paging, or `singlePage: true`
   (one fixed page), noise params, `requestUrl` (when the data sits behind a widget's API), for a single page
-  `load`/`enrich` (a second request for the list; an item-page visit for a missing field), `parse`;
+  `load`/`enrich` (a second request for the list; an item-page visit for a missing field), `parse`,
+  `reportsRemoved` when leaving the page means sold (see its doc);
   `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)).
   Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its
   `pins` NOTE: changing them later needs a re-normalizing migration).

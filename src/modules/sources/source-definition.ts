@@ -68,6 +68,11 @@ interface CommonDefinition<Id extends string> {
   useProxy?: boolean;
   /** Fail on a redirect to another path — for sites that rewrite a search (see fetchHtml). */
   pinPath?: boolean;
+  /**
+   * A listing leaving the page means it was sold — a fixed sale list (ghb, prometr, gridom). Not
+   * for an archive (auction notices) nor a search, where listings fall out of the window by age.
+   */
+  reportsRemoved?: true;
 }
 
 /** A site that numbers its pages, counting from `first`; `next` says whether another follows. */
@@ -150,6 +155,7 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
         matchesHost({ url, host: def.host }) &&
         !subHosts.some((host) => matchesHost({ url, host })) &&
         onSearchPath(url),
+      reportsRemoved: def.reportsRemoved === true,
       fetch: (url, options) => fetchSearch(def, url, pagingParam, logger, options),
     };
   });

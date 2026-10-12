@@ -14,8 +14,9 @@ export const HOST = 'ghb.by';
 export const SEARCH_PATH = '/ru/construction/price_apartments/';
 
 // An item links its object page under /ru/construction/<kind>/<id>/. Measured 2026-10-07: three
-// kinds (nedvizhimost-dogovor — housing, nedvizhimost — offices, apartments) and the same object
-// linked twice — so the id is the link's path (see linkPath).
+// kinds (nedvizhimost-dogovor — housing, nedvizhimost — offices, apartments), the same object
+// linked twice. The number alone is the id: one numbering across kinds (measured 2026-10-13), so
+// an object moved to another kind stays the same listing — not «sold» plus «new».
 const ITEM_PATH = /^\/ru\/construction\/(nedvizhimost-dogovor|nedvizhimost|apartments)\/(\d+)\/?$/;
 const KIND: Record<string, string> = {
   'nedvizhimost-dogovor': 'Жильё',
@@ -49,7 +50,7 @@ export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
 function toListing(anchor: HTMLElement): Listing | undefined {
   const match = ITEM_PATH.exec(linkPath(anchor.getAttribute('href'), HOST) ?? '');
   if (!match) return undefined;
-  const id = `${match[1]}/${match[2]}`;
+  const [, kind, id] = match;
   // The item's cell in the outer table holds its title, paragraphs and price table.
   const cell = anchor.closest('td') ?? anchor;
   const prices = cell
@@ -59,7 +60,7 @@ function toListing(anchor: HTMLElement): Listing | undefined {
     .map((text) => Math.round(Number(text.replace(/\s/g, '').replace(',', '.'))));
   return {
     externalId: id,
-    link: `https://${HOST}/ru/construction/${id}/`,
+    link: `https://${HOST}/ru/construction/${kind}/${id}/`,
     title: elementText(anchor) ?? UNTITLED_LISTING,
     priceText:
       rangeText({
@@ -70,7 +71,7 @@ function toListing(anchor: HTMLElement): Listing | undefined {
     listTime: '',
     images: [],
     details: listingDetails(
-      detail('Тип', KIND[match[1]]),
+      detail('Тип', KIND[kind]),
       detail(
         'Продажи',
         cell

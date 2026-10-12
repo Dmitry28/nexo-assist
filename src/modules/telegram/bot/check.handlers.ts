@@ -7,6 +7,7 @@ import { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Listing } from '@/modules/sources/source-adapter';
 import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import { countOf } from '@/modules/subscriptions/findings';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import type { ReportOp, UserAction } from '@/modules/telegram/report';
@@ -128,7 +129,7 @@ export class CheckHandlers {
         },
         record: (items) => this.watch.markDelivered(sub, items),
       });
-      const count = delivered.listings.length + delivered.priceChanges.length;
+      const count = countOf(delivered);
       // A recording failure must not surface to the user as "could not check" (that would
       // contradict the digest they just read) — only log and report it.
       if (recordError) {
