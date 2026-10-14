@@ -55,24 +55,30 @@ async function fetchFollowingHost({
   url,
   host,
   signal,
-  useProxy,
+  dispatcher,
+  httpsOnly,
   pinPath,
 }: {
   url: string;
   host: string;
   signal: AbortSignal;
-  useProxy: boolean;
+  /** undici's per-request transport hook — a proxy agent, when the request is proxied. */
+  dispatcher: Dispatcher | undefined;
+  /** Refuse any hop that is not https — through a third-party proxy, cleartext could be altered. */
+  httpsOnly: boolean;
   pinPath: boolean;
 }): Promise<Response> {
-  // `dispatcher` is undici's per-request transport hook — set only when this source is proxied.
   const init: RequestInit & { dispatcher?: Dispatcher } = {
     signal,
     headers: HEADERS,
     redirect: 'manual',
+    ...(dispatcher ? { dispatcher } : {}),
   };
-  if (useProxy) init.dispatcher = proxyAgent();
   let currentUrl = url;
   for (let hop = 0; ; hop++) {
+    if (httpsOnly && new URL(currentUrl).protocol !== 'https:') {
+      throw new SourceUnavailableError(`not https through a public proxy: ${currentUrl}`);
+    }
     // Only the network call is wrapped: a timeout or a refused connection means the source is
     // unreachable, while the guards below (off-host redirect, redirect loop) point at us or at
     // something suspicious and must stay distinguishable.
@@ -105,7 +111,10 @@ async function fetchFollowingHost({
  * search result, otherwise baseline/check silently treat outages as "no listings".
  *
  * `useProxy` routes the request through SCRAPE_PROXY_URL (for sources that block
- * datacenter IPs). No proxy configured → the request goes out directly.
+ * datacenter IPs). No proxy configured → the request goes out directly. `proxyUrl` routes it
+ * through a third-party proxy instead (free-proxies.ts): https only — inside the CONNECT tunnel
+ * TLS still verifies the site, so such a proxy sees the host name and can stall or drop, never
+ * read or alter the page — and through an agent of its own, closed afterwards.
  *
  * `pinPath` turns a redirect to another path into SearchRewrittenError — for sources whose
  * redirects mean "not your search" (realt). Opt-in: kufar legitimately redirects
@@ -115,24 +124,33 @@ export async function fetchHtml({
   url,
   host,
   useProxy = false,
+  proxyUrl,
   pinPath = false,
   timeoutMs = FETCH_TIMEOUT_MS,
+  signal,
 }: {
   url: string;
   host: string;
   useProxy?: boolean;
+  proxyUrl?: string;
   pinPath?: boolean;
   /** Less than the default when the caller has a budget to keep (the ladder). */
   timeoutMs?: number;
+  /** Cancels the request from outside — a raced attempt that lost. */
+  signal?: AbortSignal;
 }): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, FETCH_TIMEOUT_MS));
+  const abort = (): void => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const ownAgent = proxyUrl === undefined ? undefined : new ProxyAgent(proxyUrl);
   try {
     const res = await fetchFollowingHost({
       url,
       host,
       signal: controller.signal,
-      useProxy,
+      dispatcher: ownAgent ?? (useProxy ? proxyAgent() : undefined),
+      httpsOnly: ownAgent !== undefined,
       pinPath,
     });
     if (!res.ok) {
@@ -156,5 +174,8 @@ export async function fetchHtml({
     return html;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    // A dead proxy must not leave its sockets open.
+    void ownAgent?.destroy().catch(() => undefined);
   }
 }

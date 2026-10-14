@@ -105,11 +105,12 @@
   вместо «6». Ссылка kufar с `?page=` теперь отдельный поиск (у kufar листание — `cursor`).
   Ещё два сайта — прейскурант ghb.by и аукционы grodnorik.gov.by; суммы с разделителем тысяч
   («1 500 – 2 000 руб.»).
-- **Ключи платной ступени** (лестница загрузки, idriver.by): зарегистрироваться на zenrows.com и
-  scrape.do (бесплатно, без карты), положить ключи в Secret — `npm run k8s:secrets
-ZENROWS_API_KEY SCRAPE_DO_API_KEY` — и в KeePassXC. Без них idriver не читается. Для проверки
-  дома — ключ **другого** аккаунта в `.env`, несколько страниц: общий ключ тратит месячный лимит
-  прода. Что это за ступень и почему так — [PRODUCT_PLAN.md](PRODUCT_PLAN.md) § «Платная ступень».
+- **Ключи платной ступени** (лестница загрузки, idriver.by): зарегистрироваться на zenrows.com,
+  scrape.do и scrapeops.io (бесплатно, без карты), положить ключи в Secret командой
+  `npm run k8s:secrets ZENROWS_API_KEY SCRAPE_DO_API_KEY SCRAPEOPS_API_KEY` и в KeePassXC. Без них
+  защищённый сайт читается только бесплатными ступенями. Там же проверить с сервера idriver через
+  бесплатный белорусский прокси (в логе `via free by proxy`) — дома прошёл. Что это за ступень —
+  [PRODUCT_PLAN.md](PRODUCT_PLAN.md) § «Платная ступень».
 - **Метки кликов в ключе дублей** (PR #151): `fbclid`/`gclid`/`yclid` больше не часть поиска. До
   релиза: `SELECT count(*) FROM subscriptions WHERE "normalizedUrl" ~ '(fbclid|gclid|yclid)=';` —
   0 строк, и миграция не нужна; иначе — пересчитать ключ (по образцу `RenormalizeSubscriptionUrls`).
@@ -1031,6 +1032,7 @@ API кластера не выставляем в интернет; при ут�
 | `BACKUP_HEARTBEAT_URL` | там же, вторая проверка (бэкапы, §4.3c)                            |
 | `ZENROWS_API_KEY`      | zenrows.com → Dashboard → API Key → regenerate                     |
 | `SCRAPE_DO_API_KEY`    | scrape.do → Dashboard → API Token → regenerate                     |
+| `SCRAPEOPS_API_KEY`    | scrapeops.io → Dashboard → API Key → regenerate                    |
 
 **Колонка «как перевыпустить» — половина ценности записи:** утечка тогда не паника, а
 процедура на минуту. Первые четыре значения отзываемы, поэтому их потеря — неудобство, а не

@@ -137,8 +137,11 @@ export interface SourceAdapter {
   readonly volatileParams: readonly string[];
   /** A listing gone from a complete fetch was sold — tell the user (see SourceDefinition). */
   readonly reportsRemoved: boolean;
-  /** Read through paid anti-bot services — subscriptions to it are capped (MAX_PROTECTED_SUBSCRIPTIONS). */
-  readonly protected: boolean;
+  /**
+   * Paid credits one poll may cost, worst case (0 for an unprotected source) — what subscriptions
+   * to it draw from the bot's DAILY_CREDIT_BUDGET.
+   */
+  readonly pollCredits: number;
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /**

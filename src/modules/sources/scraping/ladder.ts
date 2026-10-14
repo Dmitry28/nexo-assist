@@ -4,6 +4,7 @@ import {
   SourceUnavailableError,
 } from '../source-adapter';
 
+import { freeProxyRung } from './free-proxies';
 import { fetchHtml, hasProxy } from './http';
 import { ProviderUnavailableError, paidRungs } from './providers';
 
@@ -16,7 +17,7 @@ export interface Protection {
    * by its listings: an empty search is a real page, and calling it unusable would pay every rung
    * on every poll of it.
    */
-  usable(html: string): boolean;
+  usable: (html: string) => boolean;
   /** Lower-case ISO-2 country the paid rung's proxy must be in (idriver: Belarus only). */
   country?: string;
   /**
@@ -26,16 +27,17 @@ export interface Protection {
   renderWaitMs?: number;
 }
 
-// One page's whole ladder, every rung included. Sized for a rendered paid page (the prototype
-// measured ZenRows needing more than 30 s with a wait) — and it is what WatchStatus's stuck-run
-// arithmetic counts per protected page.
-const LADDER_BUDGET_MS = 180_000;
+// One page's whole ladder, every rung included: the free rungs take at most 30 + 30 + 25 s (the
+// last with its list fetch), which leaves ZenRows and Scrape.do their minute each; ScrapeOps (2 min
+// of its own retries) only gets a turn when the rungs before it failed fast — no key, spent.
+// WatchStatus's stuck-run arithmetic counts this per protected poll.
+const LADDER_BUDGET_MS = 240_000;
 
 /**
- * Fetch a protected page up a ladder: a plain request, our proxy, then the paid anti-bot services
- * that have a key — the first rung that returns the real page wins. Free rungs first: they cost
- * nothing, and a site may let one through. One time budget for all of them, so a page cannot hold
- * the polling slot for minutes per rung.
+ * Fetch a protected page up a ladder: a plain request, our proxy, free proxies of the site's
+ * country, then the paid anti-bot services that have a key — the first rung that returns the real
+ * page wins. Free rungs first: they cost nothing, and a site may let one through. One time budget
+ * for all of them, so a page cannot hold the polling slot for minutes per rung.
  *
  * Only a source's own unavailability climbs — an HTTP error, a timeout, a challenge page. A
  * redirect off the host or a rewritten search is a verdict on the URL, and thrown as is (so is a
@@ -65,6 +67,15 @@ export async function fetchProtected({
     // A source that must go through the proxy has no direct rung.
     ...(useProxy ? [] : [free('plain', false)]),
     ...(hasProxy() ? [free('proxy', true)] : []),
+    // A geo-fenced site may let a stranger's proxy of its country through for free.
+    ...(protection.country === undefined
+      ? []
+      : [
+          {
+            ...freeProxyRung(url, host, protection.usable, protection.country),
+            paid: false,
+          },
+        ]),
     ...paidRungs(url, protection).map((rung) => ({ ...rung, paid: true })),
   ];
   const reasons: string[] = [];

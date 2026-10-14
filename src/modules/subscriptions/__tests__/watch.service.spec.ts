@@ -29,7 +29,7 @@ const build = (
     id: 'kufar',
     volatileParams: [],
     reportsRemoved,
-    protected: false,
+    pollCredits: 0,
     matches: () => true,
     fetch: jest.fn().mockResolvedValue({ listings: fetched, complete, capped }),
   };

@@ -2,7 +2,7 @@ import { defineSource } from '../source-definition';
 
 import { HOST, PROTECTION, SEARCH_PATH, parsePage } from './idriver.parser';
 
-/** idriver.by — the only source so far that only a paid anti-bot service can read (see PROTECTION). */
+/** idriver.by — the first protected source: a Belarusian IP gets through (see PROTECTION). */
 export const idriver = defineSource({
   id: 'idriver',
   host: HOST,

@@ -35,12 +35,19 @@ interface Provider {
   retry: ReadonlySet<number>;
   /** Header with what the call actually cost, when the provider reports it. */
   costHeader?: string;
+  /** The longest one call may take — what is left of the ladder's budget goes to the next. */
+  maxMs: number;
+  /** Not worth asking with less time than this left (a provider that retries on its side). */
+  minMs?: number;
 }
 
+// A rendered page with its settle time and the provider's own bypass fit in a minute.
+const PROVIDER_MAX_MS = 60_000;
+
 /**
- * The paid rungs, in order. ZenRows first: 5000 free credits a month against Scrape.do's 1000, at
- * the same 10 per protected page (25 with rendering). Rendering is asked for only when the source
- * needs it — it is billed on top, and forcing it burned most of a month's tier in the prototype.
+ * The paid rungs, in order of their free tiers (PRODUCT_PLAN.md § «Платная ступень»). Rendering is
+ * asked for only when the source needs it — it is billed on top, and forcing it burned most of a
+ * month's tier in the prototype.
  */
 const PROVIDERS: readonly Provider[] = [
   {
@@ -60,6 +67,7 @@ const PROVIDERS: readonly Provider[] = [
     // 401 a bad key, 402 the month's credits gone. 429 is the concurrency limit — it clears.
     spent: new Set([401, 402]),
     retry: new Set([422, 429]),
+    maxMs: PROVIDER_MAX_MS,
   },
   {
     name: 'scrapedo',
@@ -81,6 +89,30 @@ const PROVIDERS: readonly Provider[] = [
     // It switches the residential tier and rendering on by itself where a domain needs them, so
     // the header is the only honest account of the cost.
     costHeader: 'scrape.do-request-cost',
+    maxMs: PROVIDER_MAX_MS,
+  },
+  {
+    // 1000 credits a month, billed only for a 200/404 — a failed bypass costs nothing, which suits
+    // the last rung.
+    name: 'scrapeops',
+    keyVar: 'SCRAPEOPS_API_KEY',
+    requestUrl: (target, key, { country, renderWaitMs }) => {
+      // The residential pool: the standard one has no Belarus, and Cloudflare lets only it through.
+      const params = new URLSearchParams({ api_key: key, url: target, residential: 'true' });
+      if (country) params.set('country', country);
+      if (renderWaitMs !== undefined) {
+        params.set('render_js', 'true');
+        params.set('wait', String(renderWaitMs));
+      }
+      return `https://proxy.scrapeops.io/v1/?${params.toString()}`;
+    },
+    // 401 credits gone, 403 a bad key. 429 is its one-at-a-time limit — polls never overlap (one
+    // polling slot), so it does not come up; 500 is it giving up after its own retries.
+    spent: new Set([401, 403]),
+    retry: new Set(),
+    // It retries the target on its side for up to 2 minutes before answering.
+    maxMs: 150_000,
+    minMs: 130_000,
   },
 ];
 
@@ -115,10 +147,12 @@ async function scrape(
 ): Promise<string> {
   const key = process.env[provider.keyVar];
   if (!key) throw new ProviderUnavailableError('no key');
+  // Not asked at all — like a missing key (PaidRungsUnavailableError counts on that).
+  if (timeoutMs < (provider.minMs ?? 0)) throw new ProviderUnavailableError('not enough time left');
   if ((spentUntil.get(provider.name) ?? 0) > Date.now()) {
     throw new ProviderUnavailableError('spent or refused earlier — skipped for a day');
   }
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + Math.min(timeoutMs, provider.maxMs);
   for (let attempt = 0; ; attempt++) {
     const status = await call(provider, provider.requestUrl(target, key, protection), deadline);
     if (typeof status === 'string') return status;

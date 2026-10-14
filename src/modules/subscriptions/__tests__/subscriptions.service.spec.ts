@@ -13,7 +13,7 @@ import {
   MAX_SEEN_PER_SUBSCRIPTION,
   MAX_SUBSCRIPTIONS_PER_USER,
   SubscriptionLimitError,
-  MAX_PROTECTED_SUBSCRIPTIONS,
+  DAILY_CREDIT_BUDGET,
   ProtectedLimitError,
   SubscriptionsService,
 } from '../subscriptions.service';
@@ -63,6 +63,7 @@ const build = () => {
 
   const subs = {
     findOneBy: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
     findOneByOrFail: jest.fn().mockResolvedValue(active()),
     countBy: jest.fn().mockResolvedValue(0),
     create: jest.fn((entity: Partial<Subscription>) => entity as Subscription),
@@ -88,8 +89,12 @@ const build = () => {
     seen as unknown as Repository<SeenListing>,
     users as unknown as Repository<User>,
     {
-      get: () => ({ volatileParams: ['page', 'sort'] }),
-      protectedIds: () => ['idriver'],
+      // idriver is the paid one: a rendered page, 25 credits a poll.
+      get: (id: string) => ({
+        volatileParams: ['page', 'sort'],
+        pollCredits: id === 'idriver' ? 25 : 0,
+      }),
+      paidIds: () => ['idriver'],
     } as unknown as SourceRegistry,
   );
   return { subs, users, seen, manager, txManager, insert, txInsert, service };
@@ -98,23 +103,40 @@ const build = () => {
 const addInput = { user: { telegramId: 42 }, source: 'kufar' as const, url: 'https://kufar.by/l' };
 
 describe('SubscriptionsService.add', () => {
-  // Paid anti-bot reads are bounded by free tiers — one cap for the whole bot.
-  it('refuses a protected source once the bot is at its cap, counting active ones bot-wide', async () => {
-    const { subs, service } = build();
-    subs.countBy.mockResolvedValueOnce(0).mockResolvedValueOnce(MAX_PROTECTED_SUBSCRIPTIONS);
+  // Paid anti-bot reads are bounded by free tiers — one daily credit budget for the whole bot.
+  describe('the daily credit budget', () => {
+    const idriver = {
+      ...addInput,
+      source: 'idriver' as const,
+      url: 'https://idriver.by/auto-parts/a/b',
+    };
+    const activeIdriver = (n: number) => Array.from({ length: n }, () => ({ source: 'idriver' }));
 
-    await expect(
-      service.add({ ...addInput, source: 'idriver', url: 'https://idriver.by/auto-parts/a/b' }),
-    ).rejects.toBeInstanceOf(ProtectedLimitError);
-    expect(subs.countBy).toHaveBeenLastCalledWith({ source: In(['idriver']), pausedAt: IsNull() });
+    it('admits a protected subscription that lands exactly on the budget', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(activeIdriver(DAILY_CREDIT_BUDGET / 25 - 1));
+
+      await expect(service.add(idriver)).resolves.toBeDefined();
+      expect(subs.find).toHaveBeenCalledWith({
+        select: { source: true },
+        where: { source: In(['idriver']), pausedAt: IsNull() },
+      });
+    });
+
+    it('refuses one that would go past it', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(activeIdriver(DAILY_CREDIT_BUDGET / 25));
+
+      await expect(service.add(idriver)).rejects.toBeInstanceOf(ProtectedLimitError);
+    });
   });
 
-  it('does not count the protected cap for an ordinary source', async () => {
+  it('does not look at the budget for an ordinary source', async () => {
     const { subs, service } = build();
 
     await service.add(addInput);
 
-    expect(subs.countBy).toHaveBeenCalledTimes(1);
+    expect(subs.find).not.toHaveBeenCalled();
   });
 
   it('refuses a fresh add once the user is at the active cap', async () => {

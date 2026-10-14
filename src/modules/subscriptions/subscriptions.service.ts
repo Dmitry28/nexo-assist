@@ -23,16 +23,18 @@ export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
 export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 
-// Bot-wide cap on active subscriptions to protected sources (paid anti-bot reads). The free tiers
-// bound it: a rendered page costs ~25 credits, ZenRows' 5000 plus Scrape.do's 1000 a month cover
-// ~7 daily polls in all (PRODUCT_PLAN.md § «Платная ступень»). Owner's choice, 2026-10-13.
-export const MAX_PROTECTED_SUBSCRIPTIONS = 5;
+// Paid credits a day the active subscriptions to protected sources may cost in all, each at its
+// worst (SourceAdapter.pollCredits), assuming one run a day (WATCH_CRON's default). One rule for
+// everyone (owner, 2026-10-13); the arithmetic — PRODUCT_PLAN.md § «Платная ступень».
+// TODO [L]: baselines and /check poll on top of the daily run and are not counted — ScrapeOps'
+// tier, outside the sum, is their margin.
+export const DAILY_CREDIT_BUDGET = 200;
 
 /** The user already watches this search (matched by normalized URL). */
 export class DuplicateSubscriptionError extends Error {}
 /** The user hit MAX_SUBSCRIPTIONS_PER_USER. */
 export class SubscriptionLimitError extends Error {}
-/** The bot hit MAX_PROTECTED_SUBSCRIPTIONS. */
+/** The subscription would take the bot past DAILY_CREDIT_BUDGET. */
 export class ProtectedLimitError extends Error {}
 
 /** Telegram account details captured from `ctx.from` at subscribe time. */
@@ -154,7 +156,7 @@ export class SubscriptionsService {
 
   /**
    * Throw once the user is at the active-subscription cap, or — for a protected source — the bot
-   * at its cap for those. Counts active only — auto-paused subs create no scraping load, so they
+   * would go past its daily credit budget. Counts active only — auto-paused subs create no scraping load, so they
    * must not lock anyone out.
    */
   private async assertUnderActiveCap(
@@ -163,12 +165,16 @@ export class SubscriptionsService {
   ): Promise<void> {
     const activeCount = await this.subs.countBy({ userId, pausedAt: IsNull() });
     if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) throw new SubscriptionLimitError();
-    // NOTE: count-then-insert, so two adds at once can make it 6 — the bot handles updates one
-    // by one, and one extra slot costs a few days of credits, not an outage.
-    const paid = this.sources.protectedIds();
-    if (!paid.includes(source)) return;
-    const paidCount = await this.subs.countBy({ source: In(paid), pausedAt: IsNull() });
-    if (paidCount >= MAX_PROTECTED_SUBSCRIPTIONS) throw new ProtectedLimitError();
+    const cost = (id: SourceId): number => this.sources.get(id)?.pollCredits ?? 0;
+    if (cost(source) === 0) return;
+    // NOTE: count-then-insert, so two adds at once can overshoot by one — the bot handles updates
+    // one by one, and one extra poll costs a few days of credits, not an outage.
+    const active = await this.subs.find({
+      select: { source: true },
+      where: { source: In(this.sources.paidIds()), pausedAt: IsNull() },
+    });
+    const spent = active.reduce((sum, sub) => sum + cost(sub.source), 0);
+    if (spent + cost(source) > DAILY_CREDIT_BUDGET) throw new ProtectedLimitError();
   }
 
   /** Re-activate a paused subscription (user re-sent its URL): clear pause + failure streak. */

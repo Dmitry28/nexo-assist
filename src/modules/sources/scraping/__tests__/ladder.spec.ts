@@ -1,6 +1,8 @@
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
+import { PAID_SCRAPER_ORIGIN } from '@/common/paid-scrapers';
 
 import { PaidRungsUnavailableError, SourceUnavailableError } from '../../source-adapter';
+import { resetFreeProxies } from '../free-proxies';
 import { fetchProtected } from '../ladder';
 import type { Protection } from '../ladder';
 import { resetSpentProviders } from '../providers';
@@ -9,7 +11,8 @@ const fetchMock = undiciFetchMock();
 
 const REAL = '<html><select id="sorter"></select></html>';
 const CHALLENGE = '<html>Just a moment…</html>';
-const protection: Protection = { usable: (html) => html.includes('id="sorter"'), country: 'by' };
+// No country: the free-proxy rung has its own spec (free-proxies.spec.ts).
+const protection: Protection = { usable: (html) => html.includes('id="sorter"') };
 const page = (body: string, status = 200): Response => new Response(body, { status });
 const get = () => fetchProtected({ url: 'https://x.by/a', host: 'x.by', protection });
 /** The provider each call went to, by host — the plain rung is the target itself. */
@@ -18,6 +21,7 @@ const calledHosts = (): string[] => fetchMock.mock.calls.map(([url]) => new URL(
 describe('fetchProtected', () => {
   beforeEach(() => {
     resetSpentProviders();
+    resetFreeProxies();
     delete process.env.SCRAPE_PROXY_URL;
     process.env.ZENROWS_API_KEY = 'zr-secret';
     process.env.SCRAPE_DO_API_KEY = 'sd-secret';
@@ -42,23 +46,33 @@ describe('fetchProtected', () => {
 
     await expect(get()).resolves.toBe(REAL);
     expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com', 'api.scrape.do']);
-    // The geo and the anti-bot tier go to the provider; no render unless the source asks.
+    // The anti-bot tier goes to the provider; no render unless the source asks.
     const zenrows = new URL(String(fetchMock.mock.calls[1][0])).searchParams;
-    expect(zenrows.get('proxy_country')).toBe('by');
     expect(zenrows.get('premium_proxy')).toBe('true');
     expect(zenrows.has('js_render')).toBe(false);
   });
 
-  it('asks for a render and its settle time only when the source needs one', async () => {
-    fetchMock.mockResolvedValueOnce(page(CHALLENGE)).mockResolvedValueOnce(page(REAL));
+  it('tries free proxies of the country, then asks the provider for that country and a render', async () => {
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE)) // plain
+      .mockResolvedValueOnce(page('')) // the free-proxy lists: empty today
+      .mockResolvedValueOnce(page('{"data":[]}'))
+      .mockResolvedValueOnce(page(REAL)); // zenrows
 
     await fetchProtected({
       url: 'https://x.by/a',
       host: 'x.by',
-      protection: { ...protection, renderWaitMs: 8000 },
+      protection: { ...protection, country: 'by', renderWaitMs: 8000 },
     });
 
-    const zenrows = new URL(String(fetchMock.mock.calls[1][0])).searchParams;
+    expect(calledHosts()).toEqual([
+      'x.by',
+      'raw.githubusercontent.com',
+      'proxylist.geonode.com',
+      'api.zenrows.com',
+    ]);
+    const zenrows = new URL(String(fetchMock.mock.calls[3][0])).searchParams;
+    expect(zenrows.get('proxy_country')).toBe('by');
     expect(zenrows.get('js_render')).toBe('true');
     expect(zenrows.get('wait')).toBe('8000');
   });
@@ -79,6 +93,21 @@ describe('fetchProtected', () => {
     expect(message).toContain('zenrows: request failed');
     expect(message).toContain('scrapedo: not the page');
     expect(JSON.stringify({ message, cause, stack: (err as Error).stack })).not.toMatch(/secret/);
+  });
+
+  // Their URLs carry the key: OTel must skip them and Sentry's breadcrumbs scrub them.
+  it('reaches every paid service at an origin the telemetry knows to hide', async () => {
+    process.env.SCRAPEOPS_API_KEY = 'so-secret';
+    fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
+
+    await get().catch(() => undefined);
+
+    const paid = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => !url.startsWith('https://x.by'));
+    expect(paid).toHaveLength(3);
+    for (const url of paid) expect(url).toMatch(PAID_SCRAPER_ORIGIN);
+    delete process.env.SCRAPEOPS_API_KEY;
   });
 
   it('skips a provider without a key, saying so', async () => {
