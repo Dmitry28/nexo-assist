@@ -119,8 +119,24 @@ describe('freeProxyRung', () => {
 
     await expect(rung().run(30_000)).rejects.toThrow('1 free by proxies failed');
     fetchMock.mockClear();
-    await expect(rung().run(30_000)).rejects.toThrow('no free by proxy listed');
+    await expect(rung().run(30_000)).rejects.toThrow('every free by proxy failed x.by this hour');
     expect(proxiedCalls()).toHaveLength(0);
+  });
+
+  // Measured: the proxies that read idriver and av.by never got through bid.cars.
+  it('keeps a proxy that failed one site for the others', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.includes('githubusercontent')
+          ? page('http://1.1.1.1:80')
+          : page(url.startsWith('https://y.by') ? 'Just a moment' : REAL),
+      ),
+    );
+
+    await expect(freeProxyRung('https://y.by/a', 'y.by', usable, 'by').run(30_000)).rejects.toThrow(
+      '1 free by proxies failed',
+    );
+    await expect(rung().run(30_000)).resolves.toBe(REAL);
   });
 
   // Cleartext through a stranger's proxy could be altered on the way.

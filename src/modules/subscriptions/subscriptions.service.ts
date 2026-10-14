@@ -26,8 +26,9 @@ export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 // Paid credits a day the active subscriptions to protected sources may cost in all, each at its
 // worst (SourceAdapter.pollCredits), assuming one run a day (WATCH_CRON's default). One rule for
 // everyone (owner, 2026-10-13); the arithmetic — PRODUCT_PLAN.md § «Платная ступень».
-// TODO [L]: baselines and /check poll on top of the daily run and are not counted — ScrapeOps'
-// tier, outside the sum, is their margin.
+// TODO [L]: baselines and /check poll on top of the daily run and are not counted — the tiers
+// outside the sum (ScrapeOps; ScrapingAnt and ScraperAPI for sites without a country) are their
+// margin.
 export const DAILY_CREDIT_BUDGET = 200;
 
 /** The user already watches this search (matched by normalized URL). */

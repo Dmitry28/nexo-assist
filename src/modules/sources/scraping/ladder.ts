@@ -27,10 +27,11 @@ export interface Protection {
   renderWaitMs?: number;
 }
 
-// One page's whole ladder, every rung included: the free rungs take at most 30 + 30 + 25 s (the
-// last with its list fetch), which leaves ZenRows and Scrape.do their minute each; ScrapeOps (2 min
-// of its own retries) only gets a turn when the rungs before it failed fast — no key, spent.
-// WatchStatus's stuck-run arithmetic counts this per protected poll.
+// One page's whole ladder, every rung included. The free rungs take at most 30 + 30 s, plus 25 s
+// of free proxies (with their list fetch) for a site with a country, or 30 + 30 s of ScrapingAnt
+// and ScraperAPI for one without (providers.ts) — either way ZenRows and Scrape.do keep their
+// minute each; ScrapeOps (2 min of its own retries) only gets a turn when the rungs before it
+// failed fast — no key, spent. WatchStatus's stuck-run arithmetic counts this per protected poll.
 const LADDER_BUDGET_MS = 240_000;
 
 /**

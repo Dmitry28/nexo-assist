@@ -216,6 +216,16 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   SCRAPEOPS_API_KEY?: string;
 
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SCRAPINGANT_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SCRAPER_API_KEY?: string;
+
   /** Base pause between subscription polls, in ms — paces the scraper off a source. */
   @IsNumber()
   @Min(0)
