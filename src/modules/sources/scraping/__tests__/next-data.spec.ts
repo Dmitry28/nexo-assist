@@ -127,8 +127,16 @@ describe('parseNextData', () => {
     expect(parseNextData(wrap('{"props":{"a":1}}'))).toEqual({ props: { a: 1 } });
   });
 
+  // av.by's tag carries one more attribute.
+  it('parses a tag with extra attributes', () => {
+    const html =
+      '<script id="__NEXT_DATA__" type="application/json" crossorigin="anonymous">{}</script>';
+    expect(parseNextData(html)).toEqual({});
+  });
+
   it.each([
     ['the open tag is absent', '<html>nothing here</html>'],
+    ['the open tag is cut short', '{"props":{}}</script><script id="__NEXT_DATA__"'],
     ['the closing script tag is absent', '<script id="__NEXT_DATA__" type="application/json">{}'],
     ['the JSON is malformed', wrap('{not json')],
     // A blob that parses to a non-object is not a page — it must not reach the parsers as one.

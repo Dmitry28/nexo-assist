@@ -1,3 +1,6 @@
+import { avBy } from './av-by/av-by.source';
+import { bamper } from './bamper/bamper.source';
+import { bidCars } from './bid-cars/bid-cars.source';
 import { gcn } from './gcn/gcn.source';
 import { ghb } from './ghb/ghb.source';
 import { gridom } from './gridom/gridom.source';
@@ -24,6 +27,9 @@ export const SOURCES = [
   gridom,
   gcn,
   idriver,
+  avBy,
+  bamper,
+  bidCars,
 ] as const;
 
 /**

@@ -15,12 +15,15 @@ start; more frequent once throttling/dedupe land).
 - Sources: **kufar (sale and long-term rent), kufar travel (per-night rent), realt, vacancies from
   gsz.gov.by (state vacancy bank) and rabota.by, and fixed pages — ghb.by's price list,
   grodnorik.gov.by's auction notices, prometr.by new-build complexes, gridom.by developers'
-  units and gcn.by state auctions (no paging there), and used car parts from idriver.by** — a site
-  behind anti-bot protection (such subscriptions share the bot's daily paid-credit budget; one past
-  it is refused) — via the adapter registry; each search is fetched newest-first, and
-  a run looks at its **newest 150 listings** (up to 5 pages) — a pasted sort or page number is
-  overridden. A search that gains more than that between two runs loses the rest (the owner is
-  told via Sentry).
+  units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
+  used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
+  `/filter` links ignore their filters), US auction lots from bid.cars** — via the adapter
+  registry. A paged search is fetched newest-first, and a run looks at its **newest 150 listings**
+  (up to 5 pages) — a pasted sort or page number is overridden; a search that gains more than that
+  between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
+  first page only (each page may be paid; such subscriptions share the bot's daily paid-credit
+  budget, one past it is refused): av.by's 25 «актуальные» and bid.cars's first 50 lots by auction
+  date — neither sorts by newest in a link.
 - Events: **new listings, price changes and removals**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies (or as the site words it — a salary range), address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's
