@@ -14,7 +14,13 @@ const CHALLENGE = '<html>Just a moment…</html>';
 // No country: the free-proxy rung has its own spec (free-proxies.spec.ts).
 const protection: Protection = { usable: (html) => html.includes('id="sorter"') };
 const page = (body: string, status = 200): Response => new Response(body, { status });
-const get = () => fetchProtected({ url: 'https://x.by/a', host: 'x.by', protection });
+const get = (asked = protection) =>
+  fetchProtected({ url: 'https://x.by/a', host: 'x.by', protection: asked });
+/** Keys for the two providers that serve only sites without a country (afterEach drops them). */
+const withSpareKeys = (): void => {
+  process.env.SCRAPINGANT_API_KEY = 'sa-secret';
+  process.env.SCRAPER_API_KEY = 'sapi-secret';
+};
 /** The provider each call went to, by host — the plain rung is the target itself. */
 const calledHosts = (): string[] => fetchMock.mock.calls.map(([url]) => new URL(String(url)).host);
 
@@ -29,6 +35,8 @@ describe('fetchProtected', () => {
   afterEach(() => {
     delete process.env.ZENROWS_API_KEY;
     delete process.env.SCRAPE_DO_API_KEY;
+    delete process.env.SCRAPINGANT_API_KEY;
+    delete process.env.SCRAPER_API_KEY;
   });
 
   it('stops at the first free rung that returns the real page — nothing paid', async () => {
@@ -97,7 +105,9 @@ describe('fetchProtected', () => {
 
   // Their URLs carry the key: OTel must skip them and Sentry's breadcrumbs scrub them.
   it('reaches every paid service at an origin the telemetry knows to hide', async () => {
+    withSpareKeys();
     process.env.SCRAPEOPS_API_KEY = 'so-secret';
+    process.env.SCRAPFLY_API_KEY = 'sf-secret';
     fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
 
     await get().catch(() => undefined);
@@ -105,9 +115,76 @@ describe('fetchProtected', () => {
     const paid = fetchMock.mock.calls
       .map(([url]) => String(url))
       .filter((url) => !url.startsWith('https://x.by'));
-    expect(paid).toHaveLength(3);
+    expect(paid).toHaveLength(6);
     for (const url of paid) expect(url).toMatch(PAID_SCRAPER_ORIGIN);
     delete process.env.SCRAPEOPS_API_KEY;
+    delete process.env.SCRAPFLY_API_KEY;
+  });
+
+  it('reads the page out of ScrapFly’s JSON, the last rung', async () => {
+    delete process.env.ZENROWS_API_KEY;
+    delete process.env.SCRAPE_DO_API_KEY;
+    process.env.SCRAPFLY_API_KEY = 'sf-secret';
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE))
+      .mockResolvedValueOnce(page(JSON.stringify({ result: { content: REAL, status_code: 200 } })));
+
+    await expect(get()).resolves.toBe(REAL);
+    expect(calledHosts()).toEqual(['x.by', 'api.scrapfly.io']);
+    expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('asp')).toBe('true');
+    delete process.env.SCRAPFLY_API_KEY;
+  });
+
+  it('asks ScrapingAnt, then ScraperAPI, first for a site without a country', async () => {
+    withSpareKeys();
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE)) // plain
+      .mockResolvedValueOnce(page('', 500)) // scrapingant
+      .mockResolvedValueOnce(page(REAL)); // scraperapi
+
+    await expect(get({ usable: protection.usable, renderWaitMs: 10_000 })).resolves.toBe(REAL);
+
+    expect(calledHosts()).toEqual(['x.by', 'api.scrapingant.com', 'api.scraperapi.com']);
+    const [antUrl, antInit] = fetchMock.mock.calls[1] as [string, { headers?: object }];
+    // ScrapingAnt's key travels in a header, never in the URL.
+    expect(antUrl).not.toContain('sa-secret');
+    expect(antInit.headers).toEqual({ 'x-api-key': 'sa-secret' });
+    const ant = new URL(antUrl).searchParams;
+    expect(ant.get('browser')).toBe('true');
+    expect(Buffer.from(ant.get('js_snippet') ?? '', 'base64').toString()).toContain('10000');
+    expect(new URL(String(fetchMock.mock.calls[2][0])).searchParams.get('render')).toBe('true');
+  });
+
+  // Measured: a site's own block reaches us as ScraperAPI 500 / ScrapingAnt 423, a refused key as
+  // 401 / 403 — only the latter benches the provider.
+  it('benches ScrapingAnt for a refused key, not ScraperAPI for a blocked site', async () => {
+    withSpareKeys();
+    fetchMock.mockImplementation(() => Promise.resolve(page(CHALLENGE)));
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE)) // plain
+      .mockResolvedValueOnce(page('', 403)) // scrapingant: key refused
+      .mockResolvedValueOnce(page('', 500)); // scraperapi: the site blocked it
+    await get().catch(() => undefined);
+
+    fetchMock.mockClear();
+    await get().catch(() => undefined);
+
+    expect(calledHosts().slice(0, 2)).toEqual(['x.by', 'api.scraperapi.com']);
+  });
+
+  // Their free tiers cannot pick a country: for a geo-fenced site they would only hear «blocked».
+  it('leaves the two without a country out for a geo-fenced site', async () => {
+    withSpareKeys();
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('githubusercontent') ? page('') : page('', 500)),
+    );
+
+    const err = (await get({ ...protection, country: 'by' }).catch((e: unknown) => e)) as Error;
+
+    expect(calledHosts()).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/scrapingant|scraperapi/)]),
+    );
+    expect(err.message).not.toMatch(/scrapingant|scraperapi/);
   });
 
   it('skips a provider without a key, saying so', async () => {

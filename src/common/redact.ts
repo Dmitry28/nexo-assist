@@ -1,7 +1,8 @@
 // Query params that carry a credential: the paid anti-bot services take their key in the URL
-// (ZenRows `apikey`, Scrape.do `token`, ScrapeOps `api_key` — sources/scraping/providers.ts).
+// (ZenRows `apikey`, Scrape.do `token`, ScrapeOps and ScraperAPI `api_key`, ScrapFly `key` —
+// sources/scraping/providers.ts).
 // By name, not by host: a breadcrumb's query may be recorded apart from its URL.
-const SECRET_PARAM = /\b(apikey|api_key|token)=[^&\s"'#]+/gi;
+const SECRET_PARAM = /\b(apikey|api_key|token|key)=[^&\s"'#]+/gi;
 
 /** `text` with every credential-carrying query value replaced — for anything leaving the process. */
 export const redactSecrets = (text: string): string => text.replace(SECRET_PARAM, '$1=[redacted]');

@@ -29,6 +29,15 @@ interface Provider {
    * and OTel's spans are scrubbed for it (common/redact.ts, tracing.ts).
    */
   requestUrl(target: string, key: string, protection: Protection): string;
+  /** Request headers — where a provider takes its key, the key stays out of the URL. */
+  headers?(key: string): Record<string, string>;
+  /** The page out of the response body, for a provider that wraps it (ScrapFly: JSON). */
+  read?(body: string): string;
+  /**
+   * Whether its free tier can put the request in a given country. One that cannot is left out for
+   * a geo-fenced site: it would only hear «blocked».
+   */
+  targetsCountry: boolean;
   /** Statuses that mean «nothing more from this provider now» — spent or a refused key. */
   spent: ReadonlySet<number>;
   /** Statuses worth one more try on the same provider. */
@@ -43,6 +52,9 @@ interface Provider {
 
 // A rendered page with its settle time and the provider's own bypass fit in a minute.
 const PROVIDER_MAX_MS = 60_000;
+// The two that serve only sites without a country answered bid.cars in 13-14 s; half a minute
+// each keeps a stall from eating the minute ZenRows and Scrape.do need after them.
+const SPARE_MAX_MS = 30_000;
 
 /**
  * The paid rungs, in order of their free tiers (PRODUCT_PLAN.md § «Платная ступень»). Rendering is
@@ -50,6 +62,52 @@ const PROVIDER_MAX_MS = 60_000;
  * month's tier in the prototype.
  */
 const PROVIDERS: readonly Provider[] = [
+  {
+    // 10000 credits a month — the largest tier — but no Belarus and detected on idriver (423), so
+    // first only for sites without a country (bid.cars: 50 lots, 14 s).
+    name: 'scrapingant',
+    keyVar: 'SCRAPINGANT_API_KEY',
+    requestUrl: (target, _key, { renderWaitMs }) => {
+      const params = new URLSearchParams({
+        url: target,
+        browser: String(renderWaitMs !== undefined),
+      });
+      // No wait parameter, but an awaited js_snippet is one: without it bid.cars arrives as the
+      // shell with no cards (prototype, 25.09 and 27.09).
+      if (renderWaitMs !== undefined) {
+        const snippet = `await new Promise((r) => setTimeout(r, ${renderWaitMs}));`;
+        params.set('js_snippet', Buffer.from(snippet).toString('base64'));
+      }
+      return `https://api.scrapingant.com/v2/general?${params.toString()}`;
+    },
+    headers: (key) => ({ 'x-api-key': key }),
+    targetsCountry: false,
+    // 403 a wrong key (measured) or the month's credits gone (its docs); 409 its concurrency limit
+    // (docs) — it clears. A site's own 403/429 arrives as 423 «detected by the site» (measured
+    // 2026-10-15), never as a bench: asking again cost the prototype another ~22 s for the same.
+    spent: new Set([401, 403]),
+    retry: new Set([409]),
+    maxMs: SPARE_MAX_MS,
+  },
+  {
+    // 1000 credits a month; the free tier has no premium pool, so no country (a 403 «plan does
+    // not allow premium»). Its standard pool with render read bid.cars: 50 lots, 13 s.
+    name: 'scraperapi',
+    keyVar: 'SCRAPER_API_KEY',
+    requestUrl: (target, key, { renderWaitMs }) => {
+      const params = new URLSearchParams({ api_key: key, url: target });
+      // No wait parameter; its render waits for the page to settle by itself (measured enough).
+      if (renderWaitMs !== undefined) params.set('render', 'true');
+      return `https://api.scraperapi.com/?${params.toString()}`;
+    },
+    targetsCountry: false,
+    // 401 a bad key (measured), 403 the month's credits gone (docs; no premium is ever asked), 429
+    // concurrency. A site's own 401/403/429 arrives as 500 after its retries (measured 2026-10-15),
+    // so a blocked site never benches it.
+    spent: new Set([401, 403]),
+    retry: new Set([429]),
+    maxMs: SPARE_MAX_MS,
+  },
   {
     name: 'zenrows',
     keyVar: 'ZENROWS_API_KEY',
@@ -64,6 +122,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://api.zenrows.com/v1/?${params.toString()}`;
     },
+    targetsCountry: true,
     // 401 a bad key, 402 the month's credits gone. 429 is the concurrency limit — it clears.
     spent: new Set([401, 402]),
     retry: new Set([422, 429]),
@@ -81,7 +140,9 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://api.scrape.do/?${params.toString()}`;
     },
-    // 401 a bad token, 429 the month's credits gone (measured by the prototype).
+    targetsCountry: true,
+    // 401 a bad token or the month's requests gone (measured 2026-10-14: «Monthly request limit
+    // exceeded»), 429 the same per the prototype.
     // NOTE: Scrape.do passes the target's own status through, so a site answering 401/429 benches
     // it for a day too — the prototype ran with that; split on its target-status header if it bites.
     spent: new Set([401, 429]),
@@ -106,6 +167,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://proxy.scrapeops.io/v1/?${params.toString()}`;
     },
+    targetsCountry: true,
     // 401 credits gone, 403 a bad key. 429 is its one-at-a-time limit — polls never overlap (one
     // polling slot), so it does not come up; 500 is it giving up after its own retries.
     spent: new Set([401, 403]),
@@ -113,6 +175,43 @@ const PROVIDERS: readonly Provider[] = [
     // It retries the target on its side for up to 2 minutes before answering.
     maxMs: 150_000,
     minMs: 130_000,
+  },
+  {
+    // 1000 credits granted once at signup, never renewed, and an anti-bot page costs 25-80 of them
+    // (prototype) — the last reserve. Spent since before 2026-10-15 (owner's call to keep it:
+    // a paid top-up brings it back with no code change).
+    name: 'scrapfly',
+    keyVar: 'SCRAPFLY_API_KEY',
+    requestUrl: (target, key, { country, renderWaitMs }) => {
+      // asp is its anti-bot bypass — residential proxies and a browser where the site needs them.
+      const params = new URLSearchParams({ key, url: target, asp: 'true' });
+      if (country) params.set('country', country);
+      if (renderWaitMs !== undefined) {
+        params.set('render_js', 'true');
+        params.set('rendering_wait', String(renderWaitMs));
+      }
+      return `https://api.scrapfly.io/scrape?${params.toString()}`;
+    },
+    // The page only when the site itself answered 2xx — an envelope can carry its error page.
+    read: (body) => {
+      const { result } = JSON.parse(body) as {
+        result?: { content?: unknown; status_code?: unknown; success?: unknown };
+      };
+      const ok =
+        result?.success !== false &&
+        typeof result?.status_code === 'number' &&
+        result.status_code >= 200 &&
+        result.status_code < 300;
+      return ok && typeof result.content === 'string' ? result.content : '';
+    },
+    targetsCountry: true,
+    // 401 a bad key, 429 the credits gone (both measured 2026-10-15). 429 is also its concurrency
+    // limit — polls never overlap (one polling slot), so it does not come up.
+    spent: new Set([401, 429]),
+    retry: new Set(),
+    maxMs: PROVIDER_MAX_MS,
+    // An anti-bot request in less than this only times out.
+    minMs: 30_000,
   },
 ];
 
@@ -129,15 +228,20 @@ const spentUntil = new Map<string, number>();
 /** For specs: forget which providers were marked spent. */
 export const resetSpentProviders = (): void => spentUntil.clear();
 
-/** One paid rung per provider, in order — a rung without its key fails at once, saying so. */
+/**
+ * One paid rung per provider that can serve the site, in order — a rung without its key fails at
+ * once, saying so.
+ */
 export const paidRungs = (
   target: string,
   protection: Protection,
 ): { name: string; run: (timeoutMs: number) => Promise<string> }[] =>
-  PROVIDERS.map((provider) => ({
-    name: provider.name,
-    run: (timeoutMs) => scrape(provider, target, protection, timeoutMs),
-  }));
+  PROVIDERS.filter((provider) => protection.country === undefined || provider.targetsCountry).map(
+    (provider) => ({
+      name: provider.name,
+      run: (timeoutMs) => scrape(provider, target, protection, timeoutMs),
+    }),
+  );
 
 async function scrape(
   provider: Provider,
@@ -154,7 +258,12 @@ async function scrape(
   }
   const deadline = Date.now() + Math.min(timeoutMs, provider.maxMs);
   for (let attempt = 0; ; attempt++) {
-    const status = await call(provider, provider.requestUrl(target, key, protection), deadline);
+    const status = await call(
+      provider,
+      provider.requestUrl(target, key, protection),
+      provider.headers?.(key),
+      deadline,
+    );
     if (typeof status === 'string') return status;
     if (provider.spent.has(status)) {
       spentUntil.set(provider.name, Date.now() + SPENT_FOR_MS);
@@ -169,18 +278,29 @@ async function scrape(
 }
 
 /** One request: the body, or the status when it was not a 2xx. */
-async function call(provider: Provider, url: string, deadline: number): Promise<string | number> {
+async function call(
+  provider: Provider,
+  url: string,
+  headers: Record<string, string> | undefined,
+  deadline: number,
+): Promise<string | number> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
   try {
-    const res = await fetch(url, { signal: controller.signal }).catch(() => {
+    const res = await fetch(url, { headers, signal: controller.signal }).catch(() => {
       // A fresh error without `cause`: undici's carries the request URL, and with it the key.
       throw new SourceUnavailableError(controller.signal.aborted ? 'timed out' : 'request failed');
     });
     if (!res.ok) return res.status;
-    const html = await res.text().catch(() => {
+    const body = await res.text().catch(() => {
       throw new SourceUnavailableError('body failed');
     });
+    let html: string;
+    try {
+      html = provider.read ? provider.read(body) : body;
+    } catch {
+      throw new SourceUnavailableError('unreadable body');
+    }
     if (html.length === 0) throw new SourceUnavailableError('empty body');
     if (html.length > MAX_HTML_LENGTH) throw new SourceUnavailableError('response too large');
     const cost = provider.costHeader && res.headers.get(provider.costHeader);

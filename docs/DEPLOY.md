@@ -105,9 +105,8 @@
   вместо «6». Ссылка kufar с `?page=` теперь отдельный поиск (у kufar листание — `cursor`).
   Ещё два сайта — прейскурант ghb.by и аукционы grodnorik.gov.by; суммы с разделителем тысяч
   («1 500 – 2 000 руб.»).
-- **Ключи платной ступени** (лестница загрузки, idriver.by): зарегистрироваться на zenrows.com,
-  scrape.do и scrapeops.io (бесплатно, без карты), положить ключи в Secret командой
-  `npm run k8s:secrets ZENROWS_API_KEY SCRAPE_DO_API_KEY SCRAPEOPS_API_KEY` и в KeePassXC. Без них
+- **Ключи платной ступени** (лестница загрузки, idriver.by): все шесть уже в Secret (владелец,
+  2026-10-14), копия — в KeePassXC; сменить один — `npm run k8s:secrets <ИМЯ>`. Без них
   защищённый сайт читается только бесплатными ступенями. Там же проверить с сервера idriver через
   бесплатный белорусский прокси (в логе `via free by proxy`) — дома прошёл. Что это за ступень —
   [PRODUCT_PLAN.md](PRODUCT_PLAN.md) § «Платная ступень».
@@ -1033,9 +1032,12 @@ API кластера не выставляем в интернет; при ут�
 | `ZENROWS_API_KEY`      | zenrows.com → Dashboard → API Key → regenerate                     |
 | `SCRAPE_DO_API_KEY`    | scrape.do → Dashboard → API Token → regenerate                     |
 | `SCRAPEOPS_API_KEY`    | scrapeops.io → Dashboard → API Key → regenerate                    |
+| `SCRAPINGANT_API_KEY`  | scrapingant.com → Dashboard → API token → regenerate               |
+| `SCRAPER_API_KEY`      | scraperapi.com → Dashboard → API Key → regenerate                  |
+| `SCRAPFLY_API_KEY`     | scrapfly.io → Dashboard → API Key → rotate                         |
 
 **Колонка «как перевыпустить» — половина ценности записи:** утечка тогда не паника, а
-процедура на минуту. Первые четыре значения отзываемы, поэтому их потеря — неудобство, а не
+процедура на минуту. Все значения, кроме `ADMIN_TELEGRAM_ID`, отзываемы, поэтому их потеря — неудобство, а не
 катастрофа; `ADMIN_TELEGRAM_ID` отзыву не подлежит, но и секретом не является — он лежит
 в Secret только потому, что репозиторий публичный.
 

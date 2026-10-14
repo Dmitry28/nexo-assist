@@ -38,8 +38,9 @@ const LISTS: readonly { url: (country: string) => string; read: (body: string) =
 const LIST_TIMEOUT_MS = 5_000;
 const MAX_LIST_LENGTH = 1024 * 1024;
 const LIST_FRESH_FOR_MS = 60 * 60 * 1000;
-// An empty list — the fetch failed, or every entry failed this hour — is asked again sooner: the
-// next poll may otherwise pay for what a fresh list would have served free.
+// A list with nothing left for a site — the fetch failed, or every entry failed that site this
+// hour — is asked again sooner: the next poll may otherwise pay for what a fresh list would have
+// served free.
 const EMPTY_LIST_FRESH_FOR_MS = 5 * 60 * 1000;
 // How many proxies are tried at once, and for how long in all: the paid rungs after this one need
 // the rest of the ladder's budget.
@@ -83,9 +84,21 @@ export function parseProxyList(text: string): string[] {
     .map(([, ip, port]) => `${ip}:${port}`);
 }
 
+/**
+ * A country's list, with the proxies that failed each site. Per site, because a proxy one site
+ * blocks may serve another: measured, the two proxies that read idriver and av.by never got
+ * through bid.cars. A refetched list starts clean.
+ */
+interface CountryList {
+  at: number;
+  proxies: string[];
+  failed: Map<string, Set<string>>;
+}
+
 const logger = new Logger('scraping:free-proxies');
-const lists = new Map<string, { at: number; proxies: string[] }>();
-const loading = new Map<string, Promise<string[]>>();
+const lists = new Map<string, CountryList>();
+const loading = new Map<string, Promise<CountryList>>();
+/** The proxy that last returned a site's real page, per host. */
 const lastGood = new Map<string, string>();
 
 /** For specs: forget the cached lists and the proxies that worked. */
@@ -95,21 +108,33 @@ export const resetFreeProxies = (): void => {
   lastGood.clear();
 };
 
-/** The country's candidates — the cached list while fresh, one fetch at a time otherwise. */
-function candidates(country: string): Promise<string[]> {
+/** The list's proxies that have not failed this site. */
+const healthy = (list: CountryList, host: string): string[] =>
+  list.proxies.filter((proxy) => !list.failed.get(host)?.has(proxy));
+
+/**
+ * The country's list — the cached one while fresh for this site, one fetch at a time otherwise.
+ * NOTE: a refetch for one site clears what the others learned too — at worst one wasted race each.
+ */
+function listFor(country: string, host: string): Promise<CountryList> {
   const cached = lists.get(country);
-  const freshFor = cached?.proxies.length ? LIST_FRESH_FOR_MS : EMPTY_LIST_FRESH_FOR_MS;
-  if (cached && Date.now() - cached.at < freshFor) return Promise.resolve(cached.proxies);
+  const freshFor =
+    cached && healthy(cached, host).length > 0 ? LIST_FRESH_FOR_MS : EMPTY_LIST_FRESH_FOR_MS;
+  if (cached && Date.now() - cached.at < freshFor) return Promise.resolve(cached);
   const pending = loading.get(country) ?? load(country).finally(() => loading.delete(country));
   loading.set(country, pending);
   return pending;
 }
 
-async function load(country: string): Promise<string[]> {
+async function load(country: string): Promise<CountryList> {
   const texts = await Promise.all(LISTS.map((list) => fetchList(list, country)));
-  const proxies = [...new Set(texts.flatMap(parseProxyList))];
-  lists.set(country, { at: Date.now(), proxies });
-  return proxies;
+  const list = {
+    at: Date.now(),
+    proxies: [...new Set(texts.flatMap(parseProxyList))],
+    failed: new Map(),
+  };
+  lists.set(country, list);
+  return list;
 }
 
 /** One list's entries as text lines — empty when it fails, whatever the way. */
@@ -129,9 +154,10 @@ async function fetchList(list: (typeof LISTS)[number], country: string): Promise
 
 /**
  * The free rung for a geo-fenced site: a few public proxies of its country, raced — the first to
- * return the real page wins and is tried first next time. Proxies that failed leave this hour's
- * list (an emptied list is fetched again — see EMPTY_LIST_FRESH_FOR_MS). Only through the https
- * tunnel (fetchHtml `proxyUrl`), so all a stranger's proxy can do is fail.
+ * return the real page wins and is tried first for that site next time. Proxies that failed a site
+ * are not tried for it again this hour (a list with none left is fetched again — see
+ * EMPTY_LIST_FRESH_FOR_MS). Only through the https tunnel (fetchHtml `proxyUrl`), so all a
+ * stranger's proxy can do is fail.
  */
 export function freeProxyRung(
   url: string,
@@ -142,13 +168,19 @@ export function freeProxyRung(
   return {
     name: 'free-proxy',
     run: async (timeoutMs) => {
-      const listed = await candidates(country);
-      const sticky = lastGood.get(country);
+      const list = await listFor(country, host);
+      const sticky = lastGood.get(host);
       const picks = [
         ...(sticky === undefined ? [] : [sticky]),
-        ...listed.filter((proxy) => proxy !== sticky),
+        ...healthy(list, host).filter((proxy) => proxy !== sticky),
       ].slice(0, RACE_SIZE);
-      if (picks.length === 0) throw new SourceUnavailableError(`no free ${country} proxy listed`);
+      if (picks.length === 0) {
+        throw new SourceUnavailableError(
+          list.proxies.length === 0
+            ? `no free ${country} proxy listed`
+            : `every free ${country} proxy failed ${host} this hour`,
+        );
+      }
       const race = new AbortController();
       const attempt = async (proxy: string): Promise<{ proxy: string; html: string }> => {
         const html = await fetchHtml({
@@ -163,17 +195,19 @@ export function freeProxyRung(
       };
       try {
         const { proxy, html } = await Promise.any(picks.map(attempt));
-        lastGood.set(country, proxy);
+        lastGood.set(host, proxy);
         logger.log(`${host} via free ${country} proxy ${proxy}`);
         return html;
       } catch {
         // Whatever went wrong through a stranger's proxy — a refused tunnel, a block page, even a
-        // redirect off the host — says something about that IP, not about the URL: it is the
-        // proxy that failed, and the ladder goes on.
-        const failed = new Set(picks);
-        if (sticky !== undefined && failed.has(sticky)) lastGood.delete(country);
-        const entry = lists.get(country);
-        if (entry) entry.proxies = entry.proxies.filter((proxy) => !failed.has(proxy));
+        // redirect off the host — says something about that IP, not about the URL: the proxy
+        // failed this site, and the ladder goes on. Recorded on the list the picks came from: a
+        // refetch meanwhile starts clean.
+        const failed = list.failed.get(host) ?? new Set<string>();
+        for (const proxy of picks) failed.add(proxy);
+        list.failed.set(host, failed);
+        // Unless a concurrent poll of the site has found a new one meanwhile.
+        if (sticky !== undefined && lastGood.get(host) === sticky) lastGood.delete(host);
         throw new SourceUnavailableError(`${picks.length} free ${country} proxies failed`);
       } finally {
         // The losers' requests: nobody waits for them.
