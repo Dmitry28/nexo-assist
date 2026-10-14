@@ -35,6 +35,8 @@ const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
     userId: String(userId),
     user: { telegramId: userId },
     url: `u${id}`,
+    // A search of its own: subscriptions sharing one are polled — and tallied — as one.
+    normalizedUrl: `u${id}`,
     consecutiveFailures,
   });
 
@@ -460,6 +462,23 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // One dead search three users watch is one bad URL, not a broken adapter.
+  it('tallies a search shared by several subscriptions once', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    const sameSearch = (id: number) => ({ ...sub(id), normalizedUrl: 'u1' });
+    subscriptions.listActive.mockResolvedValue([sameSearch(1), sameSearch(2), sameSearch(3)]);
+    watch.poll.mockRejectedValue(new Error('search gone'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('Источник'));
+    // One fetch map for the whole run, handed to every poll.
+    const [[, first], [, second]] = watch.poll.mock.calls as [unknown, unknown][];
+    expect(first).toBeInstanceOf(Map);
+    expect(second).toBe(first);
   });
 
   // The pair the owner actually needs: the second morning of an outage says nothing new, and the

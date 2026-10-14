@@ -2,21 +2,37 @@ import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import { PAID_SCRAPER_ORIGIN } from '@/common/paid-scrapers';
 
 import { PaidRungsUnavailableError, SourceUnavailableError } from '../../source-adapter';
-import { resetFreeProxies } from '../free-proxies';
+import type * as SourceAdapterModule from '../../source-adapter';
+import { freeProxyRung } from '../free-proxies';
 import { fetchProtected } from '../ladder';
 import type { Protection } from '../ladder';
-import { resetSpentProviders } from '../providers';
+import { pageCredits, resetSpentProviders } from '../providers';
 
 const fetchMock = undiciFetchMock();
 
+// The free-proxy rung has its own spec (free-proxies.spec.ts); here it never finds a proxy, without
+// a request — the calls below are the target's and the paid services' alone.
+jest.mock('../free-proxies', () => {
+  const { SourceUnavailableError: Unavailable } =
+    jest.requireActual<typeof SourceAdapterModule>('../../source-adapter');
+  return {
+    freeProxyRung: jest.fn(() => ({
+      name: 'free-proxy',
+      run: () => Promise.reject(new Unavailable('no free proxy listed')),
+    })),
+  };
+});
+
 const REAL = '<html><select id="sorter"></select></html>';
 const CHALLENGE = '<html>Just a moment…</html>';
-// No country: the free-proxy rung has its own spec (free-proxies.spec.ts).
-const protection: Protection = { usable: (html) => html.includes('id="sorter"') };
+// A geo-fenced site: ZenRows, Scrape.do, ScrapeOps, ScrapFly serve it.
+const protection: Protection = { usable: (html) => html.includes('id="sorter"'), country: 'by' };
+// A site without a country: only ScrapingAnt and ScraperAPI serve it.
+const noCountry: Protection = { usable: protection.usable };
 const page = (body: string, status = 200): Response => new Response(body, { status });
 const get = (asked = protection) =>
   fetchProtected({ url: 'https://x.by/a', host: 'x.by', protection: asked });
-/** Keys for the two providers that serve only sites without a country (afterEach drops them). */
+/** Keys for the two providers of sites without a country (afterEach drops them). */
 const withSpareKeys = (): void => {
   process.env.SCRAPINGANT_API_KEY = 'sa-secret';
   process.env.SCRAPER_API_KEY = 'sapi-secret';
@@ -27,7 +43,6 @@ const calledHosts = (): string[] => fetchMock.mock.calls.map(([url]) => new URL(
 describe('fetchProtected', () => {
   beforeEach(() => {
     resetSpentProviders();
-    resetFreeProxies();
     delete process.env.SCRAPE_PROXY_URL;
     process.env.ZENROWS_API_KEY = 'zr-secret';
     process.env.SCRAPE_DO_API_KEY = 'sd-secret';
@@ -60,26 +75,17 @@ describe('fetchProtected', () => {
     expect(zenrows.has('js_render')).toBe(false);
   });
 
-  it('tries free proxies of the country, then asks the provider for that country and a render', async () => {
+  it('asks the provider for the site’s country and a render', async () => {
     fetchMock
       .mockResolvedValueOnce(page(CHALLENGE)) // plain
-      .mockResolvedValueOnce(page('')) // the free-proxy lists: empty today
-      .mockResolvedValueOnce(page('{"data":[]}'))
       .mockResolvedValueOnce(page(REAL)); // zenrows
 
-    await fetchProtected({
-      url: 'https://x.by/a',
-      host: 'x.by',
-      protection: { ...protection, country: 'by', renderWaitMs: 8000 },
-    });
+    await expect(get({ ...protection, renderWaitMs: 8000 })).resolves.toBe(REAL);
 
-    expect(calledHosts()).toEqual([
-      'x.by',
-      'raw.githubusercontent.com',
-      'proxylist.geonode.com',
-      'api.zenrows.com',
-    ]);
-    const zenrows = new URL(String(fetchMock.mock.calls[3][0])).searchParams;
+    // Free proxies of the country first: the paid rung is reached only past them.
+    expect(freeProxyRung).toHaveBeenCalledWith('https://x.by/a', 'x.by', protection.usable, 'by');
+    expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com']);
+    const zenrows = new URL(String(fetchMock.mock.calls[1][0])).searchParams;
     expect(zenrows.get('proxy_country')).toBe('by');
     expect(zenrows.get('js_render')).toBe('true');
     expect(zenrows.get('wait')).toBe('8000');
@@ -111,6 +117,7 @@ describe('fetchProtected', () => {
     fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
 
     await get().catch(() => undefined);
+    await get(noCountry).catch(() => undefined);
 
     const paid = fetchMock.mock.calls
       .map(([url]) => String(url))
@@ -135,14 +142,14 @@ describe('fetchProtected', () => {
     delete process.env.SCRAPFLY_API_KEY;
   });
 
-  it('asks ScrapingAnt, then ScraperAPI, first for a site without a country', async () => {
+  it('asks ScrapingAnt, then ScraperAPI, for a site without a country', async () => {
     withSpareKeys();
     fetchMock
       .mockResolvedValueOnce(page(CHALLENGE)) // plain
       .mockResolvedValueOnce(page('', 500)) // scrapingant
       .mockResolvedValueOnce(page(REAL)); // scraperapi
 
-    await expect(get({ usable: protection.usable, renderWaitMs: 10_000 })).resolves.toBe(REAL);
+    await expect(get({ ...noCountry, renderWaitMs: 10_000 })).resolves.toBe(REAL);
 
     expect(calledHosts()).toEqual(['x.by', 'api.scrapingant.com', 'api.scraperapi.com']);
     const [antUrl, antInit] = fetchMock.mock.calls[1] as [string, { headers?: object }];
@@ -164,27 +171,30 @@ describe('fetchProtected', () => {
       .mockResolvedValueOnce(page(CHALLENGE)) // plain
       .mockResolvedValueOnce(page('', 403)) // scrapingant: key refused
       .mockResolvedValueOnce(page('', 500)); // scraperapi: the site blocked it
-    await get().catch(() => undefined);
+    await get(noCountry).catch(() => undefined);
 
     fetchMock.mockClear();
-    await get().catch(() => undefined);
+    await get(noCountry).catch(() => undefined);
 
     expect(calledHosts().slice(0, 2)).toEqual(['x.by', 'api.scraperapi.com']);
   });
 
-  // Their free tiers cannot pick a country: for a geo-fenced site they would only hear «blocked».
-  it('leaves the two without a country out for a geo-fenced site', async () => {
+  // Each pool is its own free tiers and its own budget (poolOf): a site never spends the other's.
+  it('keeps the pools apart: a geo site never reaches the global two, nor the reverse', async () => {
     withSpareKeys();
-    fetchMock.mockImplementation((url: string) =>
-      Promise.resolve(url.includes('githubusercontent') ? page('') : page('', 500)),
-    );
+    fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
 
-    const err = (await get({ ...protection, country: 'by' }).catch((e: unknown) => e)) as Error;
+    await get().catch(() => undefined);
+    const geo = calledHosts();
+    fetchMock.mockClear();
+    await get(noCountry).catch(() => undefined);
 
-    expect(calledHosts()).not.toEqual(
+    expect(geo).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/scrapingant|scraperapi/)]),
     );
-    expect(err.message).not.toMatch(/scrapingant|scraperapi/);
+    expect(calledHosts()).toEqual(['x.by', 'api.scrapingant.com', 'api.scraperapi.com']);
+    // Only the geo site had free proxies of its country to try.
+    expect(freeProxyRung).toHaveBeenCalledTimes(1);
   });
 
   it('skips a provider without a key, saying so', async () => {
@@ -282,5 +292,18 @@ describe('fetchProtected', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [, init] = fetchMock.mock.calls[1] as [string, { dispatcher?: unknown }];
     expect(init.dispatcher).toBeDefined();
+  });
+});
+
+// What a page costs is what the daily budget is sized by (subscriptions.service.ts).
+describe('pageCredits', () => {
+  const usable = (): boolean => true;
+  it.each<[string, Protection, number]>([
+    ['a geo site', { usable, country: 'by' }, 10],
+    ['a rendered geo site', { usable, country: 'by', renderWaitMs: 10_000 }, 25],
+    // ScrapingAnt's browser is one price, rendered or not.
+    ['a rendered site without a country', { usable, renderWaitMs: 10_000 }, 10],
+  ])('%s costs %p', (_label, asked, credits) => {
+    expect(pageCredits(asked)).toBe(credits);
   });
 });

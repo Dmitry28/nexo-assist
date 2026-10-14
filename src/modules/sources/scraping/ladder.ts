@@ -22,16 +22,17 @@ export interface Protection {
   country?: string;
   /**
    * Render the page in a browser and wait this long (ms) — only for a page behind a script gate.
-   * Billed on top of the anti-bot tier (25 credits a page instead of 10).
+   * Billed on top of the anti-bot tier by the geo providers (25 credits a page instead of 10).
    */
   renderWaitMs?: number;
 }
 
-// One page's whole ladder, every rung included. The free rungs take at most 30 + 30 s, plus 25 s
-// of free proxies (with their list fetch) for a site with a country, or 30 + 30 s of ScrapingAnt
-// and ScraperAPI for one without (providers.ts) — either way ZenRows and Scrape.do keep their
+// One page's whole ladder, every rung included. The free rungs take at most 30 + 30 s. A site with
+// a country adds 25 s of free proxies (with their list fetch), and ZenRows and Scrape.do keep their
 // minute each; ScrapeOps (2 min of its own retries) only gets a turn when the rungs before it
-// failed fast — no key, spent — and ScrapFly, the last, likewise. WatchStatus's stuck-run arithmetic counts this per protected poll.
+// failed fast — no key, spent — and ScrapFly, the last, likewise. A site without one has only
+// ScrapingAnt and ScraperAPI, a minute each (providers.ts). WatchStatus's stuck-run arithmetic
+// counts this per protected poll.
 const LADDER_BUDGET_MS = 240_000;
 
 /**

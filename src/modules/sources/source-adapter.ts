@@ -130,6 +130,12 @@ export interface Listing {
   details: ListingDetail[];
 }
 
+/**
+ * Which daily credit budget a protected source's polls draw on: a site with a country is paid by
+ * the providers that can place a request there, one without by the others (scraping/providers.ts).
+ */
+export type CreditPool = 'geo' | 'global';
+
 /** A source plugin — the only place that knows about a specific site. */
 export interface SourceAdapter {
   readonly id: SourceId;
@@ -138,10 +144,10 @@ export interface SourceAdapter {
   /** A listing gone from a complete fetch was sold — tell the user (see SourceDefinition). */
   readonly reportsRemoved: boolean;
   /**
-   * Paid credits one poll may cost, worst case (0 for an unprotected source) — what subscriptions
-   * to it draw from the bot's DAILY_CREDIT_BUDGET.
+   * What one poll may cost on the paid rungs, and which budget pays it — undefined for an
+   * unprotected source (subscriptions.service.ts § DAILY_CREDIT_BUDGET).
    */
-  readonly pollCredits: number;
+  readonly paidPoll?: { credits: number; pool: CreditPool };
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /**

@@ -11,6 +11,7 @@ import type { Subscription } from '../entities/subscription.entity';
 import type { ListingSnapshot } from '../price-change';
 import type { SubscriptionsService } from '../subscriptions.service';
 import { WatchService } from '../watch.service';
+import type { SharedFetches } from '../watch.service';
 
 // The seen set as getSeen returns it: id → stored snapshot (undefined: none yet).
 const seenAs = (ids: string[], snapshots: Record<string, ListingSnapshot> = {}) =>
@@ -29,7 +30,6 @@ const build = (
     id: 'kufar',
     volatileParams: [],
     reportsRemoved,
-    pollCredits: 0,
     matches: () => true,
     fetch: jest.fn().mockResolvedValue({ listings: fetched, complete, capped }),
   };
@@ -318,6 +318,58 @@ describe('WatchService.poll — removals', () => {
       expect.stringContaining('Mass removal'),
       'warning',
     );
+  });
+});
+
+// A run fetches each search once, whoever watches it — a protected source pays per page.
+describe('WatchService.poll — fetches shared within a run', () => {
+  const search = 'https://kufar.by/l?cat=1';
+  const alice = baselined({ id: 'a', userId: 'alice', normalizedUrl: search });
+  const bob = baselined({ id: 'b', userId: 'bob', normalizedUrl: search });
+
+  it('fetches a search once and gives each watcher its own findings', async () => {
+    const { adapter, watch } = build([listing(1)]);
+    const shared: SharedFetches = new Map();
+
+    await expect(watch.poll(alice, shared)).resolves.toMatchObject({ kind: 'fresh' });
+    await expect(watch.poll(bob, shared)).resolves.toMatchObject({ kind: 'fresh' });
+
+    expect(adapter.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves a pending baseline from the same full fetch', async () => {
+    const { adapter, subscriptions, watch } = build([listing(1)]);
+    const shared: SharedFetches = new Map();
+
+    await watch.poll(alice, shared);
+    await watch.poll({ ...bob, baselinedAt: null }, shared);
+
+    expect(adapter.fetch).toHaveBeenCalledTimes(1);
+    expect(adapter.fetch).toHaveBeenCalledWith(alice.url, undefined);
+    expect(subscriptions.seedBaseline).toHaveBeenCalledWith('b', ['1']);
+  });
+
+  it('fetches another search on its own, and shares a failure with the same one', async () => {
+    const { adapter, watch } = build();
+    jest.mocked(adapter.fetch).mockRejectedValueOnce(new Error('down'));
+    const shared: SharedFetches = new Map();
+
+    await expect(watch.poll(alice, shared)).rejects.toThrow('down');
+    await expect(watch.poll(bob, shared)).rejects.toThrow('down');
+    await watch.poll(baselined({ normalizedUrl: 'https://kufar.by/l?cat=2' }), shared);
+
+    expect(adapter.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('warns about a partial fetch once, not once per watcher', async () => {
+    const { watch } = build([listing(1)], false);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const shared: SharedFetches = new Map();
+
+    await watch.poll(alice, shared);
+    await watch.poll(bob, shared);
+
+    expect(sentryMessage()).toHaveBeenCalledTimes(1);
   });
 });
 

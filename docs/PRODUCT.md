@@ -21,8 +21,9 @@ start; more frequent once throttling/dedupe land).
   registry. A paged search is fetched newest-first, and a run looks at its **newest 150 listings**
   (up to 5 pages) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
-  first page only (each page may be paid; such subscriptions share the bot's daily paid-credit
-  budget, one past it is refused): av.by's 25 «актуальные» and bid.cars's first 50 lots by auction
+  first page only (each page may be paid; a run fetches a search once, however many users watch
+  it, and a new search past its site group's daily paid-credit budget is refused — one already watched
+  never is): av.by's 25 «актуальные» and bid.cars's first 50 lots by auction
   date — neither sorts by newest in a link.
 - Events: **new listings, price changes and removals**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies (or as the site words it — a salary range), address, the source's own facts (area, plot,

@@ -89,12 +89,15 @@ const build = () => {
     seen as unknown as Repository<SeenListing>,
     users as unknown as Repository<User>,
     {
-      // idriver is the paid one: a rendered page, 25 credits a poll.
+      // Two paid ones, one per pool: idriver a rendered geo page, bid.cars a global one.
       get: (id: string) => ({
         volatileParams: ['page', 'sort'],
-        pollCredits: id === 'idriver' ? 25 : 0,
+        paidPoll: {
+          idriver: { credits: 25, pool: 'geo' },
+          'bid-cars': { credits: 10, pool: 'global' },
+        }[id],
       }),
-      paidIds: () => ['idriver'],
+      paidIds: () => ['idriver', 'bid-cars'],
     } as unknown as SourceRegistry,
   );
   return { subs, users, seen, manager, txManager, insert, txInsert, service };
@@ -103,31 +106,63 @@ const build = () => {
 const addInput = { user: { telegramId: 42 }, source: 'kufar' as const, url: 'https://kufar.by/l' };
 
 describe('SubscriptionsService.add', () => {
-  // Paid anti-bot reads are bounded by free tiers — one daily credit budget for the whole bot.
+  // Paid anti-bot reads are bounded by free tiers — a daily credit budget per pool, bot-wide.
   describe('the daily credit budget', () => {
+    const bidCars = {
+      ...addInput,
+      source: 'bid-cars' as const,
+      url: 'https://bid.cars/ru/search/results',
+    };
     const idriver = {
       ...addInput,
       source: 'idriver' as const,
       url: 'https://idriver.by/auto-parts/a/b',
     };
-    const activeIdriver = (n: number) => Array.from({ length: n }, () => ({ source: 'idriver' }));
+    // Distinct searches: a run fetches each once, so each is paid once.
+    const watching = (n: number, source = 'idriver') =>
+      Array.from({ length: n }, (_, i) => ({ source, normalizedUrl: `https://${source}/s${i}` }));
+    const geoFull = DAILY_CREDIT_BUDGET.geo / 25;
 
-    it('admits a protected subscription that lands exactly on the budget', async () => {
+    it('admits a new search that lands exactly on the budget', async () => {
       const { subs, service } = build();
-      subs.find.mockResolvedValue(activeIdriver(DAILY_CREDIT_BUDGET / 25 - 1));
+      subs.find.mockResolvedValue(watching(geoFull - 1));
 
       await expect(service.add(idriver)).resolves.toBeDefined();
       expect(subs.find).toHaveBeenCalledWith({
-        select: { source: true },
-        where: { source: In(['idriver']), pausedAt: IsNull() },
+        select: { source: true, normalizedUrl: true },
+        where: { source: In(['idriver', 'bid-cars']), pausedAt: IsNull() },
       });
     });
 
     it('refuses one that would go past it', async () => {
       const { subs, service } = build();
-      subs.find.mockResolvedValue(activeIdriver(DAILY_CREDIT_BUDGET / 25));
+      subs.find.mockResolvedValue(watching(geoFull));
 
       await expect(service.add(idriver)).rejects.toBeInstanceOf(ProtectedLimitError);
+    });
+
+    it('counts a search watched by several users once, and admits it again for free', async () => {
+      const { subs, service } = build();
+      const full = watching(geoFull);
+      // Someone else watches the very search being added — at a full budget.
+      full[0].normalizedUrl = idriver.url;
+      subs.find.mockResolvedValue([...full, ...full]);
+
+      await expect(service.add(idriver)).resolves.toBeDefined();
+    });
+
+    it('keeps the pools apart: a full geo budget does not stop a bid.cars search', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(watching(geoFull));
+
+      await expect(service.add(bidCars)).resolves.toBeDefined();
+    });
+
+    it('refuses a new bid.cars search once its own pool is full', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(watching(DAILY_CREDIT_BUDGET.global / 10, 'bid-cars'));
+
+      await expect(service.add(bidCars)).rejects.toBeInstanceOf(ProtectedLimitError);
     });
   });
 
