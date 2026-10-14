@@ -4,7 +4,7 @@ import { In, IsNull, Not, QueryFailedError } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
 import { normalizeUrl } from '@/common/url';
-import type { Listing, SourceId } from '@/modules/sources/source-adapter';
+import type { CreditPool, Listing, SourceId } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
 import { SeenListing } from './entities/seen-listing.entity';
@@ -23,13 +23,24 @@ export const MAX_SEEN_PER_SUBSCRIPTION = 300;
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
 export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 
-// Paid credits a day the active subscriptions to protected sources may cost in all, each at its
-// worst (SourceAdapter.pollCredits), assuming one run a day (WATCH_CRON's default). One rule for
-// everyone (owner, 2026-10-13); the arithmetic — PRODUCT_PLAN.md § «Платная ступень».
-// TODO [L]: baselines and /check poll on top of the daily run and are not counted — the tiers
-// outside the sum (ScrapeOps, ScrapFly; ScrapingAnt and ScraperAPI for sites without a country) are their
-// margin.
-export const DAILY_CREDIT_BUDGET = 200;
+// Paid credits a day the searches watched on protected sources may cost, per pool — each search
+// once, whoever watches it (a run fetches it once: WatchService), at its worst
+// (SourceAdapter.paidPoll), assuming one run a day (WATCH_CRON's default). Each pool is its first
+// paying providers' free tiers a month: geo — ZenRows + Scrape.do, 6000 / 30; global — ScrapingAnt,
+// 10000 less ~1000 kept for baselines and /check, / 30. One rule for everyone (owner, 2026-10-13);
+// the arithmetic — PRODUCT_PLAN.md § «Платная ступень».
+// TODO [M]: baselines and /check poll on top of the daily run and are not counted — the tiers
+// outside the sum (ScrapeOps and ScrapFly for geo, ScraperAPI and the ~1000 for global) are their
+// margin. Onboarding a company spends a page per subscribe even on a search already watched; past
+// ~100 subscribes a month the global pool runs dry before the month ends. Seed such a baseline
+// from the run's next fetch instead (PRODUCT_PLAN.md «bid.cars бесплатно и массово»).
+export const DAILY_CREDIT_BUDGET: Readonly<Record<CreditPool, number>> = { geo: 200, global: 300 };
+
+/** One search on one source — what a watch run fetches once, however many users watch it. */
+export const searchKey = ({
+  source,
+  normalizedUrl,
+}: Pick<Subscription, 'source' | 'normalizedUrl'>) => `${source} ${normalizedUrl}`;
 
 /** The user already watches this search (matched by normalized URL). */
 export class DuplicateSubscriptionError extends Error {}
@@ -75,7 +86,7 @@ export class SubscriptionsService {
     if (existing && !existing.pausedAt) throw new DuplicateSubscriptionError();
 
     // A revive reactivates a paused sub, so it's capped the same as a fresh add.
-    await this.assertUnderActiveCap(user.id, input.source);
+    await this.assertUnderActiveCap(user.id, { source: input.source, normalizedUrl });
     if (existing) return this.revive(existing); // paused (checked above) → reactivate
     let created: Subscription;
     try {
@@ -156,26 +167,32 @@ export class SubscriptionsService {
   }
 
   /**
-   * Throw once the user is at the active-subscription cap, or — for a protected source — the bot
-   * would go past its daily credit budget. Counts active only — auto-paused subs create no scraping load, so they
-   * must not lock anyone out.
+   * Throw once the user is at the active-subscription cap, or — for a new search on a protected
+   * source — the bot would go past its pool's daily credit budget. A search someone already
+   * watches is free: the run fetches it once. Counts active only — auto-paused subs create no
+   * scraping load, so they must not lock anyone out.
    */
   private async assertUnderActiveCap(
     userId: Subscription['userId'],
-    source: SourceId,
+    search: Pick<Subscription, 'source' | 'normalizedUrl'>,
   ): Promise<void> {
     const activeCount = await this.subs.countBy({ userId, pausedAt: IsNull() });
     if (activeCount >= MAX_SUBSCRIPTIONS_PER_USER) throw new SubscriptionLimitError();
-    const cost = (id: SourceId): number => this.sources.get(id)?.pollCredits ?? 0;
-    if (cost(source) === 0) return;
+    const paid = (id: SourceId) => this.sources.get(id)?.paidPoll;
+    const poll = paid(search.source);
+    if (poll === undefined) return;
     // NOTE: count-then-insert, so two adds at once can overshoot by one — the bot handles updates
     // one by one, and one extra poll costs a few days of credits, not an outage.
     const active = await this.subs.find({
-      select: { source: true },
+      select: { source: true, normalizedUrl: true },
       where: { source: In(this.sources.paidIds()), pausedAt: IsNull() },
     });
-    const spent = active.reduce((sum, sub) => sum + cost(sub.source), 0);
-    if (spent + cost(source) > DAILY_CREDIT_BUDGET) throw new ProtectedLimitError();
+    const watched = new Map(active.map((sub) => [searchKey(sub), sub.source]));
+    if (watched.has(searchKey(search))) return;
+    const spent = [...watched.values()]
+      .map(paid)
+      .reduce((sum, other) => sum + (other?.pool === poll.pool ? other.credits : 0), 0);
+    if (spent + poll.credits > DAILY_CREDIT_BUDGET[poll.pool]) throw new ProtectedLimitError();
   }
 
   /** Re-activate a paused subscription (user re-sent its URL): clear pause + failure streak. */
@@ -203,7 +220,7 @@ export class SubscriptionsService {
     const sub = await this.findOwned(id, telegramUserId);
     if (!sub) return false;
     if (!sub.pausedAt) return true; // already active — nothing to do
-    await this.assertUnderActiveCap(sub.userId, sub.source);
+    await this.assertUnderActiveCap(sub.userId, sub);
     await this.revive(sub);
     return true;
   }

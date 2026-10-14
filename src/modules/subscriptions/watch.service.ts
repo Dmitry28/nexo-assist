@@ -10,7 +10,11 @@ import { isEmpty } from './findings';
 import type { Findings, Removal } from './findings';
 import { hasPriceChanged, replacesSnapshot } from './price-change';
 import type { PriceChange } from './price-change';
-import { MAX_SEEN_PER_SUBSCRIPTION, SubscriptionsService } from './subscriptions.service';
+import {
+  MAX_SEEN_PER_SUBSCRIPTION,
+  SubscriptionsService,
+  searchKey,
+} from './subscriptions.service';
 
 // A mass event: over half of the listings it could have hit, and at least a floor of them. A
 // hundred prices changing at once is a parser fix or a site rewriting its prices (minor units,
@@ -21,6 +25,14 @@ const MASS_PRICE_CHANGE_MIN = 10;
 const MASS_REMOVAL_MIN = 3;
 
 const isMass = (hits: number, of: number, floor: number): boolean => hits >= floor && hits * 2 > of;
+
+/**
+ * The fetches of one watch run, by search (searchKey): a search several users watch is fetched once
+ * and its result handed to each — a protected source pays per page. A new map each run, so a page
+ * is never older than the run. The promise is kept, so a failure is shared too: same page, same
+ * failure. Always a full fetch (never `idsOnly`), so it serves a baseline and a check alike.
+ */
+export type SharedFetches = Map<string, Promise<FetchResult>>;
 
 /** Result of one `poll` pass — what the caller should tell the user, if anything. */
 export type PollOutcome =
@@ -43,19 +55,20 @@ export class WatchService {
   /**
    * One polling pass. A subscription whose baseline failed earlier is seeded here
    * instead of flooding its whole backlog as "new". Findings are NOT recorded — the caller
-   * delivers them and records only what was actually sent (markDelivered).
+   * delivers them and records only what was actually sent (markDelivered). `shared`: the watch
+   * run's fetches, reused across the subscriptions of one search.
    */
-  async poll(sub: Subscription): Promise<PollOutcome> {
+  async poll(sub: Subscription, shared?: SharedFetches): Promise<PollOutcome> {
     // NOTE: both branches re-check `has` after the fetch — the user may remove the
     // subscription while it is in flight; a gone sub gets no report and no delivery
     // (its seen set is wiped, so everything would otherwise look fresh).
     if (!sub.baselinedAt) {
-      const count = await this.baseline(sub);
+      const count = await this.baseline(sub, shared);
       return (await this.subscriptions.has(sub.id))
         ? { kind: 'baselined', count }
         : { kind: 'nothing' };
     }
-    const found = await this.check(sub);
+    const found = await this.check(sub, shared);
     if (isEmpty(found) || !(await this.subscriptions.has(sub.id))) return { kind: 'nothing' };
     return { kind: 'fresh', ...found };
   }
@@ -64,9 +77,10 @@ export class WatchService {
    * Seed the seen set with current listings without notifying. Throws when the
    * fetch fails. Resolves to the number of listings seeded.
    */
-  async baseline(sub: Subscription): Promise<number> {
-    // Ids are all a baseline needs — a source's item-page visits (gcn's prices) are skipped.
-    const { listings } = await this.fetchListings(sub, { idsOnly: true });
+  async baseline(sub: Subscription, shared?: SharedFetches): Promise<number> {
+    // Ids are all a baseline needs — a source's item-page visits (gcn's prices) are skipped,
+    // unless the run shares the fetch (a full one: see SharedFetches).
+    const { listings } = await this.fetchListings(sub, { idsOnly: true, shared });
     // NOTE: seed + mark-baselined in one transaction (seedBaseline). A partial fetch is still
     // marked done, deliberately: leaving it pending would re-baseline every run, and a source
     // that always fails on page 2 would then never notify at all — silence is the worse of the
@@ -85,8 +99,8 @@ export class WatchService {
    * comes back next run. Every other seen listing gets its snapshot replaced now (a seller's
    * edit or a parser fix must reach storage; sub-floor drift is absorbed run by run).
    */
-  async check(sub: Subscription): Promise<Findings> {
-    const result = await this.fetchListings(sub);
+  async check(sub: Subscription, shared?: SharedFetches): Promise<Findings> {
+    const result = await this.fetchListings(sub, { shared });
     const { listings, capped } = result;
     const seen = await this.subscriptions.getSeen(
       sub.id,
@@ -202,13 +216,26 @@ export class WatchService {
   /**
    * Fetch a subscription's current listings — the single door to a source, and so the only
    * place that can notice the window (MAX_LISTINGS) being outgrown. `paginate` enforces it, so
-   * this is the backstop for an adapter that does not go through `paginate`.
+   * this is the backstop for an adapter that does not go through `paginate`. A search the run
+   * already fetched is served from `shared` — and warned about once, by the fetch that made it.
    */
-  private async fetchListings(
+  private fetchListings(
     sub: Subscription,
-    options?: { idsOnly?: boolean },
+    { idsOnly, shared }: { idsOnly?: boolean; shared?: SharedFetches } = {},
   ): Promise<FetchResult> {
-    const result = await this.adapter(sub).fetch(sub.url, options);
+    if (shared === undefined) return this.fetchFresh(sub, idsOnly);
+    const key = searchKey(sub);
+    let fetching = shared.get(key);
+    if (fetching === undefined) {
+      fetching = this.fetchFresh(sub, false);
+      shared.set(key, fetching);
+    }
+    return fetching;
+  }
+
+  /** The source asked, with the fetch's own warnings. */
+  private async fetchFresh(sub: Subscription, idsOnly?: boolean): Promise<FetchResult> {
+    const result = await this.adapter(sub).fetch(sub.url, idsOnly ? { idsOnly } : undefined);
     const { listings } = result;
     // Reported here rather than in each caller: this is the one place every fetch passes
     // through, and all three of them are hurt by a prefix — a baseline under-counts the search,

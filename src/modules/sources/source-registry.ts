@@ -17,9 +17,11 @@ export class SourceRegistry {
     return this.adapters.find((adapter) => adapter.matches(url)) ?? null;
   }
 
-  /** Sources whose polls cost paid credits — their subscriptions share one daily budget. */
+  /** Sources whose polls cost paid credits — each draws on its pool's daily budget. */
   paidIds(): SourceId[] {
-    return this.adapters.filter((adapter) => adapter.pollCredits > 0).map((adapter) => adapter.id);
+    return this.adapters
+      .filter((adapter) => adapter.paidPoll !== undefined)
+      .map((adapter) => adapter.id);
   }
 
   /** Adapter for a known source id, or null. */

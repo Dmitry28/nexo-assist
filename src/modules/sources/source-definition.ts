@@ -7,6 +7,7 @@ import { fetchProtected } from './scraping/ladder';
 import type { Protection } from './scraping/ladder';
 import { paginate } from './scraping/paginate';
 import { mapPool } from './scraping/pool';
+import { pageCredits, poolOf } from './scraping/providers';
 import { SourceUnavailableError } from './source-adapter';
 import type { FetchResult, Listing, SourceAdapter, SourceId } from './source-adapter';
 
@@ -70,9 +71,9 @@ interface CommonDefinition<Id extends string> {
   useProxy?: boolean;
   /**
    * Behind anti-bot protection: every request climbs the fetch ladder (scraping/ladder.ts), paid
-   * rungs included — so its polls draw on DAILY_CREDIT_BUDGET. One request per poll: a single page,
-   * no `load`, no `enrich` (each would be another paid page); no `pinPath` (the paid rungs follow
-   * redirects on their side).
+   * rungs included — so its polls draw on its pool's DAILY_CREDIT_BUDGET. One request per poll: a
+   * single page, no `load`, no `enrich` (each would be another paid page); no `pinPath` (the paid
+   * rungs follow redirects on their side).
    */
   protection?: Protection;
   /** Fail on a redirect to another path — for sites that rewrite a search (see fetchHtml). */
@@ -132,11 +133,6 @@ export const defineSource = <const Id extends string>(
 
 const trimSlash = (path: string): string => path.replace(/\/+$/, '');
 
-// What one page costs on the paid rungs, measured on all three providers: 10 credits with the
-// anti-bot tier, 25 once rendered. The worst case — the free rungs only make the real spend lower.
-const paidPageCredits = ({ renderWaitMs }: Protection): number =>
-  renderWaitMs === undefined ? 10 : 25;
-
 /**
  * Adapters for a set of definitions. Built together because matching needs the whole set: a
  * host another definition owns as a subdomain (travel.kufar.by under kufar.by) is that one's,
@@ -180,7 +176,11 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
         !subHosts.some((host) => matchesHost({ url, host })) &&
         onSearchPath(url),
       reportsRemoved: def.reportsRemoved === true,
-      pollCredits: def.protection ? paidPageCredits(def.protection) : 0,
+      // The worst case — the free rungs only make the real spend lower.
+      paidPoll: def.protection && {
+        credits: pageCredits(def.protection),
+        pool: poolOf(def.protection),
+      },
       fetch: (url, options) => fetchSearch(def, url, pagingParam, logger, options),
     };
   });

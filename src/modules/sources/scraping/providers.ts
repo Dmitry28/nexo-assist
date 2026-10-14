@@ -4,6 +4,7 @@ import { fetch } from 'undici';
 import { wait } from '@/common/wait';
 
 import { SourceUnavailableError } from '../source-adapter';
+import type { CreditPool } from '../source-adapter';
 
 import type { Protection } from './ladder';
 
@@ -34,10 +35,11 @@ interface Provider {
   /** The page out of the response body, for a provider that wraps it (ScrapFly: JSON). */
   read?(body: string): string;
   /**
-   * Whether its free tier can put the request in a given country. One that cannot is left out for
-   * a geo-fenced site: it would only hear «blocked».
+   * The sites it serves, and so the budget its free tier pays into (poolOf): `geo` ones can put
+   * the request in the site's country, `global` ones cannot — for a geo-fenced site they would
+   * only hear «blocked».
    */
-  targetsCountry: boolean;
+  pool: CreditPool;
   /** Statuses that mean «nothing more from this provider now» — spent or a refused key. */
   spent: ReadonlySet<number>;
   /** Statuses worth one more try on the same provider. */
@@ -52,9 +54,6 @@ interface Provider {
 
 // A rendered page with its settle time and the provider's own bypass fit in a minute.
 const PROVIDER_MAX_MS = 60_000;
-// The two that serve only sites without a country answered bid.cars in 13-14 s; half a minute
-// each keeps a stall from eating the minute ZenRows and Scrape.do need after them.
-const SPARE_MAX_MS = 30_000;
 
 /**
  * The paid rungs, in order of their free tiers (PRODUCT_PLAN.md § «Платная ступень»). Rendering is
@@ -64,7 +63,8 @@ const SPARE_MAX_MS = 30_000;
 const PROVIDERS: readonly Provider[] = [
   {
     // 10000 credits a month — the largest tier — but no Belarus and detected on idriver (423), so
-    // first only for sites without a country (bid.cars: 50 lots, 14 s).
+    // only for sites without a country (bid.cars: 50 lots, 14 s from the server; twice over 30 s
+    // from home — hence the full minute).
     name: 'scrapingant',
     keyVar: 'SCRAPINGANT_API_KEY',
     requestUrl: (target, _key, { renderWaitMs }) => {
@@ -81,13 +81,13 @@ const PROVIDERS: readonly Provider[] = [
       return `https://api.scrapingant.com/v2/general?${params.toString()}`;
     },
     headers: (key) => ({ 'x-api-key': key }),
-    targetsCountry: false,
+    pool: 'global',
     // 403 a wrong key (measured) or the month's credits gone (its docs); 409 its concurrency limit
     // (docs) — it clears. A site's own 403/429 arrives as 423 «detected by the site» (measured
     // 2026-10-15), never as a bench: asking again cost the prototype another ~22 s for the same.
     spent: new Set([401, 403]),
     retry: new Set([409]),
-    maxMs: SPARE_MAX_MS,
+    maxMs: PROVIDER_MAX_MS,
   },
   {
     // 1000 credits a month; the free tier has no premium pool, so no country (a 403 «plan does
@@ -100,13 +100,13 @@ const PROVIDERS: readonly Provider[] = [
       if (renderWaitMs !== undefined) params.set('render', 'true');
       return `https://api.scraperapi.com/?${params.toString()}`;
     },
-    targetsCountry: false,
+    pool: 'global',
     // 401 a bad key (measured), 403 the month's credits gone (docs; no premium is ever asked), 429
     // concurrency. A site's own 401/403/429 arrives as 500 after its retries (measured 2026-10-15),
     // so a blocked site never benches it.
     spent: new Set([401, 403]),
     retry: new Set([429]),
-    maxMs: SPARE_MAX_MS,
+    maxMs: PROVIDER_MAX_MS,
   },
   {
     name: 'zenrows',
@@ -122,7 +122,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://api.zenrows.com/v1/?${params.toString()}`;
     },
-    targetsCountry: true,
+    pool: 'geo',
     // 401 a bad key, 402 the month's credits gone. 429 is the concurrency limit — it clears.
     spent: new Set([401, 402]),
     retry: new Set([422, 429]),
@@ -140,7 +140,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://api.scrape.do/?${params.toString()}`;
     },
-    targetsCountry: true,
+    pool: 'geo',
     // 401 a bad token or the month's requests gone (measured 2026-10-14: «Monthly request limit
     // exceeded»), 429 the same per the prototype.
     // NOTE: Scrape.do passes the target's own status through, so a site answering 401/429 benches
@@ -167,7 +167,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://proxy.scrapeops.io/v1/?${params.toString()}`;
     },
-    targetsCountry: true,
+    pool: 'geo',
     // 401 credits gone, 403 a bad key. 429 is its one-at-a-time limit — polls never overlap (one
     // polling slot), so it does not come up; 500 is it giving up after its own retries.
     spent: new Set([401, 403]),
@@ -204,7 +204,7 @@ const PROVIDERS: readonly Provider[] = [
         result.status_code < 300;
       return ok && typeof result.content === 'string' ? result.content : '';
     },
-    targetsCountry: true,
+    pool: 'geo',
     // 401 a bad key, 429 the credits gone (both measured 2026-10-15). 429 is also its concurrency
     // limit — polls never overlap (one polling slot), so it does not come up.
     spent: new Set([401, 429]),
@@ -229,19 +229,34 @@ const spentUntil = new Map<string, number>();
 export const resetSpentProviders = (): void => spentUntil.clear();
 
 /**
- * One paid rung per provider that can serve the site, in order — a rung without its key fails at
- * once, saying so.
+ * The budget a site's paid pages draw on. Its providers only: a site without a country never falls
+ * through to the geo ones, so one pool's searches cannot spend the other's free tiers.
+ */
+export const poolOf = ({ country }: Protection): CreditPool =>
+  country === undefined ? 'global' : 'geo';
+
+/**
+ * What one page may cost on its pool's first paying provider. Geo: ZenRows' anti-bot tier, 10
+ * credits, 25 rendered (measured on ZenRows, Scrape.do, ScrapeOps). Global: ScrapingAnt's browser
+ * on its datacenter proxy, 10 either way — its price list (2026-10-15), not yet measured.
+ * ScraperAPI after it charges ~21 (render 11 + Cloudflare 10) from its own 1000 a month — the
+ * margin, outside the sum.
+ */
+export const pageCredits = (protection: Protection): number =>
+  poolOf(protection) === 'global' || protection.renderWaitMs === undefined ? 10 : 25;
+
+/**
+ * One paid rung per provider of the site's pool, in order — a rung without its key fails at once,
+ * saying so.
  */
 export const paidRungs = (
   target: string,
   protection: Protection,
 ): { name: string; run: (timeoutMs: number) => Promise<string> }[] =>
-  PROVIDERS.filter((provider) => protection.country === undefined || provider.targetsCountry).map(
-    (provider) => ({
-      name: provider.name,
-      run: (timeoutMs) => scrape(provider, target, protection, timeoutMs),
-    }),
-  );
+  PROVIDERS.filter((provider) => provider.pool === poolOf(protection)).map((provider) => ({
+    name: provider.name,
+    run: (timeoutMs) => scrape(provider, target, protection, timeoutMs),
+  }));
 
 async function scrape(
   provider: Provider,

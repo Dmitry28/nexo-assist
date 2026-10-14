@@ -12,8 +12,8 @@ import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { countOf } from '@/modules/subscriptions/findings';
 import type { Findings } from '@/modules/subscriptions/findings';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
-import type { PollOutcome } from '@/modules/subscriptions/watch.service';
+import { SubscriptionsService, searchKey } from '@/modules/subscriptions/subscriptions.service';
+import type { PollOutcome, SharedFetches } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import { isBotBlocked } from '@/modules/telegram/bot/send-card';
 import { deliverAndRecord } from '@/modules/telegram/bot/telegram.deliver';
@@ -158,13 +158,26 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     const quiet: Subscription[] = [];
     const heard = new Set<string>();
     const unpaid = new Set<SourceId>();
+    // One fetch per search, whoever watches it (SharedFetches) — and one tally entry: a dead
+    // search three users watch is one bad URL, not a failing source.
+    // NOTE: the Sentry report and the error metric of a failed poll stay per subscription — one
+    // failing search watched by N users is N events. Accepted: the dead-link streak is per
+    // subscription too.
+    const shared: SharedFetches = new Map();
+    const tallied = new Set<string>();
+    const recordOnce = (sub: Subscription, failed: boolean): void => {
+      const key = searchKey(sub);
+      if (tallied.has(key)) return;
+      tallied.add(key);
+      tally.record({ source: sub.source, failed });
+    };
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
       if (i > 0) await pace(this.appConfig);
       let result: ProcessResult;
       try {
-        result = await this.processSubscription(sub);
+        result = await this.processSubscription(sub, shared);
       } catch (err) {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
@@ -173,7 +186,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         // Still count the attempt, or a throw here could push the source below
         // SOURCE_FAILURE_MIN_POLLS and suppress its outage alert. Not a poll failure: everything
         // that throws past processSubscription does so after the fetch already succeeded.
-        tally.record({ source: sub.source, failed: false });
+        recordOnce(sub, false);
         continue;
       }
       // Not tallied: the site was never asked, so it is neither down nor up.
@@ -181,7 +194,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         unpaid.add(sub.source);
         continue;
       }
-      tally.record({ source: sub.source, failed: result.state === 'poll-failed' });
+      recordOnce(sub, result.state === 'poll-failed');
       if (result.state === 'poll-failed' && result.dead) dead.push(sub);
       if (result.state === 'ok' && result.poll === 'nothing') quiet.push(sub);
       if (result.state === 'ok' && result.poll === 'fresh') heard.add(sub.userId);
@@ -264,10 +277,13 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
 
   /** Poll, then deliver fresh listings. The dead-link streak and the source tally track
    *  POLL (source) failures only — delivery errors are a separate concern. */
-  private async processSubscription(sub: Subscription): Promise<ProcessResult> {
+  private async processSubscription(
+    sub: Subscription,
+    shared: SharedFetches,
+  ): Promise<ProcessResult> {
     let outcome: PollOutcome;
     try {
-      outcome = await this.watch.poll(sub);
+      outcome = await this.watch.poll(sub, shared);
     } catch (err) {
       // No streak, no per-subscription report: every protected subscription fails alike, and
       // the owner gets one line for the run (alertUnpaid).
