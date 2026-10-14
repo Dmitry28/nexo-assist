@@ -25,7 +25,7 @@ SECRET=${SECRET:-nexo-assist-secrets}
 # TELEGRAM_BOT_TOKEN here is the PRODUCTION bot's — never the dev one from a local .env: one
 # token allows one long-polling consumer, so a shared token would make the two steal each
 # other's updates.
-ALL_KEYS=(TELEGRAM_BOT_TOKEN DATABASE_URL SCRAPE_PROXY_URL SENTRY_DSN ADMIN_TELEGRAM_ID HEARTBEAT_URL BACKUP_HEARTBEAT_URL ZENROWS_API_KEY SCRAPE_DO_API_KEY)
+ALL_KEYS=(TELEGRAM_BOT_TOKEN DATABASE_URL SCRAPE_PROXY_URL SENTRY_DSN ADMIN_TELEGRAM_ID HEARTBEAT_URL BACKUP_HEARTBEAT_URL ZENROWS_API_KEY SCRAPE_DO_API_KEY SCRAPEOPS_API_KEY)
 KEYS=("${@:-${ALL_KEYS[@]}}")
 
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }

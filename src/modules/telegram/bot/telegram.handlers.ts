@@ -11,7 +11,6 @@ import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
-  MAX_PROTECTED_SUBSCRIPTIONS,
   MAX_SUBSCRIPTIONS_PER_USER,
   ProtectedLimitError,
   SubscriptionLimitError,
@@ -34,10 +33,10 @@ import {
   searchRewrittenNotice,
 } from './telegram.format';
 
-// The site is read through a paid anti-bot service, and the bot as a whole has a few such slots.
+// The site is read through a paid anti-bot service, and the bot as a whole has a daily budget.
 const PROTECTED_LIMIT_TEXT =
-  `Этот сайт защищён от ботов и читается через платный сервис — на весь бот можно не больше ` +
-  `${MAX_PROTECTED_SUBSCRIPTIONS} таких подписок, и все заняты. Попробуйте позже.`;
+  'Этот сайт защищён от ботов и читается через платный сервис — на весь бот его дневной лимит ' +
+  'уже занят. Попробуйте позже.';
 
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
 // /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected

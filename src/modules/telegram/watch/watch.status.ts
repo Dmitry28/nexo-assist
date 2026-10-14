@@ -5,8 +5,8 @@ import { Injectable } from '@nestjs/common';
  *
  * The arithmetic behind the number: one subscription costs at most ~3.5 minutes — up to 5 s of
  * pacing, five pages at the 30 s fetch timeout, and about a minute of paced sends. A protected
- * source reads one page through the ladder, capped at LADDER_BUDGET_MS (3 min), so ~4 min — and
- * there are at most MAX_PROTECTED_SUBSCRIPTIONS of those. A run is sequential, so the worst case
+ * source reads one page through the ladder, capped at LADDER_BUDGET_MS (4 min), so ~5 min — and
+ * DAILY_CREDIT_BUDGET admits at most twenty of those. A run is sequential, so the worst case
  * is ~3.5 min × active subscriptions: today's couple of dozen leave a fivefold margin, and the
  * threshold starts touching a live run at about a hundred.
  * That is a ceiling, not a target, and the margin shrinks as subscriptions grow — so the run

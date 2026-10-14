@@ -70,8 +70,9 @@ interface CommonDefinition<Id extends string> {
   useProxy?: boolean;
   /**
    * Behind anti-bot protection: every request climbs the fetch ladder (scraping/ladder.ts), paid
-   * rungs included — and counts against MAX_PROTECTED_SUBSCRIPTIONS. Not with `enrich` (a paid
-   * visit per item per poll) nor `pinPath` (the paid rungs follow redirects on their side).
+   * rungs included — so its polls draw on DAILY_CREDIT_BUDGET. One request per poll: a single page,
+   * no `load`, no `enrich` (each would be another paid page); no `pinPath` (the paid rungs follow
+   * redirects on their side).
    */
   protection?: Protection;
   /** Fail on a redirect to another path — for sites that rewrite a search (see fetchHtml). */
@@ -131,6 +132,11 @@ export const defineSource = <const Id extends string>(
 
 const trimSlash = (path: string): string => path.replace(/\/+$/, '');
 
+// What one page costs on the paid rungs, measured on all three providers: 10 credits with the
+// anti-bot tier, 25 once rendered. The worst case — the free rungs only make the real spend lower.
+const paidPageCredits = ({ renderWaitMs }: Protection): number =>
+  renderWaitMs === undefined ? 10 : 25;
+
 /**
  * Adapters for a set of definitions. Built together because matching needs the whole set: a
  * host another definition owns as a subdomain (travel.kufar.by under kufar.by) is that one's,
@@ -138,8 +144,15 @@ const trimSlash = (path: string): string => path.replace(/\/+$/, '');
  */
 export function createSourceAdapters(definitions: readonly SourceDefinition[]): SourceAdapter[] {
   return definitions.map((def) => {
-    if (def.protection && ('enrich' in def || def.pinPath)) {
-      throw new Error(`${def.id}: protection cannot go with enrich or pinPath`);
+    // A protected poll must cost one paid page: a single page (the literal `singlePage: true`), no
+    // second request for the list, no item visits.
+    if (
+      def.protection &&
+      (!('singlePage' in def) || 'load' in def || 'enrich' in def || def.pinPath)
+    ) {
+      throw new Error(
+        `${def.id}: protection takes one plain page — no paging, load, enrich, pinPath`,
+      );
     }
     const subHosts = definitions
       .map((other) => other.host)
@@ -167,7 +180,7 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
         !subHosts.some((host) => matchesHost({ url, host })) &&
         onSearchPath(url),
       reportsRemoved: def.reportsRemoved === true,
-      protected: def.protection !== undefined,
+      pollCredits: def.protection ? paidPageCredits(def.protection) : 0,
       fetch: (url, options) => fetchSearch(def, url, pagingParam, logger, options),
     };
   });
