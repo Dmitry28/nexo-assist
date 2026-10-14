@@ -74,7 +74,8 @@ export function asPositiveNumber(value: unknown): number | undefined {
   return parsed !== undefined && parsed > 0 ? parsed : undefined;
 }
 
-const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
+// Only the tag's start: its attributes vary by site (av.by adds `crossorigin="anonymous"`).
+const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__"';
 
 /**
  * Parse the `__NEXT_DATA__` JSON blob embedded in an SSR page, or null on any failure.
@@ -83,7 +84,9 @@ const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 export function parseNextData(html: string): Record<string, unknown> | null {
   const start = html.indexOf(NEXT_DATA_OPEN);
   if (start === -1) return null;
-  const from = start + NEXT_DATA_OPEN.length;
+  const close = html.indexOf('>', start);
+  if (close === -1) return null;
+  const from = close + 1;
   const end = html.indexOf('</script>', from);
   if (end === -1) return null;
 
