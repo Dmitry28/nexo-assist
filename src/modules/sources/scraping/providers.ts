@@ -31,6 +31,8 @@ interface Provider {
   requestUrl(target: string, key: string, protection: Protection): string;
   /** Request headers — where a provider takes its key, the key stays out of the URL. */
   headers?(key: string): Record<string, string>;
+  /** The page out of the response body, for a provider that wraps it (ScrapFly: JSON). */
+  read?(body: string): string;
   /**
    * Whether its free tier can put the request in a given country. One that cannot is left out for
    * a geo-fenced site: it would only hear «blocked».
@@ -174,6 +176,43 @@ const PROVIDERS: readonly Provider[] = [
     maxMs: 150_000,
     minMs: 130_000,
   },
+  {
+    // 1000 credits granted once at signup, never renewed, and an anti-bot page costs 25-80 of them
+    // (prototype) — the last reserve. Spent since before 2026-10-15 (owner's call to keep it:
+    // a paid top-up brings it back with no code change).
+    name: 'scrapfly',
+    keyVar: 'SCRAPFLY_API_KEY',
+    requestUrl: (target, key, { country, renderWaitMs }) => {
+      // asp is its anti-bot bypass — residential proxies and a browser where the site needs them.
+      const params = new URLSearchParams({ key, url: target, asp: 'true' });
+      if (country) params.set('country', country);
+      if (renderWaitMs !== undefined) {
+        params.set('render_js', 'true');
+        params.set('rendering_wait', String(renderWaitMs));
+      }
+      return `https://api.scrapfly.io/scrape?${params.toString()}`;
+    },
+    // The page only when the site itself answered 2xx — an envelope can carry its error page.
+    read: (body) => {
+      const { result } = JSON.parse(body) as {
+        result?: { content?: unknown; status_code?: unknown; success?: unknown };
+      };
+      const ok =
+        result?.success !== false &&
+        typeof result?.status_code === 'number' &&
+        result.status_code >= 200 &&
+        result.status_code < 300;
+      return ok && typeof result.content === 'string' ? result.content : '';
+    },
+    targetsCountry: true,
+    // 401 a bad key, 429 the credits gone (both measured 2026-10-15). 429 is also its concurrency
+    // limit — polls never overlap (one polling slot), so it does not come up.
+    spent: new Set([401, 429]),
+    retry: new Set(),
+    maxMs: PROVIDER_MAX_MS,
+    // An anti-bot request in less than this only times out.
+    minMs: 30_000,
+  },
 ];
 
 /**
@@ -253,9 +292,15 @@ async function call(
       throw new SourceUnavailableError(controller.signal.aborted ? 'timed out' : 'request failed');
     });
     if (!res.ok) return res.status;
-    const html = await res.text().catch(() => {
+    const body = await res.text().catch(() => {
       throw new SourceUnavailableError('body failed');
     });
+    let html: string;
+    try {
+      html = provider.read ? provider.read(body) : body;
+    } catch {
+      throw new SourceUnavailableError('unreadable body');
+    }
     if (html.length === 0) throw new SourceUnavailableError('empty body');
     if (html.length > MAX_HTML_LENGTH) throw new SourceUnavailableError('response too large');
     const cost = provider.costHeader && res.headers.get(provider.costHeader);

@@ -27,7 +27,7 @@ export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 // worst (SourceAdapter.pollCredits), assuming one run a day (WATCH_CRON's default). One rule for
 // everyone (owner, 2026-10-13); the arithmetic — PRODUCT_PLAN.md § «Платная ступень».
 // TODO [L]: baselines and /check poll on top of the daily run and are not counted — the tiers
-// outside the sum (ScrapeOps; ScrapingAnt and ScraperAPI for sites without a country) are their
+// outside the sum (ScrapeOps, ScrapFly; ScrapingAnt and ScraperAPI for sites without a country) are their
 // margin.
 export const DAILY_CREDIT_BUDGET = 200;
 

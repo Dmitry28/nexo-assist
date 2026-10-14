@@ -31,7 +31,7 @@ export interface Protection {
 // of free proxies (with their list fetch) for a site with a country, or 30 + 30 s of ScrapingAnt
 // and ScraperAPI for one without (providers.ts) — either way ZenRows and Scrape.do keep their
 // minute each; ScrapeOps (2 min of its own retries) only gets a turn when the rungs before it
-// failed fast — no key, spent. WatchStatus's stuck-run arithmetic counts this per protected poll.
+// failed fast — no key, spent — and ScrapFly, the last, likewise. WatchStatus's stuck-run arithmetic counts this per protected poll.
 const LADDER_BUDGET_MS = 240_000;
 
 /**

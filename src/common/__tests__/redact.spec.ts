@@ -11,8 +11,16 @@ describe('redactSecrets', () => {
       'https://api.scrape.do/?url=x&token=[redacted]',
     ],
     ['apikey=zr-secret&super=true', 'apikey=[redacted]&super=true'],
+    [
+      'https://api.scrapfly.io/scrape?key=sf-secret&url=x',
+      'https://api.scrapfly.io/scrape?key=[redacted]&url=x',
+    ],
   ])('strips the key from %s', (input, expected) => {
     expect(redactSecrets(input)).toBe(expected);
+  });
+
+  it('leaves a param that merely ends in «key» alone', () => {
+    expect(redactSecrets('?monkey=1&sort_key=2')).toBe('?monkey=1&sort_key=2');
   });
 
   it('leaves an ordinary URL alone', () => {

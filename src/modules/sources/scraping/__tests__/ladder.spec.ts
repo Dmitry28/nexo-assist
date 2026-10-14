@@ -107,6 +107,7 @@ describe('fetchProtected', () => {
   it('reaches every paid service at an origin the telemetry knows to hide', async () => {
     withSpareKeys();
     process.env.SCRAPEOPS_API_KEY = 'so-secret';
+    process.env.SCRAPFLY_API_KEY = 'sf-secret';
     fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
 
     await get().catch(() => undefined);
@@ -114,9 +115,24 @@ describe('fetchProtected', () => {
     const paid = fetchMock.mock.calls
       .map(([url]) => String(url))
       .filter((url) => !url.startsWith('https://x.by'));
-    expect(paid).toHaveLength(5);
+    expect(paid).toHaveLength(6);
     for (const url of paid) expect(url).toMatch(PAID_SCRAPER_ORIGIN);
     delete process.env.SCRAPEOPS_API_KEY;
+    delete process.env.SCRAPFLY_API_KEY;
+  });
+
+  it('reads the page out of ScrapFly’s JSON, the last rung', async () => {
+    delete process.env.ZENROWS_API_KEY;
+    delete process.env.SCRAPE_DO_API_KEY;
+    process.env.SCRAPFLY_API_KEY = 'sf-secret';
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE))
+      .mockResolvedValueOnce(page(JSON.stringify({ result: { content: REAL, status_code: 200 } })));
+
+    await expect(get()).resolves.toBe(REAL);
+    expect(calledHosts()).toEqual(['x.by', 'api.scrapfly.io']);
+    expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('asp')).toBe('true');
+    delete process.env.SCRAPFLY_API_KEY;
   });
 
   it('asks ScrapingAnt, then ScraperAPI, first for a site without a country', async () => {

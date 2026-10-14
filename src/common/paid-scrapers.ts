@@ -6,4 +6,4 @@
  * required.
  */
 export const PAID_SCRAPER_ORIGIN =
-  /^https:\/\/(api\.zenrows\.com|api\.scrape\.do|proxy\.scrapeops\.io|api\.scraperapi\.com|api\.scrapingant\.com)(\/|$)/;
+  /^https:\/\/(api\.zenrows\.com|api\.scrape\.do|proxy\.scrapeops\.io|api\.scraperapi\.com|api\.scrapingant\.com|api\.scrapfly\.io)(\/|$)/;

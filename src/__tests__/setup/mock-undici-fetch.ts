@@ -16,3 +16,4 @@ delete process.env.SCRAPE_DO_API_KEY;
 delete process.env.SCRAPEOPS_API_KEY;
 delete process.env.SCRAPINGANT_API_KEY;
 delete process.env.SCRAPER_API_KEY;
+delete process.env.SCRAPFLY_API_KEY;
