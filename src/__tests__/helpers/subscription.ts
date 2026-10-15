@@ -18,6 +18,7 @@ export const makeSubscription = (overrides: SubscriptionOverrides = {}): Subscri
     source: 'kufar',
     url: 'https://kufar.by/l',
     baselinedAt: null,
+    widenedFrom: null,
     pausedAt: null,
     consecutiveFailures: 0,
     ...overrides,

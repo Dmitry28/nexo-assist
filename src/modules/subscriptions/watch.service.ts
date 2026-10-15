@@ -106,11 +106,12 @@ export class WatchService {
       sub.id,
       listings.map((l) => l.externalId),
     );
+    const judged = await this.seedPastOldWindow(sub, result);
     const fresh: Listing[] = [];
     let priceChanges: PriceChange[] = [];
     const refreshed: Listing[] = [];
     let compared = 0;
-    for (const listing of listings) {
+    for (const listing of judged) {
       if (!seen.has(listing.externalId)) {
         fresh.push(listing);
         continue;
@@ -132,14 +133,31 @@ export class WatchService {
     // The whole window turned over since the last run: the source had more pages, and not one
     // listing in it was seen before — so whatever was published between it and the last
     // run's window was never fetched. Lost for good; this makes the loss visible (backlog,
-    // «Больше 150 новых за сутки…»). A bumped old listing can mask it — fine for a cheap signal.
+    // «Больше 500 новых за сутки…»). A bumped old listing can mask it — fine for a cheap signal.
     // TODO [L]: a subscription removed mid-fetch has no seen rows left, so a capped walk warns for
     // a sub that is gone (`poll` re-checks `has` only after this). Rare; partial-fetch shares it.
-    if (capped && fresh.length === listings.length) {
+    if (capped && fresh.length === judged.length) {
       this.warn(sub, `Page window overflowed for ${sub.source}`);
     }
     const removed = await this.findRemoved(sub, result, seen.size);
     return { listings: fresh, priceChanges, removed };
+  }
+
+  /**
+   * The listings to judge as new. After the window grew (a migration sets `widenedFrom` to the old
+   * size), what lies past the old window was never fetched — old listings, not new ones: a new one
+   * lands on top. They are seeded silently, like a baseline, once; `widenedFrom` is cleared only
+   * after a complete fetch, so a failed later page does not leave its listings to arrive as new.
+   */
+  private async seedPastOldWindow(sub: Subscription, result: FetchResult): Promise<Listing[]> {
+    const { widenedFrom } = sub;
+    if (widenedFrom === null) return result.listings;
+    await this.subscriptions.seedPastWindow(
+      sub.id,
+      result.listings.slice(widenedFrom),
+      result.complete,
+    );
+    return result.listings.slice(0, widenedFrom);
   }
 
   /**

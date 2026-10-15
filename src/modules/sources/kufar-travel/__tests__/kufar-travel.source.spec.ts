@@ -7,6 +7,9 @@ import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
+// The pause between pages is real time (paginate.ts); these specs test what is fetched, not when.
+jest.mock('@/common/wait', () => ({ wait: () => Promise.resolve() }));
+
 const fixture = readFileSync(join(__dirname, 'fixtures/kufar-travel-search.html'), 'utf8');
 
 const lastPage = (adId: number): string =>

@@ -7,7 +7,10 @@ import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
-import { SearchRewrittenError } from '../../source-adapter';
+import { MAX_LISTINGS, SearchRewrittenError } from '../../source-adapter';
+
+// The pause between pages is real time (paginate.ts); these specs test what is fetched, not when.
+jest.mock('@/common/wait', () => ({ wait: () => Promise.resolve() }));
 
 const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
 
@@ -130,12 +133,12 @@ describe('realt source', () => {
     const codes = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i);
 
     it('stops at the window after one bundled first page — no second request', async () => {
-      fetchMock.mockResolvedValue(new Response(realtPage(codes(1, 360), 6589)));
+      fetchMock.mockResolvedValue(new Response(realtPage(codes(1, MAX_LISTINGS + 100), 6589)));
 
       const { listings, capped } = await adapter.fetch('https://realt.by/sale/flats/');
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(listings).toHaveLength(150);
+      expect(listings).toHaveLength(MAX_LISTINGS);
       expect(capped).toBe(true);
     });
 

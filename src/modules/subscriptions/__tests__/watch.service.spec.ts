@@ -39,6 +39,7 @@ const build = (
     getSeen: jest.fn().mockResolvedValue(seenAs([])),
     updateSnapshots: jest.fn().mockResolvedValue(undefined),
     markSeen: jest.fn().mockResolvedValue(undefined),
+    seedPastWindow: jest.fn().mockResolvedValue(undefined),
     findGone: jest.fn().mockResolvedValue([]),
     deleteSeen: jest.fn().mockResolvedValue(undefined),
     markNotified: jest.fn().mockResolvedValue(undefined),
@@ -128,6 +129,48 @@ describe('WatchService.poll — later runs (diff)', () => {
     await watch.poll(baselined());
 
     expect(subscriptions.markSeen).not.toHaveBeenCalled();
+  });
+});
+
+// After the window grew, what lies past the old one was never shown — old listings, not new ones.
+describe('WatchService.poll — the first check after the window grew', () => {
+  const widened = () => baselined({ widenedFrom: 2 });
+
+  it('seeds the listings past the old window silently, judges the ones inside it', async () => {
+    const { subscriptions, watch } = build([listing(1), listing(2), listing(3), listing(4)]);
+    subscriptions.getSeen.mockResolvedValue(seenAs(['2']));
+
+    const outcome = await watch.poll(widened());
+
+    expect(outcome).toEqual({
+      kind: 'fresh',
+      listings: [listing(1)],
+      priceChanges: [],
+      removed: [],
+    });
+    expect(subscriptions.seedPastWindow).toHaveBeenCalledWith(
+      'sub-1',
+      [listing(3), listing(4)],
+      true,
+    );
+  });
+
+  // A failed later page left part of the window unfetched: catch it up next run, not as «new».
+  it('keeps the old window size after a partial fetch', async () => {
+    const { subscriptions, watch } = build([listing(1), listing(2), listing(3)], false);
+
+    await watch.poll(widened());
+
+    expect(subscriptions.seedPastWindow).toHaveBeenCalledWith('sub-1', [listing(3)], false);
+  });
+
+  it('judges the whole window once the old size is forgotten', async () => {
+    const { subscriptions, watch } = build([listing(1), listing(2), listing(3)]);
+
+    await expect(watch.poll(baselined())).resolves.toMatchObject({
+      listings: [listing(1), listing(2), listing(3)],
+    });
+    expect(subscriptions.seedPastWindow).not.toHaveBeenCalled();
   });
 });
 

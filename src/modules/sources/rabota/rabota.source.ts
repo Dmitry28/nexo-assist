@@ -10,7 +10,7 @@ export const rabota = defineSource({
   about: 'вакансии',
   // The results page only: `/search/vacancy/advanced` is the search form.
   searchPath: SEARCH_PATH,
-  // hh sorts by relevance unless told; 100 a page (its most) makes the window two requests.
+  // hh sorts by relevance unless told; 100 a page (its most) makes the window five requests.
   pins: { order_by: 'publication_time', items_on_page: '100' },
   page: { param: 'page', first: 0 },
   // hh's per-visit params, carried by its pager links and pasted URLs — they name no search.
