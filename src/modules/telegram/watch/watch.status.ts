@@ -3,17 +3,19 @@ import { Injectable } from '@nestjs/common';
 /**
  * How long a claimed slot may go unreleased before the next claimant takes it.
  *
- * The arithmetic behind the number: one subscription costs at most ~3.5 minutes — up to 5 s of
- * pacing, five pages at the 30 s fetch timeout, and about a minute of paced sends. A protected
+ * The arithmetic behind the number: one subscription costs at most ~4 minutes — up to 5 s of
+ * pacing, a page walk that starts no page after 2 min (paginate's WALK_BUDGET_MS) plus one last
+ * page at the 30 s fetch timeout, and about a minute of paced sends. A protected
  * source reads one page through the ladder, capped at LADDER_BUDGET_MS (4 min), so ~5 min — and
  * DAILY_CREDIT_BUDGET admits at most twenty geo and thirty global searches of those; another
  * subscription to a search the run already fetched costs only its pacing and sends (~1 min). A
- * run is sequential, so the worst case is ~3.5 min × active subscriptions: today's couple of
- * dozen leave a fivefold margin, and the threshold starts touching a live run at about a hundred.
+ * run is sequential, so the worst case is ~4 min × active subscriptions: today's ~45 leave a
+ * twofold margin, and the threshold starts touching a live run at about ninety. A healthy one is
+ * far shorter — a full 500-listing walk takes under a minute.
  * That is a ceiling, not a target, and the margin shrinks as subscriptions grow — so the run
  * logs how long it took, rather than leaving the arithmetic to someone's memory.
  * TODO [M]: a company's hundreds of subscriptions (PRODUCT_PLAN.md «bid.cars бесплатно и
- * массово») pass that hundred — size the threshold from the logged run times before they do.
+ * массово») pass that ninety — size the threshold from the logged run times before they do.
  */
 export const POLL_STUCK_AFTER_MS = 6 * 60 * 60 * 1000;
 

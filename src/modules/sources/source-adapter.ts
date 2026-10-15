@@ -64,9 +64,10 @@ export class PaidRungsUnavailableError extends SourceUnavailableError {
  * The window: a fetch returns at most this many newest listings, however the source sizes its
  * pages (`paginate` enforces it). MAX_SEEN_PER_SUBSCRIPTION is sized against it: a window wider
  * than the seen cap gets its own ids pruned and re-delivered as "new" every run — which is what
- * page-sized windows did on realt (see realt.parser parsePage). 150 is what kufar's 5 × 30 always yields.
+ * page-sized windows did on realt (see realt.parser parsePage). 500 is the owner's call
+ * (2026-10-15): a busy search must not publish past the window between two daily runs.
  */
-export const MAX_LISTINGS = 150;
+export const MAX_LISTINGS = 500;
 
 /**
  * What one `fetch` collected, and whether anything was lost along the way.

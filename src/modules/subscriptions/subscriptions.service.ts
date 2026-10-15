@@ -18,7 +18,7 @@ import type { ListingSnapshot } from './price-change';
 // NOTE: "fell out of the window" is not "gone for good" — kufar sorts by list_time, which a
 // seller's bump moves, so a listing bumped back after its row was pruned arrives as "new"
 // again. Accepted for now; see the «Технический бэклог» in docs/PRODUCT_PLAN.md.
-export const MAX_SEEN_PER_SUBSCRIPTION = 300;
+export const MAX_SEEN_PER_SUBSCRIPTION = 1000;
 
 // Anti-abuse: cap subscriptions per user (also keeps /list within Telegram's limits).
 export const MAX_SUBSCRIPTIONS_PER_USER = 50;
@@ -338,6 +338,23 @@ export class SubscriptionsService {
       const rows = externalIds.map((externalId) => ({ externalId, snapshot: null }));
       await this.insertSeen({ manager, subscriptionId, rows });
       await manager.update(Subscription, { id: subscriptionId }, { baselinedAt: new Date() });
+    });
+  }
+
+  /**
+   * Seed the listings past a widened window as seen, silently (WatchService.check) — and, once the
+   * fetch was `complete`, forget the old window size so the next run judges the whole window.
+   */
+  async seedPastWindow(
+    subscriptionId: string,
+    listings: Listing[],
+    complete: boolean,
+  ): Promise<void> {
+    await this.subs.manager.transaction(async (manager) => {
+      const rows = listings.map((l) => ({ externalId: l.externalId, snapshot: toSnapshot(l) }));
+      await this.insertSeen({ manager, subscriptionId, rows });
+      if (complete)
+        await manager.update(Subscription, { id: subscriptionId }, { widenedFrom: null });
     });
   }
 

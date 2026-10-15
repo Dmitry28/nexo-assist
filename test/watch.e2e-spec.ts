@@ -16,6 +16,7 @@ import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800
 import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
 import { RenormalizeSubscriptionUrls1791417600000 } from '@/database/migrations/1791417600000-RenormalizeSubscriptionUrls';
 import { AddListingSnapshot1791504000000 } from '@/database/migrations/1791504000000-AddListingSnapshot';
+import { AddWidenedFrom1791590400000 } from '@/database/migrations/1791590400000-AddWidenedFrom';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { User } from '@/modules/subscriptions/entities/user.entity';
@@ -62,6 +63,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             MoveTravelSubscriptions1791331200000,
             RenormalizeSubscriptionUrls1791417600000,
             AddListingSnapshot1791504000000,
+            AddWidenedFrom1791590400000,
           ],
           migrationsRun: true,
           synchronize: false,
@@ -139,6 +141,32 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     });
     const fresh = await watch.check(sub);
     expect(fresh.listings.map((l) => l.externalId)).toEqual(['2']);
+  });
+
+  it('after the window grew, seeds what lies past the old one silently, once', async () => {
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+    const fetch = jest.spyOn(kufar, 'fetch');
+    fetch.mockResolvedValueOnce({ listings: [listing(1)], complete: true, capped: false });
+    await watch.baseline(sub);
+    await dataSource.query(`UPDATE "subscriptions" SET "widenedFrom" = 2 WHERE id = $1`, [sub.id]);
+
+    const window = {
+      listings: [listing(3), listing(1), listing(2)],
+      complete: true,
+      capped: false,
+    };
+    fetch.mockResolvedValueOnce(window);
+    const widened = await subscriptions.findOwned(sub.id, 1);
+    expect((await watch.check(widened!)).listings.map((l) => l.externalId)).toEqual(['3']);
+
+    fetch.mockResolvedValueOnce(window);
+    const after = await subscriptions.findOwned(sub.id, 1);
+    expect(after?.widenedFrom).toBeNull();
+    expect((await watch.check(after!)).listings.map((l) => l.externalId)).toEqual(['3']);
   });
 
   // The whole loop on real rows: the jsonb snapshot, the one-statement refresh, the record step.
