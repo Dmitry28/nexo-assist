@@ -283,6 +283,16 @@ describe('WatchService.poll — page window overflow', () => {
     expect(sentryMessage()).not.toHaveBeenCalled();
   });
 
+  // One paid page is all a protected source reads: a page of only new listings means more went past it.
+  it('warns when a protected source turned its one page over', async () => {
+    const { adapter, watch } = build([listing(1), listing(2)]);
+    Object.assign(adapter, { paidPoll: { credits: 10, pool: 'geo' } });
+
+    await watch.poll(baselined());
+
+    overflowed();
+  });
+
   it('stays quiet when the source ran out of pages — everything new was fetched', async () => {
     const { watch } = build([listing(1), listing(2)], true, false);
 

@@ -134,9 +134,12 @@ export class WatchService {
     // listing in it was seen before — so whatever was published between it and the last
     // run's window was never fetched. Lost for good; this makes the loss visible (backlog,
     // «Больше 500 новых за сутки…»). A bumped old listing can mask it — fine for a cheap signal.
+    // A protected source reads one page (one paid request), a prefix of any larger search, so it
+    // counts as capped here; a small search whose every listing was replaced warns falsely — rare.
     // TODO [L]: a subscription removed mid-fetch has no seen rows left, so a capped walk warns for
     // a sub that is gone (`poll` re-checks `has` only after this). Rare; partial-fetch shares it.
-    if (capped && fresh.length === judged.length) {
+    const prefix = capped || this.adapter(sub).paidPoll !== undefined;
+    if (prefix && judged.length > 0 && fresh.length === judged.length) {
       this.warn(sub, `Page window overflowed for ${sub.source}`);
     }
     const removed = await this.findRemoved(sub, result, seen.size);
