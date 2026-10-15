@@ -86,7 +86,7 @@ describe('paginate', () => {
     expect(result).toMatchObject({ complete: true, capped: true });
   });
 
-  // kufar answered 429 on page 12 of a walk without a pause.
+  // kufar answers 429 to a walk paced faster than about ten pages a minute.
   it('pauses before every page but the first', async () => {
     const pages: ParsedPage[] = [
       { listings: [makeListing(1)], nextUrl: 'p2' },
@@ -104,7 +104,7 @@ describe('paginate', () => {
   it('starts no page once the walk budget is spent, and reports the window capped', async () => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(0);
     const parsePage = jest.fn().mockImplementation(() => {
-      now.mockReturnValue(3 * 60 * 1000);
+      now.mockReturnValue(4 * 60 * 1000);
       return { listings: [makeListing(1)], nextUrl: 'p2' };
     });
 
