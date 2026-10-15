@@ -11,6 +11,10 @@ export const bidCars = defineSource({
   about: 'авто с аукционов США',
   searchPath: SEARCH_PATH,
   requestUrl,
+  // Latest auction first: the site has no «newest» order, and a new lot is scheduled weeks ahead
+  // (assumed, not measured), so it lands at the top. The value its own sort menu sets; the link's
+  // param is honoured (measured 2026-10-15).
+  pins: { 'order-by': 'dateDesc' },
   // One page per poll: every page is a paid render.
   singlePage: true,
   protection: PROTECTION,

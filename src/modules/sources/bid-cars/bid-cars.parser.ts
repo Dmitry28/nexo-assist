@@ -36,11 +36,12 @@ export const PROTECTION: Protection = {
 };
 
 /**
- * A search page: one card per lot — the first 50 by the site's default order, auction date; the
+ * A search page: one card per lot — the first 50 by the pinned order, latest auction first; the
  * rest load by a script a fetched page cannot run.
- * TODO [M]: a new lot arrives only once it climbs into those 50, which on a large search can be
- * close to its auction (the prototype's browser read up to 10 pages) — PRODUCT_PLAN.md «bid.cars
- * бесплатно» looks for a newest-first order and the list's own request.
+ * TODO [M]: a lot auctioned before the 50th card's date is never seen — on a Camry search
+ * (2026-10-15) the 50 ended at auctions a week out, so the nearest week went unseen; a broader
+ * search leaves more. The page links the next 50 (`/app/search/request?…&page=2`), another paid
+ * page; check the depth on real company searches.
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
   const byId = new Map<string, Listing>();
