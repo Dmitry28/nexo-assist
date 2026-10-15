@@ -3,7 +3,7 @@ import type { Dispatcher, RequestInit, Response } from 'undici';
 
 import { matchesHost } from '@/common/url';
 
-import { SourceUnavailableError } from '../source-adapter';
+import { SearchRewrittenError, SourceUnavailableError } from '../source-adapter';
 
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
@@ -31,12 +31,18 @@ const HEADERS = {
 // One agent per address: it pools connections instead of opening a tunnel per request.
 let proxyAgentCache: { url: string; agent: ProxyAgent } | undefined;
 
+/** Whether a proxy is configured at all — the ladder skips its rung otherwise. */
+export const hasProxy = (): boolean => Boolean(process.env.SCRAPE_PROXY_URL);
+
 function proxyAgent(): ProxyAgent | undefined {
   const url = process.env.SCRAPE_PROXY_URL;
   if (!url) return undefined;
   if (proxyAgentCache?.url !== url) proxyAgentCache = { url, agent: new ProxyAgent(url) };
   return proxyAgentCache.agent;
 }
+
+/** A URL's path with any trailing slash dropped — the part of a search a redirect may not change. */
+const searchPath = (url: string): string => new URL(url).pathname.replace(/\/+$/, '');
 
 /**
  * Fetch following redirects manually, validating every hop against `host` *before* it is
@@ -49,22 +55,30 @@ async function fetchFollowingHost({
   url,
   host,
   signal,
-  useProxy,
+  dispatcher,
+  httpsOnly,
+  pinPath,
 }: {
   url: string;
   host: string;
   signal: AbortSignal;
-  useProxy: boolean;
+  /** undici's per-request transport hook — a proxy agent, when the request is proxied. */
+  dispatcher: Dispatcher | undefined;
+  /** Refuse any hop that is not https — through a third-party proxy, cleartext could be altered. */
+  httpsOnly: boolean;
+  pinPath: boolean;
 }): Promise<Response> {
-  // `dispatcher` is undici's per-request transport hook — set only when this source is proxied.
   const init: RequestInit & { dispatcher?: Dispatcher } = {
     signal,
     headers: HEADERS,
     redirect: 'manual',
+    ...(dispatcher ? { dispatcher } : {}),
   };
-  if (useProxy) init.dispatcher = proxyAgent();
   let currentUrl = url;
   for (let hop = 0; ; hop++) {
+    if (httpsOnly && new URL(currentUrl).protocol !== 'https:') {
+      throw new SourceUnavailableError(`not https through a public proxy: ${currentUrl}`);
+    }
     // Only the network call is wrapped: a timeout or a refused connection means the source is
     // unreachable, while the guards below (off-host redirect, redirect loop) point at us or at
     // something suspicious and must stay distinguishable.
@@ -82,6 +96,11 @@ async function fetchFollowingHost({
     if (!matchesHost({ url: next, host })) {
       throw new Error(`Redirected off ${host} (${next}) for ${url}`);
     }
+    // Against the ORIGINAL path, not the previous hop's, so a chain of benign-looking hops cannot
+    // walk away from it. A trailing slash is not a different search (realt 308s to add one).
+    // NOTE: the path only, not the query — every rewrite measured changed the path, while query
+    // normalization is routine and would make a query check fire on healthy searches.
+    if (pinPath && searchPath(next) !== searchPath(url)) throw new SearchRewrittenError(url, next);
     currentUrl = next;
   }
 }
@@ -92,21 +111,48 @@ async function fetchFollowingHost({
  * search result, otherwise baseline/check silently treat outages as "no listings".
  *
  * `useProxy` routes the request through SCRAPE_PROXY_URL (for sources that block
- * datacenter IPs). No proxy configured → the request goes out directly.
+ * datacenter IPs). No proxy configured → the request goes out directly. `proxyUrl` routes it
+ * through a third-party proxy instead (free-proxies.ts): https only — inside the CONNECT tunnel
+ * TLS still verifies the site, so such a proxy sees the host name and can stall or drop, never
+ * read or alter the page — and through an agent of its own, closed afterwards.
+ *
+ * `pinPath` turns a redirect to another path into SearchRewrittenError — for sources whose
+ * redirects mean "not your search" (realt). Opt-in: kufar legitimately redirects
+ * `www.kufar.by/l/…` to `re.kufar.by/listings?…`, a different path for the same search.
  */
 export async function fetchHtml({
   url,
   host,
   useProxy = false,
+  proxyUrl,
+  pinPath = false,
+  timeoutMs = FETCH_TIMEOUT_MS,
+  signal,
 }: {
   url: string;
   host: string;
   useProxy?: boolean;
+  proxyUrl?: string;
+  pinPath?: boolean;
+  /** Less than the default when the caller has a budget to keep (the ladder). */
+  timeoutMs?: number;
+  /** Cancels the request from outside — a raced attempt that lost. */
+  signal?: AbortSignal;
 }): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, FETCH_TIMEOUT_MS));
+  const abort = (): void => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const ownAgent = proxyUrl === undefined ? undefined : new ProxyAgent(proxyUrl);
   try {
-    const res = await fetchFollowingHost({ url, host, signal: controller.signal, useProxy });
+    const res = await fetchFollowingHost({
+      url,
+      host,
+      signal: controller.signal,
+      dispatcher: ownAgent ?? (useProxy ? proxyAgent() : undefined),
+      httpsOnly: ownAgent !== undefined,
+      pinPath,
+    });
     if (!res.ok) {
       throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
     }
@@ -118,12 +164,18 @@ export async function fetchHtml({
     if (contentLength > MAX_HTML_LENGTH) {
       throw new SourceUnavailableError(`Content-Length ${contentLength} exceeds limit for ${url}`);
     }
-    const html = await res.text();
+    // A timeout can land mid-body too — still the source not answering, not our bug.
+    const html = await res.text().catch((err: unknown) => {
+      throw new SourceUnavailableError(`body read failed for ${url}`, { cause: err });
+    });
     if (html.length > MAX_HTML_LENGTH) {
       throw new SourceUnavailableError(`Response too large (${html.length} chars) for ${url}`);
     }
     return html;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    // A dead proxy must not leave its sockets open.
+    void ownAgent?.destroy().catch(() => undefined);
   }
 }

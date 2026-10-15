@@ -1,6 +1,6 @@
 ---
 name: git-commit
-description: Generate commit message and propose git commit for staged changes. Use when user asks to commit, create commit, or save changes.
+description: Commit an owner-approved, staged diff with a generated message. Use when the owner approves a diff or asks to commit.
 argument-hint: '[optional: custom commit message]'
 context: fork
 user-invocable: true

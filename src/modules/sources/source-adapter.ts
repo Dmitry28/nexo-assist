@@ -1,8 +1,11 @@
-export type SourceId = 'kufar' | 'realt';
+import type { SOURCES } from './sources';
+
+/** Every registered source's id — derived, so registering a source is the only edit. */
+export type SourceId = (typeof SOURCES)[number]['id'];
 
 /**
  * Shown when a source gives no usable title. Part of the contract, not of one parser: `title` is
- * required, so every adapter needs the same answer to "the site sent none" — and the digest
+ * required, so every source needs the same answer to "the site sent none" — and the digest
  * dereferences it (telegram.format.ts), so an absent title is a crash, not a blank line.
  */
 export const UNTITLED_LISTING = 'Объявление';
@@ -18,14 +21,73 @@ export const UNTITLED_LISTING = 'Объявление';
  * party exactly when a source breaks for everyone.
  *
  * One caveat that follows from that: a site REDESIGN also lands here, and it is ours to fix —
- * the adapter needs updating — even though the tag says `source`. Those are the ones whose
+ * the source's parser needs updating — even though the tag says `source`. Those are the ones whose
  * message reads "page layout changed?"; `kind: source` means "the site did not hand us a usable
  * page", never "nothing to do".
  */
 export class SourceUnavailableError extends Error {
   // Without this the issue title in Sentry reads "Error: HTTP 503" — the class name is what
   // makes the list scannable; the `kind` tag only helps once you are already filtering.
-  override readonly name = 'SourceUnavailableError';
+  // `: string`, not the literal — a subclass names itself (SearchRewrittenError).
+  override readonly name: string = 'SourceUnavailableError';
+}
+
+/**
+ * The site answered a different search than the one asked for: it redirected to another path.
+ * realt does this to any URL carrying `addressV2` — the filter is dropped and the search widens
+ * (17 listings became 1324, measured), which a silent redirect would hand to the user as theirs.
+ * A SourceUnavailableError, since we got no usable page for that search; `to` is where it went,
+ * so the user can be told what changed.
+ */
+export class SearchRewrittenError extends SourceUnavailableError {
+  override readonly name = 'SearchRewrittenError';
+
+  constructor(
+    readonly from: string,
+    readonly to: string,
+  ) {
+    super(`Search rewritten by a redirect: ${from} → ${to}`);
+  }
+}
+
+/**
+ * A protected source could not be read because none of the paid anti-bot services could be asked
+ * — no key configured, or every one spent for the month. Our side, not the link and not the site:
+ * the scheduler does not count it against the subscription (a dead-link pause would tell the
+ * user «Проверьте ссылку» — false) and tells the owner once per run instead.
+ */
+export class PaidRungsUnavailableError extends SourceUnavailableError {
+  override readonly name = 'PaidRungsUnavailableError';
+}
+
+/**
+ * The window: a fetch returns at most this many newest listings, however the source sizes its
+ * pages (`paginate` enforces it). MAX_SEEN_PER_SUBSCRIPTION is sized against it: a window wider
+ * than the seen cap gets its own ids pruned and re-delivered as "new" every run — which is what
+ * page-sized windows did on realt (see realt.parser parsePage). 150 is what kufar's 5 × 30 always yields.
+ */
+export const MAX_LISTINGS = 150;
+
+/**
+ * What one `fetch` collected, and whether anything was lost along the way.
+ *
+ * `complete: false` means a page after the first failed to load or parse — or some item-page visits
+ * failed and those listings were held back for the next poll — so these listings are a
+ * prefix of what the search actually holds. It is never an error by itself: page one carries the
+ * newest listings, and a run that delivers those is a useful run. It matters to the caller that
+ * treats a fetch as an inventory (the baseline) and to whoever needs to hear that a source
+ * started breaking on page two while page one still works.
+ *
+ * A walk that stops at the window or the page cap is still `complete: true` — every page we meant
+ * to read came back. That is what `capped` says instead: the source advertised more, and the window
+ * may not have held everything published since the last run. Not a loss by itself; WatchService
+ * calls it one only when nothing in the window was seen before. Conflating the two flags would make
+ * `complete` fire on every large search and mean nothing.
+ */
+export interface FetchResult {
+  listings: Listing[];
+  complete: boolean;
+  capped: boolean;
 }
 
 /** A map pin: latitude/longitude as the source published them. */
@@ -35,7 +97,7 @@ export interface Coordinates {
 }
 
 /**
- * One labelled fact about a listing, in display order. The adapter owns the wording and the
+ * One labelled fact about a listing, in display order. The source's parser owns the wording and the
  * unit — it is the only place that knows «Участок 12 сот.» from «Пробег 120 000 км», so the
  * card can render any vertical without learning its vocabulary (build them with
  * `listing-details.ts`).
@@ -45,7 +107,7 @@ export interface ListingDetail {
   value: string;
 }
 
-/** A normalized listing — the shared shape every adapter produces. */
+/** A normalized listing — the shared shape every source produces. */
 export interface Listing {
   /** Stable per-source id — the diff/dedup key. */
   externalId: string;
@@ -54,11 +116,13 @@ export interface Listing {
   description?: string;
   priceByn?: number;
   priceUsd?: number;
+  /** A price the source states only as text (a salary range); when set, it wins over the numbers. */
+  priceText?: string;
   address?: string;
   /** ISO 8601 timestamp of the last update/bump. */
   listTime: string;
   images: string[];
-  /** Present only when the source published a pin — realt, for one, never does. */
+  /** Present only when the source published a pin. */
   coordinates?: Coordinates;
   /** Seller or contact name, when the source publishes one. */
   seller?: string;
@@ -66,11 +130,29 @@ export interface Listing {
   details: ListingDetail[];
 }
 
+/**
+ * Which daily credit budget a protected source's polls draw on: a site with a country is paid by
+ * the providers that can place a request there, one without by the others (scraping/providers.ts).
+ */
+export type CreditPool = 'geo' | 'global';
+
 /** A source plugin — the only place that knows about a specific site. */
 export interface SourceAdapter {
   readonly id: SourceId;
+  /** Query params that name no search on this source — the duplicate check drops them. */
+  readonly volatileParams: readonly string[];
+  /** A listing gone from a complete fetch was sold — tell the user (see SourceDefinition). */
+  readonly reportsRemoved: boolean;
+  /**
+   * What one poll may cost on the paid rungs, and which budget pays it — undefined for an
+   * unprotected source (subscriptions.service.ts § DAILY_CREDIT_BUDGET).
+   */
+  readonly paidPoll?: { credits: number; pool: CreditPool };
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
-  /** Fetch + parse the URL into normalized listings. */
-  fetch(url: string): Promise<Listing[]>;
+  /**
+   * Fetch + parse the URL into normalized listings. `idsOnly`: the caller needs only ids (the
+   * baseline on subscribe) — a source may skip work that only fills fields (item-page visits).
+   */
+  fetch(url: string, options?: { idsOnly?: boolean }): Promise<FetchResult>;
 }

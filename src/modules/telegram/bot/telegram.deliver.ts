@@ -1,13 +1,19 @@
 import { wait } from '@/common/wait';
-import type { Listing } from '@/modules/sources/source-adapter';
+import { isEmpty } from '@/modules/subscriptions/findings';
+import type { Findings } from '@/modules/subscriptions/findings';
 
 import type { ListingMessage } from './send-card';
 import { SEND_DELAY_MS, isBotBlocked, listingMessage } from './send-card';
-import { CARDS_PER_DELIVERY, tailBatches } from './telegram.format';
+import {
+  CARDS_PER_DELIVERY,
+  priceChangeBatches,
+  removalBatches,
+  tailBatches,
+} from './telegram.format';
 
 /** What actually reached the user, plus whatever went wrong around it. */
 export interface DeliveryResult {
-  delivered: Listing[];
+  delivered: Findings;
   /**
    * The first send failure of the delivery. Reported, not fatal: the delivery goes on past it,
    * and only a blocked chat or a streak of failures ends the run early.
@@ -19,7 +25,7 @@ export interface DeliveryResult {
    */
   failures: number;
   /** Recording what arrived failed — the items resurface next run. */
-  markSeenError?: unknown;
+  recordError?: unknown;
 }
 
 /** How a caller puts a delivery on the wire: a card per listing, a digest for the tail. */
@@ -34,25 +40,36 @@ export interface DeliveryTargets {
   digest: (text: string) => Promise<unknown>;
 }
 
-/** One message to send, and the listings it accounts for once it lands. */
+const nothing = (): Findings => ({ listings: [], priceChanges: [], removed: [] });
+
+/** One message to send, and what it accounts for once it lands. */
 interface DeliveryStep {
-  listings: Listing[];
+  carries: Partial<Findings>;
   send: () => Promise<unknown>;
 }
 
 /**
- * The messages one delivery consists of: a full card for the first CARDS_PER_DELIVERY listings,
- * then the rest as digest messages. Everything found goes out in the same run.
+ * The messages one delivery consists of: a full card for the first CARDS_PER_DELIVERY new
+ * listings, the rest of them as digest messages, then price changes and removals as digests.
+ * Everything found goes out in the same run.
  */
-function plan(fresh: Listing[], send: DeliveryTargets): DeliveryStep[] {
-  const cards = fresh.slice(0, CARDS_PER_DELIVERY);
+function plan(found: Findings, send: DeliveryTargets, search?: string): DeliveryStep[] {
+  const cards = found.listings.slice(0, CARDS_PER_DELIVERY);
   return [
     ...cards.map((listing, i) => ({
-      listings: [listing],
-      send: () => send.card(listingMessage(listing, { index: i + 1, total: cards.length })),
+      carries: { listings: [listing] },
+      send: () => send.card(listingMessage(listing, { index: i + 1, total: cards.length, search })),
     })),
-    ...tailBatches(fresh.slice(CARDS_PER_DELIVERY)).map((batch) => ({
-      listings: batch.listings,
+    ...tailBatches(found.listings.slice(CARDS_PER_DELIVERY), search).map((batch) => ({
+      carries: { listings: batch.items },
+      send: () => send.digest(batch.text),
+    })),
+    ...priceChangeBatches(found.priceChanges, search).map((batch) => ({
+      carries: { priceChanges: batch.items },
+      send: () => send.digest(batch.text),
+    })),
+    ...removalBatches(found.removed, search).map((batch) => ({
+      carries: { removed: batch.items },
       send: () => send.digest(batch.text),
     })),
   ];
@@ -61,7 +78,7 @@ function plan(fresh: Listing[], send: DeliveryTargets): DeliveryStep[] {
 /**
  * Send a delivery as however many messages it takes, paced, and report exactly what got through.
  *
- * The caller marks `delivered` as seen — never the whole list: if the third message of five
+ * The caller records `delivered` — never the whole list: if the third message of five
  * fails, the first two must not be re-sent tomorrow, and the rest must not be lost. The error is
  * returned rather than thrown so the caller can still persist that prefix.
  *
@@ -75,16 +92,17 @@ function plan(fresh: Listing[], send: DeliveryTargets): DeliveryStep[] {
  * being down fails everything, and carrying on would spend a full paced loop on requests that
  * cannot land — which under `/check` blocks every other user for as long as it takes.
  */
-export async function deliverListings(
-  fresh: Listing[],
+export async function deliverFindings(
+  found: Findings,
   send: DeliveryTargets,
+  search?: string,
 ): Promise<DeliveryResult> {
-  const delivered: Listing[] = [];
+  const delivered = nothing();
   let failure: unknown;
   let failures = 0;
   let streak = 0;
 
-  for (const [i, step] of plan(fresh, send).entries()) {
+  for (const [i, step] of plan(found, send, search).entries()) {
     if (i > 0) await wait(SEND_DELAY_MS);
     try {
       await step.send();
@@ -98,37 +116,42 @@ export async function deliverListings(
       continue;
     }
     streak = 0;
-    delivered.push(...step.listings);
+    delivered.listings.push(...(step.carries.listings ?? []));
+    delivered.priceChanges.push(...(step.carries.priceChanges ?? []));
+    delivered.removed.push(...(step.carries.removed ?? []));
   }
   return { delivered, error: failure, failures };
 }
 
 /**
- * Deliver a digest and record what arrived — the send-then-markSeen step shared by the daily
- * run and /check.
+ * Deliver what a check found and record what arrived — the send-then-record step shared by the
+ * daily run and /check.
  *
- * markSeen is isolated on purpose: the messages already reached the user, so failing to record
+ * Recording is isolated on purpose: the messages already reached the user, so failing to record
  * them is not a delivery failure — those items just resurface next run. Both failures are
  * returned rather than thrown, because only the caller knows what each one means for it.
  */
-export async function deliverAndMark({
-  listings,
+export async function deliverAndRecord({
+  found,
   send,
-  markSeen,
+  record,
+  search,
 }: {
-  listings: Listing[];
+  found: Findings;
   send: DeliveryTargets;
-  markSeen: (delivered: Listing[]) => Promise<void>;
+  record: (delivered: Findings) => Promise<void>;
+  /** Which search these came from, shown in every header (see `searchLabel`). */
+  search?: string;
 }): Promise<DeliveryResult> {
-  const result = await deliverListings(listings, send);
+  const result = await deliverFindings(found, send, search);
 
   // Persist whatever reached the user, even if a later message failed — otherwise the whole
-  // digest would be re-sent next run.
-  if (result.delivered.length === 0) return result;
+  // delivery would be re-sent next run.
+  if (isEmpty(result.delivered)) return result;
   try {
-    await markSeen(result.delivered);
-  } catch (markSeenError) {
-    return { ...result, markSeenError };
+    await record(result.delivered);
+  } catch (recordError) {
+    return { ...result, recordError };
   }
   return result;
 }

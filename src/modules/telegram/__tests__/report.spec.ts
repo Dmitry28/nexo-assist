@@ -29,11 +29,11 @@ describe('reportUserFacing', () => {
   it('tags the failing operation when the action alone does not identify it', () => {
     reportUserFacing(new Error('db down'), {
       action: 'daily',
-      op: 'mark-seen',
+      op: 'record',
       details: { id: 'sub-1', resending: 3 },
     });
 
-    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'record');
     expect(sentryScope().setContext).toHaveBeenCalledWith('subscription', {
       id: 'sub-1',
       resending: 3,

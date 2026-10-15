@@ -1,6 +1,6 @@
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
-import { SourceUnavailableError } from '../../source-adapter';
+import { SearchRewrittenError, SourceUnavailableError } from '../../source-adapter';
 import { fetchHtml } from '../http';
 
 const fetchMock = undiciFetchMock();
@@ -44,6 +44,55 @@ describe('fetchHtml', () => {
 
     expect(await fetchHtml({ url: 'https://x.by/l', host: 'x.by' })).toBe('<html>ok</html>');
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://x.by/normalized', expect.anything());
+  });
+
+  // realt answers a search it rewrites (any `addressV2` filter) with a redirect to a wider one.
+  describe('pinPath', () => {
+    const ok = () => new Response('<html>ok</html>', { status: 200 });
+
+    it('refuses a redirect to another path, before following it', async () => {
+      fetchMock.mockResolvedValue(redirectTo('https://x.by/belarus/sale/cottages'));
+
+      const failure = fetchHtml({
+        url: 'https://x.by/grodno-region/sale/cottages/taunhaus/?addressV2=1',
+        host: 'x.by',
+        pinPath: true,
+      });
+
+      await expect(failure).rejects.toBeInstanceOf(SearchRewrittenError);
+      // Still a SourceUnavailableError — so it is reported as `kind: source`, not as our bug.
+      await expect(failure).rejects.toBeInstanceOf(SourceUnavailableError);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['a trailing slash added', 'https://x.by/sale/flats/?x=1', 'https://x.by/sale/flats?x=1'],
+      ['http → https on the same path', 'https://x.by:443/sale/flats/', 'http://x.by/sale/flats/'],
+    ])('follows %s — the same search', async (_case, location, url) => {
+      fetchMock.mockResolvedValueOnce(redirectTo(location)).mockResolvedValueOnce(ok());
+
+      expect(await fetchHtml({ url, host: 'x.by', pinPath: true })).toBe('<html>ok</html>');
+    });
+
+    it('compares against the original path, not the previous hop', async () => {
+      fetchMock
+        .mockResolvedValueOnce(redirectTo('https://x.by/a/')) // trailing slash — fine
+        .mockResolvedValueOnce(redirectTo('https://x.by/b')); // walks away from /a
+
+      await expect(
+        fetchHtml({ url: 'https://x.by/a', host: 'x.by', pinPath: true }),
+      ).rejects.toThrow(SearchRewrittenError);
+    });
+
+    it('is opt-in: an unpinned fetch follows the same redirect (kufar does this legitimately)', async () => {
+      fetchMock
+        .mockResolvedValueOnce(redirectTo('https://x.by/listings?cat=1'))
+        .mockResolvedValueOnce(ok());
+
+      expect(await fetchHtml({ url: 'https://x.by/l/grodno', host: 'x.by' })).toBe(
+        '<html>ok</html>',
+      );
+    });
   });
 
   it('throws on a redirect loop past the hop cap', async () => {

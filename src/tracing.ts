@@ -10,12 +10,21 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 
+import { PAID_SCRAPER_ORIGIN } from './common/paid-scrapers';
+
 // Read at import time, before ConfigModule loads `.env` — so a value set only in that file is
 // visible solely on the `start*` scripts, which preload it (see src/sentry.ts).
 if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
   const sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter(),
-    instrumentations: [getNodeAutoInstrumentations()],
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        // The paid anti-bot services take their key in the URL, and a span records it whole.
+        '@opentelemetry/instrumentation-undici': {
+          ignoreRequestHook: (request) => PAID_SCRAPER_ORIGIN.test(request.origin),
+        },
+      }),
+    ],
   });
 
   sdk.start();

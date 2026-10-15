@@ -8,6 +8,7 @@ import type { AppConfig } from '@/config/configuration';
 import { AppEnv } from '@/config/env.validation';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import type { Findings } from '@/modules/subscriptions/findings';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
@@ -26,7 +27,7 @@ const metrics = { recordPhotoFallback: jest.fn() } as unknown as WatchMetrics;
 
 describe('CheckHandlers', () => {
   let subscriptions: { listByUser: jest.Mock; findOwned: jest.Mock };
-  let watch: { poll: jest.Mock; current: jest.Mock; markSeen: jest.Mock };
+  let watch: { poll: jest.Mock; current: jest.Mock; markDelivered: jest.Mock };
   // Real WatchStatus — dependency-free, and /check's polling slot is part of what is tested.
   let status: WatchStatus;
   let handlers: CheckHandlers;
@@ -49,7 +50,7 @@ describe('CheckHandlers', () => {
     watch = {
       poll: jest.fn(),
       current: jest.fn().mockResolvedValue([]),
-      markSeen: jest.fn().mockResolvedValue(undefined),
+      markDelivered: jest.fn().mockResolvedValue(undefined),
     };
     handlers = buildHandlers();
   });
@@ -76,14 +77,19 @@ describe('CheckHandlers', () => {
       expect.stringContaining('объявлений сейчас: 2'),
       expect.anything(),
     );
-    expect(watch.markSeen).not.toHaveBeenCalled();
+    expect(watch.markDelivered).not.toHaveBeenCalled();
   });
 
   it('/check replies with a card per listing and marks the delivered items seen', async () => {
     jest.useFakeTimers();
     const s = sub({ url: 'u1' });
     subscriptions.listByUser.mockResolvedValue([s]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1), listing(2)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1), listing(2)],
+    });
 
     const ctx = makeCtx({ userId: 1 });
     const run = handlers.onCheck(ctx);
@@ -95,7 +101,11 @@ describe('CheckHandlers', () => {
       expect.stringContaining('🆕 1/2'),
       expect.objectContaining({ parse_mode: 'HTML' }),
     );
-    expect(watch.markSeen).toHaveBeenCalledWith(s, [listing(1), listing(2)]);
+    expect(watch.markDelivered).toHaveBeenCalledWith(s, {
+      listings: [listing(1), listing(2)],
+      priceChanges: [],
+      removed: [],
+    });
   });
 
   it('/check counts a photo fallback — the metric claims every card, not just the daily run', async () => {
@@ -103,6 +113,8 @@ describe('CheckHandlers', () => {
     subscriptions.listByUser.mockResolvedValue([s]);
     watch.poll.mockResolvedValue({
       kind: 'fresh',
+      priceChanges: [],
+      removed: [],
       listings: [listing(1, { images: ['https://example.test/dead.jpg'] })],
     });
     const ctx = makeCtx({ userId: 1 });
@@ -120,24 +132,29 @@ describe('CheckHandlers', () => {
     expect(metrics.recordPhotoFallback).toHaveBeenCalledTimes(1);
   });
 
-  it('/check keeps the delivered digest when markSeen fails — no contradictory error', async () => {
+  it('/check keeps the delivered digest when markDelivered fails — no contradictory error', async () => {
     const s = sub({ url: 'u1' });
     subscriptions.listByUser.mockResolvedValue([s]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
-    watch.markSeen.mockRejectedValue(new Error('db down'));
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
+    watch.markDelivered.mockRejectedValue(new Error('db down'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     const ctx = makeCtx({ userId: 1 });
     await handlers.onCheck(ctx);
 
     expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('🏠'),
+      expect.stringContaining('📌'),
       expect.objectContaining({ parse_mode: 'HTML' }),
     );
     expect(ctx.reply).not.toHaveBeenCalledWith(expect.stringContaining('Не получилось проверить'));
     expect(ctx.reply).not.toHaveBeenCalledWith('Ничего нового.');
     // Silent to the user, but it must not be silent to us: the items stay unmarked and re-send.
-    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'record');
     expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'check');
     expect(sentryCapture()).toHaveBeenCalled();
   });
@@ -156,7 +173,12 @@ describe('CheckHandlers', () => {
 
   it('/check says the digest did not go out when the send fails outright', async () => {
     subscriptions.listByUser.mockResolvedValue([sub({ url: 'u1' })]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const ctx = makeCtx({ userId: 1 });
     ctx.reply.mockRejectedValueOnce(new Error('telegram 500')); // the digest message itself
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -166,7 +188,7 @@ describe('CheckHandlers', () => {
     expect(ctx.reply).toHaveBeenCalledWith(
       expect.stringContaining('Не получилось отправить объявления по поиску на kufar'),
     );
-    expect(watch.markSeen).not.toHaveBeenCalled(); // nothing arrived — retry next run
+    expect(watch.markDelivered).not.toHaveBeenCalled(); // nothing arrived — retry next run
   });
 
   it('/check tells the user the rest is coming when only part of it went out', async () => {
@@ -175,6 +197,8 @@ describe('CheckHandlers', () => {
     subscriptions.listByUser.mockResolvedValue([s]);
     watch.poll.mockResolvedValue({
       kind: 'fresh',
+      priceChanges: [],
+      removed: [],
       listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
     const ctx = makeCtx({ userId: 1 });
@@ -191,7 +215,7 @@ describe('CheckHandlers', () => {
     );
     // Everything that arrived is recorded — four of five. Only the refused one comes back next
     // run: stopping at it would have held the other three hostage on every run.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(4);
+    expect((watch.markDelivered.mock.calls[0][1] as Findings).listings.length).toBe(4);
   });
 
   it('/check answers the owner in production — the only live check without waiting for the cron', async () => {
@@ -286,7 +310,7 @@ describe('CheckHandlers', () => {
 
     await handlers.onCheck(makeCtx({ userId: 1 }));
 
-    expect(status.tryStartPolling()).toBe(true); // free again
+    expect(status.tryStartPolling().claim).toBe('started'); // free again
   });
 
   it('show-current denies a subscription that is not yours', async () => {
@@ -310,7 +334,7 @@ describe('CheckHandlers', () => {
     );
     expect(watch.current).not.toHaveBeenCalled();
     // The refusal must not release the slot it never took — that would free the daily run's one.
-    expect(status.tryStartPolling()).toBe(false);
+    expect(status.tryStartPolling().claim).toBe('busy');
   });
 
   it('show-current ignores a stale callback answer — the fetch still runs', async () => {
@@ -341,7 +365,7 @@ describe('CheckHandlers', () => {
 
     // runDaily abandons the run when the slot is taken, so a tap holding it would silence the
     // bot for every user until tomorrow.
-    expect(status.tryStartPolling()).toBe(true);
+    expect(status.tryStartPolling().claim).toBe('started');
     status.finishPolling();
     finishFetch();
     await tap;

@@ -1,3 +1,6 @@
+import { SourceUnavailableError } from '../source-adapter';
+import type { Coordinates, SourceId } from '../source-adapter';
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -29,15 +32,33 @@ export function asText(value: unknown): string | undefined {
 }
 
 /**
+ * Every usable text in a value that may be a list or a single item — the shape sources use for
+ * image URLs and multi-choice labels. Non-text entries are dropped, not passed on to a card.
+ */
+export function asTexts(value: unknown): string[] {
+  return (asArray<unknown>(value) ?? [value]).map(asText).filter((text) => text !== undefined);
+}
+
+/**
  * Narrow an untyped `__NEXT_DATA__` branch to a finite number, or undefined. Strings are parsed
  * because kufar spells its numeric parameters as strings ("12.5") where realt sends numbers.
  *
  * Strict on purpose: "12 сот." yields undefined rather than 12. A unit inside the value means
  * the field is not what we assumed, and a wrong number in a card reads as fact.
+ *
+ * A one-element array is unwrapped: kufar spells some numeric parameters that way (`floor: [11]`
+ * on 27 of 30 long-term rent ads, measured), and reading that as "no value" silently empties the
+ * field. A longer array is still nothing — two numbers are not one.
+ *
+ * The unwrap sits here rather than in kufar's own accessor on purpose: kufar's `param()` also
+ * feeds `facilities`, which reads an array as the list it is, so a local unwrap would need a
+ * second numeric accessor. Every source gets the rule; for one that never wraps, it is a no-op.
  */
 export function asNumber(value: unknown): number | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
-  const text = asText(value);
+  const wrapped = asArray<unknown>(value);
+  const single = wrapped?.length === 1 ? wrapped[0] : value;
+  if (typeof single === 'number') return Number.isFinite(single) ? single : undefined;
+  const text = asText(single);
   if (text === undefined) return undefined;
   const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -46,14 +67,15 @@ export function asNumber(value: unknown): number | undefined {
 /**
  * As `asNumber`, but zero and negatives count as absent — which is how these sources spell "not
  * filled in" for an area, a room count or a year. Fields where zero is a real value (a mileage,
- * say) take `asNumber` instead; the adapter knows which it is.
+ * say) take `asNumber` instead; the parser knows which it is.
  */
 export function asPositiveNumber(value: unknown): number | undefined {
   const parsed = asNumber(value);
   return parsed !== undefined && parsed > 0 ? parsed : undefined;
 }
 
-const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
+// Only the tag's start: its attributes vary by site (av.by adds `crossorigin="anonymous"`).
+const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__"';
 
 /**
  * Parse the `__NEXT_DATA__` JSON blob embedded in an SSR page, or null on any failure.
@@ -62,15 +84,117 @@ const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
 export function parseNextData(html: string): Record<string, unknown> | null {
   const start = html.indexOf(NEXT_DATA_OPEN);
   if (start === -1) return null;
-  const from = start + NEXT_DATA_OPEN.length;
+  const close = html.indexOf('>', start);
+  if (close === -1) return null;
+  const from = close + 1;
   const end = html.indexOf('</script>', from);
   if (end === -1) return null;
 
+  // A blob that parses to a number or an array is not a page — asRecord rejects it and this
+  // returns null, which is what every caller already handles.
+  return asRecord(parseJson(html.slice(from, end))) ?? null;
+}
+
+/** JSON.parse that answers undefined instead of throwing — a page's embedded state is untrusted. */
+export function parseJson(text: string | undefined): unknown {
   try {
-    // A blob that parses to a number or an array is not a page — asRecord rejects it and this
-    // returns null, which is what every caller already handles.
-    return asRecord(JSON.parse(html.slice(from, end))) ?? null;
+    return text === undefined ? undefined : JSON.parse(text);
   } catch {
-    return null;
+    return undefined;
   }
+}
+
+/**
+ * `parseNextData`, or a SourceUnavailableError: a page without the blob is a bot-wall or a
+ * redesign, never an empty search.
+ */
+export function requireNextData(html: string, source: SourceId): Record<string, unknown> {
+  const data = parseNextData(html);
+  if (!data) throw new SourceUnavailableError(`${source}: __NEXT_DATA__ missing or unparseable`);
+  return data;
+}
+
+/**
+ * The listing array a search page must carry, or a SourceUnavailableError. For sources whose
+ * zero-result page still has the key (`[]`, measured), so its absence means the layout changed.
+ */
+export function requireArray<T>(value: unknown, source: SourceId, what: string): T[] {
+  const items = asArray<T>(value);
+  if (!items) throw new SourceUnavailableError(`${source}: ${what} missing — page layout changed?`);
+  return items;
+}
+
+/**
+ * The items that carry a usable id (a finite number or non-blank text) — or a
+ * SourceUnavailableError when a non-empty page has none. The id is the dedup key: read blindly
+ * (the caller's `String(id)`), a renamed field turns every listing into "undefined", the walk merges them
+ * into one and the seen set swallows the rest without a sound. One malformed item is dropped, not
+ * fatal — the rest of the page is still good.
+ */
+// TODO [L]: a partial drop leaves no trace — return the count so the walk can warn once.
+export function withIds<T>(items: T[], idOf: (item: T) => unknown, source: SourceId): T[] {
+  const kept = items.filter((item) => {
+    const id = idOf(item);
+    return typeof id === 'number' ? Number.isFinite(id) : asText(id) !== undefined;
+  });
+  if (items.length > 0 && kept.length === 0) {
+    throw new SourceUnavailableError(`${source}: no listing carries an id — page layout changed?`);
+  }
+  return kept;
+}
+
+/**
+ * Drop the promoted items a site splices into a newest-first page out of order — ones listed
+ * before the page's oldest regular item. Outside the order they break the window's premise, and a
+ * rotating promo pool would deliver an old item as "new". A promoted item inside the page's span
+ * is in order, so it stays: a fresh one still arrives. A page with no dated regular item has no
+ * span to judge by and is kept whole; an undated promoted item cannot be placed and is dropped.
+ */
+export function withoutStalePromos<T>(
+  items: T[],
+  isPromo: (item: T) => boolean,
+  timeOf: (item: T) => unknown,
+): T[] {
+  const time = (item: T): number => Date.parse(asText(timeOf(item)) ?? '');
+  const regular = items
+    .filter((item) => !isPromo(item))
+    .map(time)
+    .filter((t) => !Number.isNaN(t));
+  if (regular.length === 0) return items;
+  const oldest = Math.min(...regular);
+  return items.filter((item) => !isPromo(item) || time(item) >= oldest);
+}
+
+/**
+ * A price as a whole currency amount, or undefined. `minorUnits`: the source counts in 1/100 of
+ * the unit (kufar does — 1385000 → 13850). Positivity is checked AFTER rounding: a raw minor
+ * value under 50 rounds to 0, and a price of 0 prints "0 BYN" instead of "цена не указана".
+ */
+export function asPrice(
+  value: unknown,
+  { minorUnits }: { minorUnits: boolean },
+): number | undefined {
+  const raw = asPositiveNumber(value);
+  if (raw === undefined) return undefined;
+  const price = Math.round(minorUnits ? raw / 100 : raw);
+  return price > 0 ? price : undefined;
+}
+
+/**
+ * Narrow a `[longitude, latitude]` pair — longitude FIRST, the reverse of the usual order.
+ * Both sources spell it that way (kufar's `coordinates` parameter, realt's `location`), verified
+ * live against Grodno and Minsk listings. The order is pinned by the parsers' specs, not by this
+ * check: for Belarus both figures are in range either way, so a swap would pass here and only
+ * show up as a pin in the wrong country.
+ *
+ * What the check does catch: malformed values, and `[0, 0]` — a zeroed pair is not a location
+ * off the African coast, it is a field nobody filled.
+ */
+export function asCoordinates(value: unknown): Coordinates | undefined {
+  const pair = asArray<unknown>(value);
+  const lon = asNumber(pair?.[0]);
+  const lat = asNumber(pair?.[1]);
+  if (lon === undefined || lat === undefined) return undefined;
+  if (lat === 0 && lon === 0) return undefined;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : undefined;
 }

@@ -15,3 +15,6 @@ export const sentryScope = (): SentryScope =>
 
 /** The stubbed `captureException` — assert that something was reported at all. */
 export const sentryCapture = (): jest.Mock => Sentry.captureException as unknown as jest.Mock;
+
+/** The stubbed `captureMessage` — for reports that carry no error, only a fact worth seeing. */
+export const sentryMessage = (): jest.Mock => Sentry.captureMessage as unknown as jest.Mock;

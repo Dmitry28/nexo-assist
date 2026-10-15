@@ -1,16 +1,22 @@
 import { matchesHost } from '@/common/url';
 
 import { detail, listingDetails } from '../listing-details';
+import { markCut } from '../listing-text';
 import {
   asArray,
-  asNumber,
+  asCoordinates,
   asPositiveNumber,
+  asPrice,
   asRecord,
   asText,
-  parseNextData,
+  asTexts,
+  requireArray,
+  requireNextData,
+  withIds,
 } from '../scraping/next-data';
-import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
-import type { Coordinates, Listing } from '../source-adapter';
+import { UNTITLED_LISTING } from '../source-adapter';
+import type { Listing } from '../source-adapter';
+import type { SearchPage } from '../source-definition';
 
 /**
  * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
@@ -26,7 +32,7 @@ interface RawKufarAd {
   price_byn?: string;
   price_usd?: string;
   list_time: string;
-  images?: Array<{ path: string }>;
+  images?: unknown;
   ad_parameters?: RawParam[];
   account_parameters?: RawParam[];
 }
@@ -68,21 +74,28 @@ export interface KufarPage {
  * read as an empty search (verified live: a zero-result search still has `ads: []`).
  */
 export function extractPage(html: string): KufarPage {
-  const data = parseNextData(html);
-  if (!data) throw new SourceUnavailableError('kufar: __NEXT_DATA__ missing or unparseable');
-
+  const data = requireNextData(html, 'kufar');
   const props = asRecord(data.props);
   const pageProps = asRecord(props?.pageProps);
   // NOTE: Kufar puts Redux state under props.pageProps.initialState or props.initialState.
   const initialState = asRecord(pageProps?.initialState ?? props?.initialState);
   const listing = asRecord(initialState?.listing);
-  const ads = asArray<RawKufarAd>(listing?.ads);
-  if (!ads) throw new SourceUnavailableError('kufar: listing.ads missing — page layout changed?');
+  const ads = withIds(
+    requireArray<RawKufarAd>(listing?.ads, 'kufar', 'listing.ads'),
+    (ad) => ad.ad_id,
+    'kufar',
+  );
   // No pagination block, or one of another shape, simply means no next page — unlike `ads`,
   // whose absence is the signal that the page is not a search result at all.
   const pagination = asArray<RawPagination>(listing?.pagination) ?? [];
   const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
   return { ads, nextCursor };
+}
+
+/** A search page as the shared walk reads it: listings and the next page's cursor token. */
+export function parsePage(html: string): SearchPage<string | null> {
+  const { ads, nextCursor } = extractPage(html);
+  return { listings: ads.map(mapAd), next: nextCursor };
 }
 
 /** Map a raw ad to a normalized listing. */
@@ -93,20 +106,29 @@ export function mapAd(ad: RawKufarAd): Listing {
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
-    description: preview(ad.body_short),
-    priceByn: toPrice(ad.price_byn),
-    priceUsd: toPrice(ad.price_usd),
+    description: markCut(asText(ad.body_short), BODY_SHORT_CHARS),
+    // Kufar counts in 1/100 of the currency (1385000 → 13850 BYN).
+    priceByn: asPrice(ad.price_byn, { minorUnits: true }),
+    priceUsd: asPrice(ad.price_usd, { minorUnits: true }),
     address: asText(param(ad.account_parameters, 'address')),
     listTime: ad.list_time,
-    images: (ad.images ?? []).map((image) => `${IMAGE_CDN_BASE}/${image.path}`),
-    coordinates: toCoordinates(param(ad.ad_parameters, 'coordinates')),
+    images: asTexts(asArray<unknown>(ad.images)?.map((image) => asRecord(image)?.path)).map(
+      (path) => `${IMAGE_CDN_BASE}/${path}`,
+    ),
+    coordinates: asCoordinates(param(ad.ad_parameters, 'coordinates')),
     seller: asText(param(ad.account_parameters, 'name')),
     // Order is the card's reading order — what identifies the object first, extras last.
     details: listingDetails(
       detail('Тип', propertyType(ad)),
       detail('Площадь', asPositiveNumber(param(ad.ad_parameters, 'size')), 'м²'),
       detail('Участок', asPositiveNumber(param(ad.ad_parameters, 'size_area')), 'сот.'),
-      detail('Комнат', asPositiveNumber(param(ad.ad_parameters, 'rooms'))),
+      // A dictionary field, not a count: measured 2026-10-06, `v` "6" is a studio and "5" reads
+      // «5 и более» or «5+» by category — only the label is right.
+      detail('Комнат', asText(param(ad.ad_parameters, 'rooms', 'vl'))),
+      // Rent ads carry the storey and the building's height; a sale ad carries neither. Both
+      // are positive-only: storeys here are 1-based, so a 0 is an unfilled field, not a basement.
+      detail('Этаж', asPositiveNumber(param(ad.ad_parameters, 'floor'))),
+      detail('Этажей', asPositiveNumber(param(ad.ad_parameters, 're_number_floors'))),
       detail('Год постройки', asPositiveNumber(param(ad.ad_parameters, 'year_built'))),
       ...facilities(ad),
     ),
@@ -125,14 +147,6 @@ function link(ad: RawKufarAd): string {
   return published !== undefined && matchesHost({ url: published, host: HOST })
     ? published
     : `https://re.kufar.by/vi/${ad.ad_id}`;
-}
-
-// NOTE: Kufar stores prices as integers in 1/100 of the currency unit (1385000 → 13850 BYN).
-// The positivity check comes AFTER the conversion: a raw value under 50 rounds to 0, and a
-// `priceByn` of 0 is not a price — the digest would print "0 BYN" rather than "цена не указана".
-function toPrice(raw: string | undefined): number | undefined {
-  const value = Math.round(parseInt(raw ?? '', 10) / 100);
-  return value > 0 ? value : undefined;
 }
 
 /** One parameter by key, taking its raw value (`v`) or its display label (`vl`). */
@@ -157,12 +171,6 @@ function propertyType(ad: RawKufarAd): string | undefined {
 // exactly this many characters, and it cuts mid-word with nothing to show for it.
 const BODY_SHORT_CHARS = 150;
 
-/** The listing preview, marked as cut when kufar cut it — otherwise it just stops mid-word. */
-function preview(raw: string | undefined): string | undefined {
-  const text = asText(raw);
-  return text !== undefined && text.length >= BODY_SHORT_CHARS ? `${text}…` : text;
-}
-
 // One line per parameter, each under its own label. Lumping them together produced «Удобства:
 // Центральное» — true of the heating, unreadable as a fact.
 const FACILITY_LABELS: Array<[key: string, label: string]> = [
@@ -171,6 +179,10 @@ const FACILITY_LABELS: Array<[key: string, label: string]> = [
   ['re_hot_water', 'Горячая вода'],
   ['re_sewage', 'Канализация'],
   ['re_property_rights', 'Права'],
+  // Long-term rent: what the flat comes with, and what the tenant pays up front.
+  ['flat_repair', 'Ремонт'],
+  ['flat_furnished', 'Мебель'],
+  ['flat_rent_prepayment', 'Предоплата'],
   ['re_outbuildings', 'Постройки'],
   // A garage's amenities really are one list ("Свет, Охрана"), so they keep a shared label.
   ['garage_improvements', 'Удобства'],
@@ -180,25 +192,6 @@ function facilities(ad: RawKufarAd): Array<ReturnType<typeof detail>> {
   return FACILITY_LABELS.map(([key, label]) => {
     const value = param(ad.ad_parameters, key, 'vl');
     // A label can be a single string or a list (a garage has several) — both become one line.
-    const labels = (asArray<unknown>(value) ?? [value]).map(asText).filter((l) => l !== undefined);
-    return detail(label, labels.join(', '));
+    return detail(label, asTexts(value).join(', '));
   });
-}
-
-/**
- * Kufar's `coordinates` parameter, stored as `[longitude, latitude]` — longitude FIRST, the
- * reverse of the usual order (verified live: a Grodno ad reads `[23.85, 53.68]`). The order is
- * pinned by a spec, not by this check: for Belarus both figures are in range either way, so a
- * swap would pass here and only show up as a pin in the wrong country.
- *
- * What the check does catch: malformed values, and `[0, 0]` — a zeroed pair is not a location
- * off the African coast, it is a field nobody filled.
- */
-function toCoordinates(value: unknown): Coordinates | undefined {
-  const pair = asArray<unknown>(value);
-  const lon = asNumber(pair?.[0]);
-  const lat = asNumber(pair?.[1]);
-  if (lon === undefined || lat === undefined) return undefined;
-  if (lat === 0 && lon === 0) return undefined;
-  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : undefined;
 }

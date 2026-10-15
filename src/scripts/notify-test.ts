@@ -20,6 +20,7 @@ import { Bot } from 'grammy';
 
 import { wait } from '@/common/wait';
 import type { Listing } from '@/modules/sources/source-adapter';
+import { toSnapshot } from '@/modules/subscriptions/price-change';
 import type { CardSender } from '@/modules/telegram/bot/send-card';
 import {
   SEND_DELAY_MS,
@@ -27,7 +28,11 @@ import {
   listingMessage,
   sendCard,
 } from '@/modules/telegram/bot/send-card';
-import { tailBatches } from '@/modules/telegram/bot/telegram.format';
+import {
+  priceChangeBatches,
+  removalBatches,
+  tailBatches,
+} from '@/modules/telegram/bot/telegram.format';
 
 // Wikimedia placeholders: real images at realistic sizes, and no dependency on a source being up.
 const PHOTOS = [
@@ -151,7 +156,11 @@ async function main(): Promise<void> {
   for (const [i, listing] of MOCK_LISTINGS.entries()) {
     // Every card carries its position, exactly as `plan()` sends them. The one shape this does
     // not show is a lone listing, whose «1/1» the card suppresses (covered in listing-card.spec).
-    const message = listingMessage(listing, { index: i + 1, total: MOCK_LISTINGS.length });
+    const message = listingMessage(listing, {
+      index: i + 1,
+      total: MOCK_LISTINGS.length,
+      search: 'kufar · grodno/kupit/dom',
+    });
     console.info(
       `[${i + 1}/${MOCK_LISTINGS.length}] photos ${message.images.length}, ` +
         `pin ${message.coordinates ? 'yes' : 'no'}, caption ${message.caption.length} chars`,
@@ -164,7 +173,29 @@ async function main(): Promise<void> {
   // The other shape a user receives: everything past CARDS_PER_DELIVERY arrives as this digest,
   // as plain text (it is deliberately unescaped — see telegram.format.ts).
   for (const batch of tailBatches(MOCK_LISTINGS)) {
-    console.info(`[tail] digest of ${batch.listings.length}, ${batch.text.length} chars`);
+    console.info(`[tail] digest of ${batch.items.length}, ${batch.text.length} chars`);
+    if (send) await wait(SEND_DELAY_MS);
+    await (live === undefined ? printing.html(batch.text) : live.text(batch.text));
+  }
+
+  // And a price change on a listing already delivered — the same plain-text digest shape.
+  const changes = MOCK_LISTINGS.slice(0, 2).map((after) => ({
+    before: { ...toSnapshot(after), priceUsd: (after.priceUsd ?? 0) + 5000 },
+    after,
+  }));
+  for (const batch of priceChangeBatches(changes)) {
+    console.info(`[price] digest of ${batch.items.length}, ${batch.text.length} chars`);
+    if (send) await wait(SEND_DELAY_MS);
+    await (live === undefined ? printing.html(batch.text) : live.text(batch.text));
+  }
+
+  // And a removal — a delivered listing gone from a fixed sale list.
+  const removed = MOCK_LISTINGS.slice(0, 1).map((l) => ({
+    externalId: l.externalId,
+    last: toSnapshot(l),
+  }));
+  for (const batch of removalBatches(removed)) {
+    console.info(`[removed] digest of ${batch.items.length}, ${batch.text.length} chars`);
     if (send) await wait(SEND_DELAY_MS);
     await (live === undefined ? printing.html(batch.text) : live.text(batch.text));
   }

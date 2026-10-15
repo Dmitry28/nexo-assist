@@ -76,6 +76,17 @@ describe('extractPage', () => {
     expect(() => extractPage(noAds)).toThrow('listing.ads');
     expect(() => extractPage(noAds)).toThrow(SourceUnavailableError);
   });
+
+  // The parsers share the rule (withIds); this pins that kufar's page goes through it.
+  it('drops an ad without an id, and fails a page where no ad has one', () => {
+    const page = (ads: unknown[]): string =>
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { initialState: { listing: { ads } } } } }) +
+      '</script>';
+
+    expect(extractPage(page([{ ad_id: 1 }, { adId: 2 }])).ads).toEqual([{ ad_id: 1 }]);
+    expect(() => extractPage(page([{ adId: 2 }]))).toThrow(SourceUnavailableError);
+  });
 });
 
 describe('mapAd', () => {
@@ -152,10 +163,17 @@ describe('mapAd', () => {
     const listing = mapAd({
       ad_id: 1,
       list_time: '2026-01-01T00:00:00Z',
-      ad_parameters: [{ p: 'house_type_for_sell', v: '25', vl: 'Таунхаус' }],
+      ad_parameters: [
+        { p: 'house_type_for_sell', v: '25', vl: 'Таунхаус' },
+        // Live: a studio is rooms code "6" — reading `v` printed «Комнат: 6».
+        { p: 'rooms', v: '6', vl: 'Студия' },
+      ],
     });
 
-    expect(listing.details).toEqual([{ label: 'Тип', value: 'Таунхаус' }]);
+    expect(listing.details).toEqual([
+      { label: 'Тип', value: 'Таунхаус' },
+      { label: 'Комнат', value: 'Студия' },
+    ]);
   });
 
   it('takes the plot area from size_area and the building area from size', () => {
@@ -166,7 +184,7 @@ describe('mapAd', () => {
       ad_parameters: [
         { p: 'size', v: 98 },
         { p: 'size_area', v: 2 },
-        { p: 'rooms', v: '4' },
+        { p: 'rooms', v: '4', vl: '4' },
         { p: 'year_built', v: 2024 },
       ],
     });
@@ -179,20 +197,51 @@ describe('mapAd', () => {
     ]);
   });
 
-  it.each([
-    ['malformed', 'not a pair'],
-    ['half-filled', [27.53]],
-    ['out of range', [27.53, 953.9]],
-    // A zeroed pair is an unfilled field, not a spot in the Atlantic.
-    ['zeroed', [0, 0]],
-  ])('drops %s coordinates rather than pinning the wrong place', (_label, value) => {
+  // Only the order is pinned here — the guards live beside the helper, in next-data.spec.ts.
+  it('reads the pair longitude first', () => {
     const listing = mapAd({
       ad_id: 1,
       list_time: '2026-01-01T00:00:00Z',
-      ad_parameters: [{ p: 'coordinates', v: value }],
+      ad_parameters: [{ p: 'coordinates', v: [23.85, 53.68] }],
     });
 
-    expect(listing.coordinates).toBeUndefined();
+    expect(listing.coordinates).toEqual({ lat: 53.68, lon: 23.85 });
+  });
+
+  // Values as a live long-term-rent page spells them: the storeys arrive wrapped in a
+  // one-element array, the dictionary fields as a code plus its label.
+  it('reads the long-term rent fields', () => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [
+        { p: 'floor', v: [3], vl: ['3'] },
+        { p: 're_number_floors', v: [9], vl: ['9'] },
+        { p: 'flat_repair', v: '5', vl: 'Евро' },
+        { p: 'flat_furnished', v: true, vl: 'Да' },
+        { p: 'flat_rent_prepayment', v: '5', vl: 'Один месяц' },
+      ],
+    });
+
+    expect(listing.details).toEqual([
+      { label: 'Этаж', value: '3' },
+      { label: 'Этажей', value: '9' },
+      { label: 'Ремонт', value: 'Евро' },
+      { label: 'Мебель', value: 'Да' },
+      { label: 'Предоплата', value: 'Один месяц' },
+    ]);
+  });
+
+  // Measured: an unfurnished flat carries `flat_furnished: false` with the label «-», and a
+  // card row reading «Мебель: -» is noise, not information.
+  it('drops a dictionary field whose label is just a dash', () => {
+    const listing = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: [{ p: 'flat_furnished', v: false, vl: '-' }],
+    });
+
+    expect(listing.details).toEqual([]);
   });
 
   it('omits price when the raw value is zero or missing', () => {

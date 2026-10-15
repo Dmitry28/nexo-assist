@@ -6,20 +6,29 @@ import { CronJob } from 'cron';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
-import type { Listing, SourceId } from '@/modules/sources/source-adapter';
+import { PaidRungsUnavailableError } from '@/modules/sources/source-adapter';
+import type { SourceId } from '@/modules/sources/source-adapter';
+import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
-import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
-import type { PollOutcome } from '@/modules/subscriptions/watch.service';
+import { countOf } from '@/modules/subscriptions/findings';
+import type { Findings } from '@/modules/subscriptions/findings';
+import { SubscriptionsService, searchKey } from '@/modules/subscriptions/subscriptions.service';
+import type { PollOutcome, SharedFetches } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 import { isBotBlocked } from '@/modules/telegram/bot/send-card';
-import { deliverAndMark } from '@/modules/telegram/bot/telegram.deliver';
-import { deadSubscriptionNotice } from '@/modules/telegram/bot/telegram.format';
+import { deliverAndRecord } from '@/modules/telegram/bot/telegram.deliver';
+import {
+  deadSubscriptionNotice,
+  quietReport,
+  searchLabel,
+} from '@/modules/telegram/bot/telegram.format';
 import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
 import { reportUserFacing } from '@/modules/telegram/report';
 
+import { SourceHealth } from './source-health';
+import type { SourceSignal } from './source-health';
 import { SourceTally } from './source-tally';
-import type { SourceOutage } from './source-tally';
 import { pace } from './watch.pacing';
 import { WatchStatus } from './watch.status';
 
@@ -35,9 +44,19 @@ export const MAX_CONSECUTIVE_FAILURES = 5;
 // before the subscription is retired anyway.
 export const MAX_REPRIEVE_FAILURES = MAX_CONSECUTIVE_FAILURES * 3;
 
-// Outcome of processing one subscription — drives the source tally, the 403 pause and the
-// deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out).
-type ProcessResult = { state: 'ok' | 'blocked' } | { state: 'poll-failed'; dead: boolean };
+// Days a user may hear nothing before the quiet report tells them the bot is still watching.
+export const QUIET_REPORT_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Outcome of processing one subscription — drives the source tally, the 403 pause, the
+// deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out) and
+// the quiet report (`poll`: what a successful poll found).
+type ProcessResult =
+  | { state: 'ok'; poll: PollOutcome['kind'] }
+  | { state: 'blocked' }
+  | { state: 'poll-failed'; dead: boolean }
+  // A protected source with no paid service to ask — ours to fix, not the link's.
+  | { state: 'unpaid' };
 
 /**
  * The failure streak as of this run. Subscription rows are loaded before the bump, so the row in
@@ -61,6 +80,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly telegram: TelegramService,
     private readonly metrics: WatchMetrics,
     private readonly status: WatchStatus,
+    private readonly health: SourceHealth,
   ) {}
 
   onModuleInit(): void {
@@ -91,15 +111,32 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Skip rather than queue: whatever is polling covers the same subscriptions, and a
     // WATCH_CRON firing faster than a run lasts would otherwise stack parallel runs.
     // The owner is told, because a warn stays inside the process (PRODUCT_PLAN.md § бэклог).
-    if (!this.status.tryStartPolling()) {
+    const slot = this.status.tryStartPolling();
+    if (slot.claim === 'busy') {
       this.logger.warn('Watch run skipped — a poll is already in progress');
       await this.notifyAdmin('⚠️ Суточный прогон пропущен — опрос уже шёл. Проверки не было.');
       return;
     }
+    if (slot.claim === 'reclaimed') {
+      // The previous run never released the slot, so it never finished either. Reporting it is
+      // the whole point of the watchdog: without this the only symptom is a bot that quietly
+      // stopped checking, and the run that hung leaves no other trace.
+      // NOTE: Sentry as well as Telegram — notifyAdmin's own failure is only a warn, and a hung
+      // run is the last thing that should depend on the channel that fails silently.
+      this.logger.error('Watch run reclaimed a stuck polling slot — the previous run never ended');
+      Sentry.captureMessage('Watch run reclaimed a stuck polling slot', 'error');
+      // Not awaited: if the previous run hung on a Telegram send, this send hangs the same way,
+      // and awaiting it would stall the very run that came to replace it.
+      void this.notifyAdmin('🚨 Предыдущий прогон завис и не завершился. Слот отобран, проверяю.');
+    }
+    const startedAt = Date.now();
     try {
       await this.pollAll();
     } finally {
-      this.status.finishPolling();
+      // Logged so the margin under POLL_STUCK_AFTER_MS stays observable as subscriptions grow —
+      // the ceiling is sized by arithmetic, and arithmetic drifts.
+      this.logger.log(`Watch run finished in ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      this.status.finishPolling(slot.key);
     }
     // NOTE: outside the try/finally on purpose — this records the last *successful* run, which
     // is what /stats now says.
@@ -116,13 +153,31 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // Subscriptions whose failure streak ran out this run. Paused only after the loop: whether
     // the source itself is down is not known until every poll is in (see pauseDead).
     const dead: Subscription[] = [];
+    // Polled fine with nothing new — the quiet report's candidates — and the users something
+    // was sent to this run, who must not then be told «нового нет».
+    const quiet: Subscription[] = [];
+    const heard = new Set<string>();
+    const unpaid = new Set<SourceId>();
+    // One fetch per search, whoever watches it (SharedFetches) — and one tally entry: a dead
+    // search three users watch is one bad URL, not a failing source.
+    // NOTE: the Sentry report and the error metric of a failed poll stay per subscription — one
+    // failing search watched by N users is N events. Accepted: the dead-link streak is per
+    // subscription too.
+    const shared: SharedFetches = new Map();
+    const tallied = new Set<string>();
+    const recordOnce = (sub: Subscription, failed: boolean): void => {
+      const key = searchKey(sub);
+      if (tallied.has(key)) return;
+      tallied.add(key);
+      tally.record({ source: sub.source, failed });
+    };
     for (const [i, sub] of subs.entries()) {
       if (blockedUsers.has(sub.userId)) continue;
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
       if (i > 0) await pace(this.appConfig);
       let result: ProcessResult;
       try {
-        result = await this.processSubscription(sub);
+        result = await this.processSubscription(sub, shared);
       } catch (err) {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
@@ -131,30 +186,66 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         // Still count the attempt, or a throw here could push the source below
         // SOURCE_FAILURE_MIN_POLLS and suppress its outage alert. Not a poll failure: everything
         // that throws past processSubscription does so after the fetch already succeeded.
-        tally.record({ source: sub.source, failed: false });
+        recordOnce(sub, false);
         continue;
       }
-      tally.record({ source: sub.source, failed: result.state === 'poll-failed' });
+      // Not tallied: the site was never asked, so it is neither down nor up.
+      if (result.state === 'unpaid') {
+        unpaid.add(sub.source);
+        continue;
+      }
+      recordOnce(sub, result.state === 'poll-failed');
       if (result.state === 'poll-failed' && result.dead) dead.push(sub);
+      if (result.state === 'ok' && result.poll === 'nothing') quiet.push(sub);
+      if (result.state === 'ok' && result.poll === 'fresh') heard.add(sub.userId);
       if (result.state === 'blocked') {
         blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
         await this.pauseUser(sub.userId);
       }
     }
     const outages = tally.failedSources();
-    await this.alertFailedSources(outages);
+    await this.alertSourceSignals(
+      this.health.update({ down: outages, succeeded: tally.succeededSources() }),
+    );
     await this.pauseDead(dead, new Set(outages.map(({ source }) => source)), blockedUsers);
+    await this.reportQuiet({ quiet, heard, blockedUsers });
+    if (unpaid.size > 0) await this.alertUnpaid([...unpaid]);
     // Last on purpose: the gauges must count the subscriptions this run just paused as paused.
     await this.recordTotals();
   }
 
-  /** Alert the admin about any source whose polls all failed this run (likely a broken adapter). */
-  private async alertFailedSources(outages: SourceOutage[]): Promise<void> {
-    for (const { source, attempts } of outages) {
-      await this.notifyAdmin(
-        `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${attempts}) — возможно, сломан адаптер.`,
-      );
+  /**
+   * Tell the owner what changed about a source's health — not what its state is.
+   *
+   * Repeating «источник лежит» every run is how an alert channel stops being read, and a fix
+   * that lands silently leaves the owner guessing whether it worked. So: once when it breaks,
+   * a reminder only every OUTAGE_REMINDER_RUNS runs, and a line when it comes back.
+   */
+  private async alertSourceSignals(signals: SourceSignal[]): Promise<void> {
+    for (const signal of signals) {
+      const { source } = signal;
+      const text =
+        signal.kind === 'down'
+          ? `🚨 Источник «${source}»: провалились все опросы в этом прогоне (${signal.attempts}) — возможно, сломан адаптер.`
+          : signal.kind === 'still-down'
+            ? `🚨 Источник «${source}» не отвечает уже ${signal.runs} прогонов с ошибкой.`
+            : `✅ Источник «${source}» снова отдаёт данные — молчал ${signal.runs} прогонов.`;
+      await this.notifyAdmin(text);
     }
+  }
+
+  /**
+   * Protected sources whose paid anti-bot services had nothing to answer with — no key, or the
+   * month's credits spent. Every run while it lasts: it is the owner's to fix, and its
+   * subscriptions are silent meanwhile (not paused — the link is fine).
+   */
+  private async alertUnpaid(sources: SourceId[]): Promise<void> {
+    const list = sources.map(siteName).join(', ');
+    this.logger.warn(`Paid fetch unavailable — not polled: ${list}`);
+    Sentry.captureMessage(`Paid fetch unavailable: ${list}`, 'warning');
+    await this.notifyAdmin(
+      `💳 Платная загрузка недоступна (нет ключа или кончились кредиты) — не опрошены: ${list}.`,
+    );
   }
 
   /** Send an alert to the owner if configured; a failed alert must not affect the run. */
@@ -186,11 +277,17 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
 
   /** Poll, then deliver fresh listings. The dead-link streak and the source tally track
    *  POLL (source) failures only — delivery errors are a separate concern. */
-  private async processSubscription(sub: Subscription): Promise<ProcessResult> {
+  private async processSubscription(
+    sub: Subscription,
+    shared: SharedFetches,
+  ): Promise<ProcessResult> {
     let outcome: PollOutcome;
     try {
-      outcome = await this.watch.poll(sub);
+      outcome = await this.watch.poll(sub, shared);
     } catch (err) {
+      // No streak, no per-subscription report: every protected subscription fails alike, and
+      // the owner gets one line for the run (alertUnpaid).
+      if (err instanceof PaidRungsUnavailableError) return { state: 'unpaid' };
       this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
       // The scheduled run — not /check — is where site outages actually land, so this is the
       // path that has to carry `kind: source`; otherwise that split never shows up in practice.
@@ -209,36 +306,35 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     }
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
     if (sub.consecutiveFailures > 0) await this.subscriptions.resetFailures(sub.id);
-    // A pending baseline was just seeded silently — deliver only fresh listings.
-    if (outcome.kind !== 'fresh') return { state: 'ok' };
-    return { state: (await this.deliverFresh(sub, outcome.listings)) ? 'blocked' : 'ok' };
+    // A pending baseline was just seeded silently — deliver only what a check found.
+    if (outcome.kind !== 'fresh') return { state: 'ok', poll: outcome.kind };
+    return (await this.deliverFresh(sub, outcome))
+      ? { state: 'blocked' }
+      : { state: 'ok', poll: 'fresh' };
   }
 
-  /** Send the fresh digest. Returns true if the user blocked us; other send failures are
-   *  logged and retried next run (markSeen only after a successful send). */
-  private async deliverFresh(sub: Subscription, listings: Listing[]): Promise<boolean> {
-    const { delivered, error, failures, markSeenError } = await deliverAndMark({
-      listings,
+  /** Send what the check found. Returns true if the user blocked us; other send failures are
+   *  logged and retried next run (recorded only after a successful send). */
+  private async deliverFresh(sub: Subscription, found: Findings): Promise<boolean> {
+    const { delivered, error, failures, recordError } = await deliverAndRecord({
+      search: searchLabel(sub),
+      found,
       send: {
         card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),
         digest: (text) => this.telegram.notify(sub.user.telegramId, text),
       },
-      markSeen: (items) => this.watch.markSeen(sub, items),
+      record: (items) => this.watch.markDelivered(sub, items),
     });
 
-    if (markSeenError) {
+    const count = countOf(delivered);
+    if (recordError) {
       this.logger.error(
-        { err: markSeenError },
-        `markSeen failed after delivery for subscription ${sub.id}`,
+        { err: recordError },
+        `Recording failed after delivery for subscription ${sub.id}`,
       );
-      this.report({
-        err: markSeenError,
-        sub,
-        op: 'mark-seen',
-        details: { resending: delivered.length },
-      });
+      this.report({ err: recordError, sub, op: 'record', details: { resending: count } });
     }
-    if (delivered.length > 0) this.metrics.recordDelivery(sub.source);
+    if (count > 0) this.metrics.recordDelivery(sub.source);
 
     if (!error) return false;
     // A 403 is an expected state (the user blocked us) handled by pausing them, not a defect —
@@ -256,9 +352,63 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       op: 'deliver',
       // `failures` alongside the count delivered: only the first error is kept, so without it one
       // refused card and nine read the same in Sentry.
-      details: { delivered: delivered.length, failures },
+      details: { delivered: count, failures },
     });
     return false;
+  }
+
+  /**
+   * Tell a user who has heard nothing for QUIET_REPORT_DAYS that the bot is still watching —
+   * otherwise a quiet market and a broken bot look the same to them.
+   *
+   * Per user, not per subscription: any delivery already proves the bot alive, and per-search
+   * timers drift apart until someone with many searches hears «нового нет» almost daily. Lists
+   * only searches polled fine this run: «нового нет» for a source that did not answer is false.
+   * A failed send stamps nothing, so it is retried next run.
+   */
+  private async reportQuiet({
+    quiet,
+    heard,
+    blockedUsers,
+  }: {
+    quiet: Subscription[];
+    heard: Set<string>;
+    blockedUsers: Set<string>;
+  }): Promise<void> {
+    // Half a day of slack: the stamp is taken at the end of a run, and a run that ends a minute
+    // sooner than last week's would otherwise push the «weekly» note to day eight.
+    const dueBefore = Date.now() - QUIET_REPORT_DAYS * DAY_MS + DAY_MS / 2;
+    const byUser = new Map<string, Subscription[]>();
+    for (const sub of quiet) {
+      if (heard.has(sub.userId) || blockedUsers.has(sub.userId)) continue;
+      const { lastNotifiedAt, createdAt } = sub.user;
+      if ((lastNotifiedAt ?? createdAt).getTime() > dueBefore) continue;
+      byUser.set(sub.userId, [...(byUser.get(sub.userId) ?? []), sub]);
+    }
+    // TODO [L]: a subscription removed mid-run still polls as «nothing» and gets listed here.
+    let sent = 0;
+    for (const [userId, subs] of byUser) {
+      const { telegramId } = subs[0].user;
+      try {
+        await this.telegram.notify(telegramId, quietReport(subs));
+      } catch (err) {
+        if (isBotBlocked(err)) {
+          blockedUsers.add(userId);
+          await this.pauseUser(userId);
+          continue;
+        }
+        this.logger.error({ err }, `Quiet report failed for user ${userId}`);
+        reportUserFacing(err, { userId: telegramId, action: 'daily', op: 'quiet-report' });
+        continue;
+      }
+      sent++;
+      // Delivered either way; a failed stamp only means the same note again next run.
+      await this.subscriptions.markNotified(userId).catch((err: unknown) => {
+        this.logger.error({ err }, `Quiet report sent but not stamped for user ${userId}`);
+        reportUserFacing(err, { userId: telegramId, action: 'daily', op: 'quiet-report' });
+      });
+    }
+    if (byUser.size > 0) this.logger.log(`Quiet report sent to ${sent}/${byUser.size} user(s)`);
   }
 
   /** Report a swallowed per-subscription failure — same who/where for every operation. */

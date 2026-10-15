@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
 import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-InitSchema';
 import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
@@ -11,7 +12,10 @@ import { AddNormalizedUrl1783187484846 } from '@/database/migrations/17831874848
 import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
 import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
 import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
-import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
+import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
+import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
+import { RenormalizeSubscriptionUrls1791417600000 } from '@/database/migrations/1791417600000-RenormalizeSubscriptionUrls';
+import { AddListingSnapshot1791504000000 } from '@/database/migrations/1791504000000-AddListingSnapshot';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { User } from '@/modules/subscriptions/entities/user.entity';
@@ -25,6 +29,9 @@ import {
 } from '@/modules/subscriptions/subscriptions.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
 
+// Listings with just these ids, for the seen-set writes.
+const asListings = (ids: string[]) => ids.map((externalId) => listing(0, { externalId }));
+
 // Data-layer + watch flow against a real Postgres (docker locally, service in CI).
 // Runs the real migration, so schema/entities/FK cascade are exercised for real.
 describe('Subscriptions + watch (integration, real Postgres)', () => {
@@ -32,7 +39,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
   let subscriptions: SubscriptionsService;
   let watch: WatchService;
   let dataSource: DataSource;
-  const kufar = new KufarAdapter();
+  const kufar = sourceAdapter('kufar');
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -51,16 +58,17 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
             AddPausedAt1783195101942,
             AddConsecutiveFailures1783196783018,
             EnableRowLevelSecurity1785920305000,
+            AddLastNotifiedAt1791244800000,
+            MoveTravelSubscriptions1791331200000,
+            RenormalizeSubscriptionUrls1791417600000,
+            AddListingSnapshot1791504000000,
           ],
           migrationsRun: true,
           synchronize: false,
         }),
         SubscriptionsModule,
       ],
-    })
-      .overrideProvider(KufarAdapter)
-      .useValue(kufar)
-      .compile();
+    }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
     subscriptions = moduleRef.get(SubscriptionsService);
@@ -121,12 +129,79 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     });
     const fetch = jest.spyOn(kufar, 'fetch');
 
-    fetch.mockResolvedValueOnce([listing(1)]);
+    fetch.mockResolvedValueOnce({ listings: [listing(1)], complete: true, capped: false });
     expect(await watch.baseline(sub)).toBe(1);
 
-    fetch.mockResolvedValueOnce([listing(1), listing(2)]);
+    fetch.mockResolvedValueOnce({
+      listings: [listing(1), listing(2)],
+      complete: true,
+      capped: false,
+    });
     const fresh = await watch.check(sub);
-    expect(fresh.map((l) => l.externalId)).toEqual(['2']);
+    expect(fresh.listings.map((l) => l.externalId)).toEqual(['2']);
+  });
+
+  // The whole loop on real rows: the jsonb snapshot, the one-statement refresh, the record step.
+  // ghb declares reportsRemoved: a unit gone from its price list was sold.
+  it('reports a sold listing once its page was read whole, and forgets it once delivered', async () => {
+    const ghb = sourceAdapter('ghb');
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'ghb',
+      url: 'https://ghb.by/ru/construction/price_apartments/',
+    });
+    const page = (...ids: number[]) => ({
+      listings: ids.map((id) => listing(id, { priceText: `${id} руб./м²` })),
+      complete: true,
+      capped: false,
+    });
+    const fetch = jest.spyOn(ghb, 'fetch');
+    fetch.mockResolvedValueOnce(page(1, 2));
+    await watch.baseline(sub);
+    fetch.mockResolvedValueOnce(page(1, 2)); // fills the snapshots
+    await watch.check(sub);
+
+    fetch.mockResolvedValueOnce(page(1));
+    const found = await watch.check(sub);
+    expect(found.removed).toEqual([
+      { externalId: '2', last: expect.objectContaining({ title: 't2', priceText: '2 руб./м²' }) },
+    ]);
+
+    await watch.markDelivered(sub, found);
+    fetch.mockResolvedValueOnce(page(1));
+    expect((await watch.check(sub)).removed).toEqual([]);
+  });
+
+  it('reports a price change once, after a silent first fill, and not again once delivered', async () => {
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+    const fetch = jest.spyOn(kufar, 'fetch');
+    const priced = (byn: number, usd: number) => ({
+      listings: [listing(1, { priceByn: byn, priceUsd: usd })],
+      complete: true,
+      capped: false,
+    });
+    fetch.mockResolvedValueOnce(priced(300_000, 100_000));
+    await watch.baseline(sub);
+
+    // The baseline stored no snapshot: the first check fills it without a word.
+    fetch.mockResolvedValueOnce(priced(300_000, 100_000));
+    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [], removed: [] });
+
+    fetch.mockResolvedValueOnce(priced(270_000, 90_000));
+    const { priceChanges } = await watch.check(sub);
+    expect(priceChanges).toHaveLength(1);
+    expect(priceChanges[0].before).toMatchObject({ priceByn: 300_000, priceUsd: 100_000 });
+
+    // Undelivered: it comes back. Delivered: the new price is the stored one.
+    fetch.mockResolvedValueOnce(priced(270_000, 90_000));
+    expect((await watch.check(sub)).priceChanges).toHaveLength(1);
+    await watch.markDelivered(sub, { listings: [], priceChanges, removed: [] });
+    fetch.mockResolvedValueOnce(priced(270_000, 90_000));
+    expect(await watch.check(sub)).toEqual({ listings: [], priceChanges: [], removed: [] });
   });
 
   it('seedBaseline records seen and marks baselined atomically', async () => {
@@ -148,10 +223,80 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
-    await subscriptions.markSeen(sub.id, ['1', '2']);
-    await subscriptions.markSeen(sub.id, ['2', '3']); // '2' already seen — ignored, no error
+    await subscriptions.markSeen(sub.id, asListings(['1', '2']));
+    await subscriptions.markSeen(sub.id, asListings(['2', '3'])); // '2' already seen — ignored, no error
 
-    expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4']))].sort()).toEqual(['2', '3']);
+    expect([...(await subscriptions.getSeen(sub.id, ['2', '3', '4'])).keys()].sort()).toEqual([
+      '2',
+      '3',
+    ]);
+  });
+
+  it('MoveTravelSubscriptions re-points old travel links to kufar-travel and re-baselines them', async () => {
+    const travel = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://travel.kufar.by/l/grodno/arendovat',
+    });
+    const sale = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://re.kufar.by/l/grodno/kupit/dom',
+    });
+    await subscriptions.seedBaseline(travel.id, ['stale']);
+    await subscriptions.seedBaseline(sale.id, []);
+
+    const runner = dataSource.createQueryRunner();
+    await new MoveTravelSubscriptions1791331200000().up(runner).finally(() => runner.release());
+
+    const rows = await subscriptions.listByUser(1);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(travel.id)).toMatchObject({ source: 'kufar-travel', baselinedAt: null });
+    expect(byId.get(sale.id)).toMatchObject({ source: 'kufar', baselinedAt: expect.any(Date) });
+    expect((await subscriptions.getSeen(travel.id, ['stale'])).size).toBe(0);
+  });
+
+  it('RenormalizeSubscriptionUrls keeps a key that is noise only on another source', async () => {
+    // `page` is realt's paging param, not kufar's: kufar's row keeps it, realt's drops it.
+    const kufarRow = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://re.kufar.by/l/x?page=2&sort=lst.d',
+    });
+    const realtRow = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'realt',
+      url: 'https://realt.by/sale/plots/?page=2&rooms=1',
+    });
+    await dataSource.query(`UPDATE "subscriptions" SET "normalizedUrl" = 'stale-' || "id"`);
+
+    const runner = dataSource.createQueryRunner();
+    await new RenormalizeSubscriptionUrls1791417600000().up(runner).finally(() => runner.release());
+
+    const byId = new Map((await subscriptions.listByUser(1)).map((r) => [r.id, r.normalizedUrl]));
+    expect(byId.get(kufarRow.id)).toBe('https://re.kufar.by/l/x?page=2');
+    expect(byId.get(realtRow.id)).toBe('https://realt.by/sale/plots?rooms=1');
+  });
+
+  // The quiet report counts from this stamp, against the real users table.
+  it('markNotified stamps the user as just notified', async () => {
+    const sub = await subscriptions.add({
+      user: { telegramId: 1 },
+      source: 'kufar',
+      url: 'https://kufar.by/l/x',
+    });
+    const stamp = async () =>
+      (
+        await dataSource.query<{ lastNotifiedAt: Date | null }[]>(
+          `SELECT "lastNotifiedAt" FROM users WHERE id = $1`,
+          [sub.userId],
+        )
+      )[0].lastNotifiedAt;
+    expect(await stamp()).toBeNull();
+
+    await subscriptions.markNotified(sub.userId);
+
+    expect(await stamp()).toBeInstanceOf(Date);
   });
 
   it('getSeen refreshes seenAt for in-window ids — pruning never drops still-visible listings', async () => {
@@ -160,7 +305,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
-    await subscriptions.markSeen(sub.id, ['1']);
+    await subscriptions.markSeen(sub.id, asListings(['1']));
     const [{ seenAt: before }] = await dataSource.query<{ seenAt: Date }[]>(
       `SELECT "seenAt" FROM seen_listings WHERE "subscriptionId" = $1`,
       [sub.id],
@@ -183,22 +328,23 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       url: 'https://kufar.by/l/x',
     });
     const ids = Array.from({ length: MAX_SEEN_PER_SUBSCRIPTION + 5 }, (_, i) => `e${i}`);
-    await subscriptions.markSeen(sub.id, ids);
+    await subscriptions.markSeen(sub.id, asListings(ids));
 
     expect((await subscriptions.getSeen(sub.id, ids)).size).toBe(MAX_SEEN_PER_SUBSCRIPTION);
   });
 
+  // Each source drops only its own paging/order keys — kufar's are `cursor` and `sort`.
   it('dedups the same search regardless of pagination/order/utm params', async () => {
     await subscriptions.add({
       user: { telegramId: 1 },
       source: 'kufar',
-      url: 'https://kufar.by/l/minsk?page=1&sort=lst.d',
+      url: 'https://kufar.by/l/minsk?cursor=a&sort=lst.d',
     });
     await expect(
       subscriptions.add({
         user: { telegramId: 1 },
         source: 'kufar',
-        url: 'https://kufar.by/l/minsk?page=5&utm_source=ad',
+        url: 'https://kufar.by/l/minsk?cursor=b&utm_source=ad',
       }),
     ).rejects.toBeInstanceOf(DuplicateSubscriptionError);
   });
@@ -355,7 +501,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     const s = await subscriptions.add({
       user: { telegramId: 1 },
       source: 'kufar',
-      url: 'https://kufar.by/l/x?page=1',
+      url: 'https://kufar.by/l/x?cursor=a',
     });
     await subscriptions.bumpFailures(s.id);
     await subscriptions.pause(s.id);
@@ -365,7 +511,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
     const revived = await subscriptions.add({
       user: { telegramId: 1 },
       source: 'kufar',
-      url: 'https://kufar.by/l/x?page=9',
+      url: 'https://kufar.by/l/x?cursor=b',
     });
     expect(revived.id).toBe(s.id); // same row, no duplicate created
     expect(revived.pausedAt).toBeNull();
@@ -379,7 +525,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
       source: 'kufar',
       url: 'https://kufar.by/l/x',
     });
-    await subscriptions.markSeen(sub.id, ['1']);
+    await subscriptions.markSeen(sub.id, asListings(['1']));
 
     expect(await subscriptions.remove(sub.id, 999)).toBe(false); // not the owner
     expect(await subscriptions.remove(sub.id, 1)).toBe(true);

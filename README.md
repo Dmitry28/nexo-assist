@@ -1,6 +1,6 @@
 # nexo-assist
 
-Telegram listing-watch bot: paste a kufar.by / realt.by search link and get new
+Telegram listing-watch bot: paste a kufar.by / realt.by / gsz.gov.by / rabota.by search link and get new
 listings on a schedule. Built on a production-ready [NestJS](https://nestjs.com) 11
 base: validated config, structured logging, global error handling, OpenAPI docs,
 health checks, and a full lint/format/test pipeline. Product spec:
@@ -8,13 +8,15 @@ health checks, and a full lint/format/test pipeline. Product spec:
 
 ## Using the bot
 
-Send the bot a search link from **kufar.by** or **realt.by** with your filters already applied;
+Send the bot a search link from **kufar.by**, **realt.by** or **gsz.gov.by** or **rabota.by** (vacancies) with your
+filters already applied;
 it offers a "Следить" button and, from then on, sends the listings that appeared since the
 last check, once a day — a card per listing with its photos, price in both currencies, the
 source's own details and a map pin where there is one; past 30 in one delivery the rest arrives
 as a compact list. Delivery
 rules and what the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its
-beta audience does.
+beta audience does. Fixed pages (a price list, a notice board) work too — the full list of sites is in
+[docs/PRODUCT.md](docs/PRODUCT.md).
 
 | Command  | What it does                                                                |
 | -------- | --------------------------------------------------------------------------- |
@@ -125,7 +127,7 @@ src/
 ├── health/                  # Liveness + readiness probes (Terminus) + the watchdog heartbeat
 ├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
-    ├── sources/             # Source plugins: SourceAdapter registry + kufar/realt scrapers
+    ├── sources/             # Source plugins: one parser + declarative definition per site
     ├── subscriptions/       # Domain: subscription store + watch (baseline/diff) logic
     └── telegram/            # Bot + daily watch run, split into bot/ and watch/ subfolders
 

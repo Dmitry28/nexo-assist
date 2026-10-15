@@ -3,19 +3,18 @@ import { join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
-import { SourceUnavailableError } from '@/modules/sources/source-adapter';
-
-import { KufarAdapter } from '../kufar.adapter';
+import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
 const fixture = readFileSync(join(__dirname, 'fixtures/kufar-search.html'), 'utf8');
 
-describe('KufarAdapter', () => {
+describe('kufar source', () => {
   const fetchMock = undiciFetchMock();
-  let adapter: KufarAdapter;
+  let adapter: SourceAdapter;
 
   beforeEach(() => {
-    adapter = new KufarAdapter();
+    adapter = sourceAdapter('kufar');
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     jest.spyOn(Logger.prototype, 'error').mockImplementation();
   });
@@ -28,6 +27,7 @@ describe('KufarAdapter', () => {
     it.each([
       ['https://www.kufar.by/l/x', true],
       ['https://re.kufar.by/l/minsk', true],
+      ['https://travel.kufar.by/l/grodno/arendovat', false],
       ['https://realt.by/x', false],
       ['not a url', false],
     ])('matches(%s) → %s', (url, expected) => {
@@ -39,7 +39,7 @@ describe('KufarAdapter', () => {
     it('fetches and parses listings from a search url', async () => {
       fetchMock.mockResolvedValue(new Response(fixture, { status: 200 }));
 
-      const listings = await adapter.fetch('https://re.kufar.by/l/minsk/kupit/garazh');
+      const { listings } = await adapter.fetch('https://re.kufar.by/l/minsk/kupit/garazh');
 
       expect(listings).toHaveLength(2);
       expect(listings[0].externalId).toBe('1069720654');
@@ -53,20 +53,6 @@ describe('KufarAdapter', () => {
       const firstUrl = String(fetchMock.mock.calls[0][0]);
       expect(firstUrl).not.toContain('cursor=');
       expect(firstUrl).toContain('sort=lst.d');
-    });
-
-    it('rejects on a non-OK response — an outage must not look like an empty search', async () => {
-      fetchMock.mockResolvedValue(new Response('', { status: 404 }));
-
-      await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toThrow('HTTP 404');
-    });
-
-    it('rejects when the request throws — an outage must not look like an empty search', async () => {
-      fetchMock.mockRejectedValue(new Error('network down'));
-
-      await expect(adapter.fetch('https://re.kufar.by/l/x')).rejects.toBeInstanceOf(
-        SourceUnavailableError,
-      );
     });
   });
 });

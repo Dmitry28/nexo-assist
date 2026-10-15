@@ -1,7 +1,9 @@
 import { In, IsNull } from 'typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 
+import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
+import type { SourceRegistry } from '@/modules/sources/source-registry';
 
 import type { SeenListing } from '../entities/seen-listing.entity';
 import { Subscription } from '../entities/subscription.entity';
@@ -11,6 +13,8 @@ import {
   MAX_SEEN_PER_SUBSCRIPTION,
   MAX_SUBSCRIPTIONS_PER_USER,
   SubscriptionLimitError,
+  DAILY_CREDIT_BUDGET,
+  ProtectedLimitError,
   SubscriptionsService,
 } from '../subscriptions.service';
 
@@ -59,6 +63,7 @@ const build = () => {
 
   const subs = {
     findOneBy: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
     findOneByOrFail: jest.fn().mockResolvedValue(active()),
     countBy: jest.fn().mockResolvedValue(0),
     create: jest.fn((entity: Partial<Subscription>) => entity as Subscription),
@@ -77,11 +82,23 @@ const build = () => {
     manager,
     findBy: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn().mockResolvedValue(undefined),
   };
   const service = new SubscriptionsService(
     subs as unknown as Repository<Subscription>,
     seen as unknown as Repository<SeenListing>,
     users as unknown as Repository<User>,
+    {
+      // Two paid ones, one per pool: idriver a rendered geo page, bid.cars a global one.
+      get: (id: string) => ({
+        volatileParams: ['page', 'sort'],
+        paidPoll: {
+          idriver: { credits: 25, pool: 'geo' },
+          'bid-cars': { credits: 10, pool: 'global' },
+        }[id],
+      }),
+      paidIds: () => ['idriver', 'bid-cars'],
+    } as unknown as SourceRegistry,
   );
   return { subs, users, seen, manager, txManager, insert, txInsert, service };
 };
@@ -89,6 +106,74 @@ const build = () => {
 const addInput = { user: { telegramId: 42 }, source: 'kufar' as const, url: 'https://kufar.by/l' };
 
 describe('SubscriptionsService.add', () => {
+  // Paid anti-bot reads are bounded by free tiers — a daily credit budget per pool, bot-wide.
+  describe('the daily credit budget', () => {
+    const bidCars = {
+      ...addInput,
+      source: 'bid-cars' as const,
+      url: 'https://bid.cars/ru/search/results',
+    };
+    const idriver = {
+      ...addInput,
+      source: 'idriver' as const,
+      url: 'https://idriver.by/auto-parts/a/b',
+    };
+    // Distinct searches: a run fetches each once, so each is paid once.
+    const watching = (n: number, source = 'idriver') =>
+      Array.from({ length: n }, (_, i) => ({ source, normalizedUrl: `https://${source}/s${i}` }));
+    const geoFull = DAILY_CREDIT_BUDGET.geo / 25;
+
+    it('admits a new search that lands exactly on the budget', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(watching(geoFull - 1));
+
+      await expect(service.add(idriver)).resolves.toBeDefined();
+      expect(subs.find).toHaveBeenCalledWith({
+        select: { source: true, normalizedUrl: true },
+        where: { source: In(['idriver', 'bid-cars']), pausedAt: IsNull() },
+      });
+    });
+
+    it('refuses one that would go past it', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(watching(geoFull));
+
+      await expect(service.add(idriver)).rejects.toBeInstanceOf(ProtectedLimitError);
+    });
+
+    it('counts a search watched by several users once, and admits it again for free', async () => {
+      const { subs, service } = build();
+      const full = watching(geoFull);
+      // Someone else watches the very search being added — at a full budget.
+      full[0].normalizedUrl = idriver.url;
+      subs.find.mockResolvedValue([...full, ...full]);
+
+      await expect(service.add(idriver)).resolves.toBeDefined();
+    });
+
+    it('keeps the pools apart: a full geo budget does not stop a bid.cars search', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(watching(geoFull));
+
+      await expect(service.add(bidCars)).resolves.toBeDefined();
+    });
+
+    it('refuses a new bid.cars search once its own pool is full', async () => {
+      const { subs, service } = build();
+      subs.find.mockResolvedValue(watching(DAILY_CREDIT_BUDGET.global / 10, 'bid-cars'));
+
+      await expect(service.add(bidCars)).rejects.toBeInstanceOf(ProtectedLimitError);
+    });
+  });
+
+  it('does not look at the budget for an ordinary source', async () => {
+    const { subs, service } = build();
+
+    await service.add(addInput);
+
+    expect(subs.find).not.toHaveBeenCalled();
+  });
+
   it('refuses a fresh add once the user is at the active cap', async () => {
     const { subs, service } = build();
     subs.countBy.mockResolvedValue(MAX_SUBSCRIPTIONS_PER_USER);
@@ -227,15 +312,24 @@ describe('SubscriptionsService — the seen set', () => {
   it('asks the database nothing when the run produced no candidates', async () => {
     const { seen, service } = build();
 
-    await expect(service.getSeen('sub-1', [])).resolves.toEqual(new Set());
+    await expect(service.getSeen('sub-1', [])).resolves.toEqual(new Map());
     expect(seen.findBy).not.toHaveBeenCalled();
   });
 
-  it('returns the already-delivered ids and refreshes their timestamps', async () => {
+  it('returns the already-delivered ids with their snapshots and refreshes their timestamps', async () => {
     const { seen, service } = build();
-    seen.findBy.mockResolvedValue([{ externalId: 'a' }, { externalId: 'b' }]);
+    const snapshot = { link: 'l', title: 't', priceUsd: 5 };
+    seen.findBy.mockResolvedValue([
+      { externalId: 'a', snapshot },
+      { externalId: 'b', snapshot: null },
+    ]);
 
-    await expect(service.getSeen('sub-1', ['a', 'b', 'c'])).resolves.toEqual(new Set(['a', 'b']));
+    await expect(service.getSeen('sub-1', ['a', 'b', 'c'])).resolves.toEqual(
+      new Map([
+        ['a', snapshot],
+        ['b', undefined],
+      ]),
+    );
     // The rows and the field, not merely that some update ran: refreshing seenAt keeps ids
     // still inside the page window out of the prune's reach — otherwise a bumped listing
     // could lose its row and be re-delivered as new.
@@ -257,17 +351,42 @@ describe('SubscriptionsService — the seen set', () => {
   it('inserts ignoring duplicates, then prunes the window', async () => {
     const { insert, manager, service } = build();
 
-    await service.markSeen('sub-1', ['a', 'b']);
+    await service.markSeen('sub-1', [listing(1, { priceUsd: 5 }), listing(2)]);
 
+    // With the snapshot a later price change is measured against.
     expect(insert.values).toHaveBeenCalledWith([
-      { subscriptionId: 'sub-1', externalId: 'a' },
-      { subscriptionId: 'sub-1', externalId: 'b' },
+      {
+        subscriptionId: 'sub-1',
+        externalId: '1',
+        snapshot: { link: listing(1).link, title: 't1', priceByn: undefined, priceUsd: 5 },
+      },
+      {
+        subscriptionId: 'sub-1',
+        externalId: '2',
+        snapshot: { link: listing(2).link, title: 't2', priceByn: undefined, priceUsd: undefined },
+      },
     ]);
     expect(insert.orIgnore).toHaveBeenCalled(); // re-marking a delivered id must not throw
     expect(manager.query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM seen_listings'),
       ['sub-1', MAX_SEEN_PER_SUBSCRIPTION],
     );
+  });
+
+  it('updates snapshots in one statement, skipping an empty run', async () => {
+    const { seen, service } = build();
+
+    await service.updateSnapshots('sub-1', []);
+    expect(seen.query).not.toHaveBeenCalled();
+
+    await service.updateSnapshots('sub-1', [listing(1, { priceByn: 7 })]);
+    expect(seen.query).toHaveBeenCalledTimes(1);
+    expect(seen.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE seen_listings'), [
+      'sub-1',
+      JSON.stringify([
+        { externalId: '1', snapshot: { link: listing(1).link, title: 't1', priceByn: 7 } },
+      ]),
+    ]);
   });
 
   it('seeds and flags the baseline inside ONE transaction, not around it', async () => {
@@ -279,6 +398,10 @@ describe('SubscriptionsService — the seen set', () => {
     // never re-seed — so BOTH writes must go through the transactional manager. Asserting
     // that they happened is not enough; they must not have happened on the base one.
     expect(manager.transaction).toHaveBeenCalledTimes(1);
+    // No snapshot: a baseline may skip item pages, so its prices would be partial.
+    expect(txInsert.values).toHaveBeenCalledWith([
+      { subscriptionId: 'sub-1', externalId: 'a', snapshot: null },
+    ]);
     expect(txInsert.execute).toHaveBeenCalled();
     expect(txManager.update).toHaveBeenCalledWith(
       Subscription,

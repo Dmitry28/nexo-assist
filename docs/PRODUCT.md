@@ -12,15 +12,43 @@ start; more frequent once throttling/dedupe land).
 
 ## Status now (implemented)
 
-- Sources: **kufar + realt** via the adapter registry; each search is fetched newest-first,
-  up to 5 pages (~150 listings) — a pasted sort or page number is overridden.
-- Events: **new only**, delivered as **one card per listing**: photos (up to 10, as an album),
-  title, description, price in both currencies, address, the source's own facts (area, plot,
-  rooms, year, amenities…), seller, when it was bumped, and the link — plus a map pin when the
-  source publishes one (kufar does, realt does not). Past **30 cards** in one delivery the rest
+- Sources: **kufar (sale and long-term rent), kufar travel (per-night rent), realt, vacancies from
+  gsz.gov.by (state vacancy bank) and rabota.by, and fixed pages — ghb.by's price list,
+  grodnorik.gov.by's auction notices, prometr.by new-build complexes, gridom.by developers'
+  units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
+  used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
+  `/filter` links ignore their filters), US auction lots from bid.cars** — via the adapter
+  registry. A paged search is fetched newest-first, and a run looks at its **newest 150 listings**
+  (up to 5 pages) — a pasted sort or page number is overridden; a search that gains more than that
+  between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
+  first page only (each page may be paid; a run fetches a search once, however many users watch
+  it, and a new search past its site group's daily paid-credit budget is refused — one already watched
+  never is): av.by's 25 «актуальные» and bid.cars's 50 lots with the latest
+  auctions — neither sorts by newest in a link (on a search over 50 lots, one whose auction is
+  earlier than the 50th lot's is missed).
+- Events: **new listings, price changes and removals**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
+  title, description, price in both currencies (or as the site words it — a salary range), address, the source's own facts (area, plot,
+  rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's
+  searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
+  source publishes one (the real-estate sources do). Past **30 cards** in one delivery the rest
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
   Messages are paced one per second. A refused photo falls back to the text card; a refused pin
   is ignored — the listing already arrived.
+- **Price changes** on listings already delivered come after the cards as a text digest
+  «💸 Цена изменилась: N» — title, `old → new`, link. Only a seller's change: exchange-rate drift
+  and text prices (salaries, ghb's per-m² range) are not reported, and the first poll after
+  subscribing only records prices (rule: [PRODUCT_PLAN.md § 2.4](PRODUCT_PLAN.md)).
+- **Removals** — «🚫 Снято с продажи: N» (title, last price, link), last in the delivery — only
+  on fixed sale lists (ghb, prometr, gridom), and only when the page was read whole. Elsewhere a
+  listing leaving the page is no sale (a search window, an auction archive). One that comes back
+  arrives as new.
+- A realt link the site **rewrites with a redirect** (any `addressV2` address filter is sent to a
+  much wider search) is refused on subscribe, with the reason and how to fix the link —
+  following it would hand the user someone else's search as theirs.
+- **A week of silence is confirmed:** a user who received nothing for 7 days gets one
+  message — «🔕 Новых объявлений пока нет…» and the list of their searches (one per user, not
+  per search). Only searches that polled fine that run are listed — a source that did not answer is
+  never reported as «nothing new».
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Logs and code stay
   English; per-profile language is Phase 7.
 - Buttons: Следить / Отмена / Показать текущие, and in `/list` ❌ remove / ▶️ resume. A «Следить»
@@ -45,7 +73,8 @@ start; more frequent once throttling/dedupe land).
   error — never mistaken for an empty search. Redirects are pinned to the source's host.
 - Storage: **Postgres (TypeORM, generated migrations)** — users, subscriptions and the seen set
   survive restarts; seen is pruned to a bounded window per subscription; per-user limit on
-  **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard.
+  **active** subscriptions (auto-paused ones don't count) + duplicate-URL guard (a link's sort,
+  paging and tracking params don't make a new search — each source's own list).
 - Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
   refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
   orchestrator restarts it.
@@ -97,30 +126,28 @@ is per subscription (a new subscriber gets a baseline, not a flood).
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
   when the pings stop, the watchdog alerts the owner (setup — DEPLOY.md §4.3b).
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — otherwise every alert
-  would go nowhere silently) is told about each auto-pause (403 / dead link) and about a source
-  that failed all its polls in a run. That verdict needs at least three polls, so a source with
-  fewer subscriptions is neither reported nor given the reprieve above
-  (PRODUCT_PLAN.md § Технический бэклог).
+  would go nowhere silently) is told about each auto-pause (403 / dead link), and about a source's
+  **health changing**: once when every poll of it fails, a reminder a week later if it is still
+  failing, and a line when it answers again, with how long it was silent. Repeating the same alert
+  every run is how an alert channel stops being read; the recovery line is how the owner learns a
+  fix worked. Recovery needs a successful poll, not merely the absence of a failure verdict — that
+  verdict needs at least three polls, so a source with fewer subscriptions is neither reported nor
+  given the reprieve above (PRODUCT_PLAN.md § Технический бэклог). The state lives in the
+  process, so a restart re-announces an ongoing outage as new.
 - **Source with no subscribers:** stop scraping it and purge its data.
 
 ## Architecture
 
-**Source adapter** — the only place that knows about a specific site:
-
-```ts
-interface SourceAdapter {
-  readonly id: SourceId; // 'kufar' | 'realt'
-  matches(url: string): boolean; // recognize the link (host check)
-  fetch(url: string): Promise<Listing[]>; // fetch + parse → normalized listings
-}
-```
+**Source** — the only place that knows about a specific site: a parser plus a declarative
+definition (host, pinned sort/page size, paging, `parse`). Shared code turns it into an adapter
+that recognizes the link and fetches normalized listings
+([architecture.md § Adding a Source](llm/rules/architecture.md#adding-a-source)).
 
 `SourceRegistry` picks the adapter via `matches()` (or by id). The core (fetch →
 diff → notify), the bot, and the DB schema know nothing about specific sites.
 `fetch` returns `Listing`s with a stable `externalId` — the diff/dedup key.
 
-Deferred until needed (kept out of the contract for now): `capabilities: EventKind[]`
-(with removed/price events). URL dedupe shipped instead as `normalizeUrl` in `common/url.ts`,
+URL dedupe shipped as `normalizeUrl` in `common/url.ts`,
 source-agnostic and backed by a unique index — not as part of the adapter contract.
 Parsing is an adapter-internal detail; message formatting lives in the telegram
 layer, not the adapter.
@@ -135,6 +162,5 @@ layer, not the adapter.
 
 ## Extending
 
-A new source = a new adapter implementing the contract; the core, the bot, and
-the DB schema stay unchanged. An unsupported link → GitHub Issue → the adapter is
-added (including with LLM help).
+A new source = its parser and definition; the core, the bot, and the DB schema stay unchanged.
+An unsupported link → GitHub Issue → the source is added (including with LLM help).

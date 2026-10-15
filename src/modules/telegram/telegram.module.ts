@@ -7,6 +7,7 @@ import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.modul
 import { CheckHandlers } from './bot/check.handlers';
 import { TelegramHandlers } from './bot/telegram.handlers';
 import { TelegramService } from './bot/telegram.service';
+import { SourceHealth } from './watch/source-health';
 import { WatchScheduler } from './watch/watch.scheduler';
 import { WatchStatus } from './watch/watch.status';
 
@@ -20,7 +21,14 @@ import { WatchStatus } from './watch/watch.status';
  */
 @Module({
   imports: [SubscriptionsModule, SourcesModule, MetricsModule],
-  providers: [TelegramService, TelegramHandlers, CheckHandlers, WatchScheduler, WatchStatus],
+  providers: [
+    TelegramService,
+    TelegramHandlers,
+    CheckHandlers,
+    WatchScheduler,
+    WatchStatus,
+    SourceHealth,
+  ],
   // No exports — add them only when another module actually injects TelegramService.
 })
 export class TelegramModule {}

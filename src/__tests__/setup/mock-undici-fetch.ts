@@ -8,3 +8,12 @@ jest.mock('undici', () => ({
   ...jest.requireActual<typeof Undici>('undici'),
   fetch: jest.fn(),
 }));
+
+// The paid anti-bot keys: a developer's .env must not change which rungs a spec's ladder climbs
+// (and the fetch above is what keeps a spec from spending them).
+delete process.env.ZENROWS_API_KEY;
+delete process.env.SCRAPE_DO_API_KEY;
+delete process.env.SCRAPEOPS_API_KEY;
+delete process.env.SCRAPINGANT_API_KEY;
+delete process.env.SCRAPER_API_KEY;
+delete process.env.SCRAPFLY_API_KEY;

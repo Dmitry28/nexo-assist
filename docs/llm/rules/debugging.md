@@ -14,9 +14,9 @@ originates**, not to where the error surfaces.
    possible change. Didn't work → new hypothesis, back to step 1.
 4. **Fix** — a failing test first where feasible, then the root cause; verify no regressions.
 
-**Stop rules.** 3+ failed attempts → stop and reassess the architecture instead of trying more
-variants. A bug crossing component boundaries (HTTP → service → DB) → log at each boundary, run
-once to see **where** it breaks, and only then debug that component.
+**Stop rules.** The [workflow stop rule](workflow.md#4-fix) applies — and reassess the architecture
+instead of trying more variants. A bug crossing component boundaries (HTTP → service → DB) → log
+at each boundary, run once to see **where** it breaks, and only then debug that component.
 
 **Red flags — stop and restart from step 1:** "quick fix now, investigate later"; "just try X and
 see"; "it's probably X" without evidence; several changes at once; each fix revealing a new problem.

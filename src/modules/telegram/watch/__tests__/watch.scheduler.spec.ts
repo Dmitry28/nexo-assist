@@ -7,21 +7,27 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
-import { SourceUnavailableError } from '@/modules/sources/source-adapter';
+import {
+  PaidRungsUnavailableError,
+  SourceUnavailableError,
+} from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
+import type { Findings } from '@/modules/subscriptions/findings';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { SEND_DELAY_MS } from '@/modules/telegram/bot/send-card';
 import { CARDS_PER_DELIVERY } from '@/modules/telegram/bot/telegram.format';
 import type { TelegramService } from '@/modules/telegram/bot/telegram.service';
 
+import { SourceHealth } from '../source-health';
 import {
   JOB_NAME,
   MAX_CONSECUTIVE_FAILURES,
   MAX_REPRIEVE_FAILURES,
+  QUIET_REPORT_DAYS,
   WatchScheduler,
 } from '../watch.scheduler';
-import { WatchStatus } from '../watch.status';
+import { POLL_STUCK_AFTER_MS, WatchStatus } from '../watch.status';
 
 const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
   makeSubscription({
@@ -29,6 +35,8 @@ const sub = (id: number, userId = id, consecutiveFailures = 0): Subscription =>
     userId: String(userId),
     user: { telegramId: userId },
     url: `u${id}`,
+    // A search of its own: subscriptions sharing one are polled — and tallied — as one.
+    normalizedUrl: `u${id}`,
     consecutiveFailures,
   });
 
@@ -43,8 +51,9 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     resetFailures: jest.fn().mockResolvedValue(undefined),
     countUsers: jest.fn().mockResolvedValue(0),
     countActive: jest.fn().mockResolvedValue(0),
+    markNotified: jest.fn().mockResolvedValue(undefined),
   };
-  const watch = { poll: jest.fn(), markSeen: jest.fn().mockResolvedValue(undefined) };
+  const watch = { poll: jest.fn(), markDelivered: jest.fn().mockResolvedValue(undefined) };
   const telegram = {
     notify: jest.fn().mockResolvedValue(undefined),
     notifyCard: jest.fn().mockResolvedValue(undefined),
@@ -57,6 +66,7 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
   };
   const status = new WatchStatus();
   jest.spyOn(status, 'markRun');
+  const health = new SourceHealth();
   const registry = new SchedulerRegistry();
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
@@ -67,6 +77,7 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     telegram as unknown as TelegramService,
     metrics as unknown as WatchMetrics,
     status,
+    health,
   );
   return { subscriptions, watch, telegram, metrics, status, scheduler, registry };
 };
@@ -82,7 +93,12 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.listActive.mockResolvedValue([sub(1), sub(2)]);
     watch.poll.mockImplementation((s: Subscription) => {
       if (s.id === '1') throw new Error('boom');
-      return Promise.resolve({ kind: 'fresh', listings: [listing(1)] });
+      return Promise.resolve({
+        kind: 'fresh',
+        priceChanges: [],
+        removed: [],
+        listings: [listing(1)],
+      });
     });
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
@@ -92,9 +108,9 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notifyCard).toHaveBeenCalledTimes(1);
     expect(telegram.notifyCard).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+      expect.objectContaining({ caption: expect.stringContaining('📌') }),
     );
-    expect(watch.markSeen).toHaveBeenCalledTimes(1);
+    expect(watch.markDelivered).toHaveBeenCalledTimes(1);
     expect(status.markRun).toHaveBeenCalledTimes(1); // run stamped for /stats
   });
 
@@ -106,7 +122,7 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notifyCard).not.toHaveBeenCalled();
-    expect(watch.markSeen).not.toHaveBeenCalled();
+    expect(watch.markDelivered).not.toHaveBeenCalled();
   });
 
   it('sends a card per listing, and the tail past the card limit as a digest', async () => {
@@ -116,6 +132,8 @@ describe('WatchScheduler.runDaily', () => {
     const fresh = CARDS_PER_DELIVERY + 5;
     watch.poll.mockResolvedValue({
       kind: 'fresh',
+      priceChanges: [],
+      removed: [],
       listings: Array.from({ length: fresh }, (_, i) => listing(i + 1)),
     });
 
@@ -126,7 +144,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notifyCard).toHaveBeenCalledTimes(CARDS_PER_DELIVERY);
     expect(telegram.notify).toHaveBeenCalledTimes(1); // the five that did not fit
     // Everything sent is marked seen — nothing waits for tomorrow and nothing repeats.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(fresh);
+    expect((watch.markDelivered.mock.calls[0][1] as Findings).listings.length).toBe(fresh);
   });
 
   it('keeps what already arrived when a later message fails', async () => {
@@ -135,6 +153,8 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.listActive.mockResolvedValue([sub(1)]);
     watch.poll.mockResolvedValue({
       kind: 'fresh',
+      priceChanges: [],
+      removed: [],
       listings: Array.from({ length: 5 }, (_, i) => listing(i + 1)),
     });
     telegram.notifyCard
@@ -147,7 +167,7 @@ describe('WatchScheduler.runDaily', () => {
     await run;
 
     // The first card arrived — re-sending it tomorrow would duplicate it.
-    expect((watch.markSeen.mock.calls[0][1] as unknown[]).length).toBe(1);
+    expect((watch.markDelivered.mock.calls[0][1] as Findings).listings.length).toBe(1);
     // …and the part that did not is reported, with both how much arrived and how much bounced —
     // only the first error is kept, so the count is what tells one refusal from many.
     expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'deliver');
@@ -160,36 +180,49 @@ describe('WatchScheduler.runDaily', () => {
   it('does not mark seen when delivery fails — retried next run', async () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     telegram.notifyCard.mockRejectedValue(new Error('403: bot was blocked'));
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
-    expect(watch.markSeen).not.toHaveBeenCalled();
+    expect(watch.markDelivered).not.toHaveBeenCalled();
     // The 403 is in the MESSAGE, not the type — a plain Error is an ordinary send failure, and
     // deciding off the text would pause a user Telegram never said had blocked us.
     expect(subscriptions.pauseAllForUser).not.toHaveBeenCalled();
   });
 
-  it('counts a delivery, logs distinctly and reports when markSeen fails afterward', async () => {
+  it('counts a delivery, logs distinctly and reports when markDelivered fails afterward', async () => {
     const { subscriptions, watch, metrics, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
-    watch.markSeen.mockRejectedValue(new Error('db down')); // send succeeded, bookkeeping failed
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
+    watch.markDelivered.mockRejectedValue(new Error('db down')); // send succeeded, bookkeeping failed
     const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
     expect(metrics.recordDelivery).toHaveBeenCalledWith('kufar');
-    // A markSeen failure after delivery is not a delivery failure — it must log distinctly.
-    expect(errorSpy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('markSeen'));
+    // A markDelivered failure after delivery is not a delivery failure — it must log distinctly.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('Recording failed'),
+    );
     expect(errorSpy).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining('Delivery failed'),
     );
     // Logging alone isn't visibility — unreported, the same digest re-sends every run.
-    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'mark-seen');
+    expect(sentryScope().setTag).toHaveBeenCalledWith('op', 'record');
     expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'daily');
     // The affected user is what makes "how many people hit this" answerable.
     expect(sentryScope().setUser).toHaveBeenCalledWith({ id: '1' });
@@ -201,7 +234,12 @@ describe('WatchScheduler.runDaily', () => {
     // Two subs owned by the same user (userId 1); pausing them affects 2 rows.
     subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 1)]);
     subscriptions.pauseAllForUser.mockResolvedValue(2);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
@@ -214,7 +252,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
     expect(metrics.recordPause).toHaveBeenCalledWith('blocked', 2); // counted per subscription
     expect(telegram.notifyCard).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
-    expect(watch.markSeen).not.toHaveBeenCalled();
+    expect(watch.markDelivered).not.toHaveBeenCalled();
     // A blocked user is an expected state handled by the pause above, not a defect — reporting
     // it would flood Sentry with noise on every run.
     expect(sentryCapture()).not.toHaveBeenCalled();
@@ -225,7 +263,12 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     // User 1 (403 + pause fails), then user 2 must still be delivered.
     subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
@@ -238,7 +281,7 @@ describe('WatchScheduler.runDaily', () => {
     expect(telegram.notifyCard).toHaveBeenCalledTimes(2); // user 2 still attempted
     expect(telegram.notifyCard).toHaveBeenLastCalledWith(
       2,
-      expect.objectContaining({ caption: expect.stringContaining('🏠') }),
+      expect.objectContaining({ caption: expect.stringContaining('📌') }),
     );
   });
 
@@ -303,14 +346,19 @@ describe('WatchScheduler.runDaily', () => {
   it('does not bump the dead-link streak when delivery fails (only poll errors count)', async () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1, 1, 0)]);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] }); // poll OK
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    }); // poll OK
     telegram.notifyCard.mockRejectedValue(new Error('telegram 500')); // delivery fails, non-403
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
 
     expect(subscriptions.bumpFailures).not.toHaveBeenCalled();
-    expect(watch.markSeen).not.toHaveBeenCalled(); // retried next run
+    expect(watch.markDelivered).not.toHaveBeenCalled(); // retried next run
   });
 
   it('resets the failure streak after a successful poll, and skips the write when already zero', async () => {
@@ -330,7 +378,13 @@ describe('WatchScheduler.runDaily', () => {
     subscriptions.countUsers.mockResolvedValue(7);
     subscriptions.countActive.mockResolvedValue(2);
     watch.poll.mockImplementation((s: Subscription) => {
-      if (s.id === '1') return Promise.resolve({ kind: 'fresh', listings: [listing(1)] });
+      if (s.id === '1')
+        return Promise.resolve({
+          kind: 'fresh',
+          priceChanges: [],
+          removed: [],
+          listings: [listing(1)],
+        });
       throw new Error('source down');
     });
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
@@ -346,7 +400,12 @@ describe('WatchScheduler.runDaily', () => {
     const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
     subscriptions.listActive.mockResolvedValue([sub(1, 1)]);
     subscriptions.pauseAllForUser.mockResolvedValue(1);
-    watch.poll.mockResolvedValue({ kind: 'fresh', listings: [listing(1)] });
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      priceChanges: [],
+      removed: [],
+      listings: [listing(1)],
+    });
     const blocked = Object.assign(Object.create(GrammyError.prototype) as GrammyError, {
       error_code: 403,
     });
@@ -357,6 +416,25 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('заблокировал бота'));
+  });
+
+  // No key or no credits is ours to fix: «Проверьте ссылку» after five such runs would be false.
+  it('does not count a poll with no paid service to ask against the link — one owner alert', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([
+      sub(1, 1, MAX_CONSECUTIVE_FAILURES - 1),
+      sub(2, 2, MAX_CONSECUTIVE_FAILURES - 1),
+    ]);
+    watch.poll.mockRejectedValue(new PaidRungsUnavailableError('no key'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.bumpFailures).not.toHaveBeenCalled();
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+    const alerts = telegram.notify.mock.calls.filter(([to]) => to === 99);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0][1]).toContain('Платная загрузка недоступна');
   });
 
   it('alerts the admin when a subscription is auto-paused as dead', async () => {
@@ -384,6 +462,44 @@ describe('WatchScheduler.runDaily', () => {
     await scheduler.runDaily();
 
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('сломан адаптер'));
+  });
+
+  // One dead search three users watch is one bad URL, not a broken adapter.
+  it('tallies a search shared by several subscriptions once', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    const sameSearch = (id: number) => ({ ...sub(id), normalizedUrl: 'u1' });
+    subscriptions.listActive.mockResolvedValue([sameSearch(1), sameSearch(2), sameSearch(3)]);
+    watch.poll.mockRejectedValue(new Error('search gone'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('Источник'));
+    // One fetch map for the whole run, handed to every poll.
+    const [[, first], [, second]] = watch.poll.mock.calls as [unknown, unknown][];
+    expect(first).toBeInstanceOf(Map);
+    expect(second).toBe(first);
+  });
+
+  // The pair the owner actually needs: the second morning of an outage says nothing new, and the
+  // fix that lands is announced — otherwise nobody can tell whether the repair worked.
+  it('does not repeat the outage alert the next run, and announces the recovery', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2), sub(3, 3)]);
+    watch.poll.mockRejectedValue(new Error('adapter broke'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    await scheduler.runDaily();
+    telegram.notify.mockClear();
+
+    await scheduler.runDaily();
+    expect(telegram.notify).not.toHaveBeenCalledWith(99, expect.stringContaining('Источник'));
+
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    await scheduler.runDaily();
+    expect(telegram.notify).toHaveBeenCalledWith(
+      99,
+      expect.stringContaining('снова отдаёт данные'),
+    );
   });
 
   // A subscription that polled fine but threw in its bookkeeping must still count as an attempt.
@@ -511,7 +627,12 @@ describe('WatchScheduler.runDaily', () => {
     watch.poll.mockImplementation((s: Subscription) =>
       s.id === '1'
         ? Promise.reject(new Error('dead link'))
-        : Promise.resolve({ kind: 'fresh' as const, listings: [listing(1)] }),
+        : Promise.resolve({
+            kind: 'fresh' as const,
+            priceChanges: [],
+            removed: [],
+            listings: [listing(1)],
+          }),
     );
     telegram.notifyCard.mockRejectedValue(
       new GrammyError(
@@ -610,6 +731,198 @@ describe('WatchScheduler.runDaily', () => {
   });
 });
 
+// What the quiet report is for: a month of silence must not look like a broken bot.
+describe('WatchScheduler.runDaily — quiet report', () => {
+  const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // A subscription of user 7 who last heard from us `heardDaysAgo` days ago.
+  const quietSub = (id: number, heardDaysAgo = QUIET_REPORT_DAYS + 1): Subscription =>
+    makeSubscription({
+      id: String(id),
+      userId: '7',
+      user: { telegramId: 7, lastNotifiedAt: daysAgo(heardDaysAgo) },
+      url: `https://kufar.by/l/search-${id}`,
+    });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sends one message per user, listing the quiet searches, and stamps it', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1), quietSub(2)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    const [chat, text] = telegram.notify.mock.calls[0] as [number, string];
+    expect(chat).toBe(7);
+    expect(text).toContain('search-1');
+    expect(text).toContain('search-2');
+    expect(subscriptions.markNotified).toHaveBeenCalledWith('7');
+  });
+
+  // The stamp is taken at the end of a run, so «exactly a week ago» is a few minutes short.
+  it("reports on day seven, not day eight, when last week's run ended a little later", async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    const almostAWeek = QUIET_REPORT_DAYS - 10 / (24 * 60); // seven days minus ten minutes
+    subscriptions.listActive.mockResolvedValue([quietSub(1, almostAWeek)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failed stamp after a delivered note without failing the run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    subscriptions.markNotified.mockRejectedValue(new Error('db'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await expect(scheduler.runDaily()).resolves.toBeUndefined();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    expect(sentryCapture()).toHaveBeenCalled();
+  });
+
+  it('stays quiet while the user heard from us recently', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1, QUIET_REPORT_DAYS - 1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalled();
+  });
+
+  it('counts from signup for a user who was never sent anything', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([
+      makeSubscription({
+        userId: '7',
+        user: { telegramId: 7, lastNotifiedAt: null, createdAt: daysAgo(QUIET_REPORT_DAYS + 1) },
+      }),
+    ]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not tell a user «нового нет» right after delivering them listings', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1), quietSub(2)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      Promise.resolve(
+        s.id === '1'
+          ? { kind: 'fresh', priceChanges: [], removed: [], listings: [listing(1)] }
+          : { kind: 'nothing' },
+      ),
+    );
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalled();
+  });
+
+  it('counts a price change as heard too — the only message is the change itself', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    const after = listing(1, { priceUsd: 90_000 });
+    const change = { before: { link: after.link, title: after.title, priceUsd: 100_000 }, after };
+    watch.poll.mockResolvedValue({
+      kind: 'fresh',
+      listings: [],
+      priceChanges: [change],
+      removed: [],
+    });
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledTimes(1);
+    expect(telegram.notify.mock.calls[0][1]).toContain('💸 Цена изменилась: 1');
+    expect(watch.markDelivered).toHaveBeenCalledWith(expect.anything(), {
+      listings: [],
+      priceChanges: [change],
+      removed: [],
+    });
+  });
+
+  // «Нового нет» for a source that did not answer would be a lie.
+  it('leaves out a search whose poll failed this run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1), quietSub(2)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      s.id === '1' ? Promise.reject(new Error('down')) : Promise.resolve({ kind: 'nothing' }),
+    );
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    const [, text] = telegram.notify.mock.calls[0] as [number, string];
+    expect(text).not.toContain('search-1');
+    expect(text).toContain('search-2');
+  });
+
+  it('stamps nothing when the send fails, so it is retried next run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    telegram.notify.mockRejectedValue(new Error('network'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.markNotified).not.toHaveBeenCalled();
+    expect(sentryCapture()).toHaveBeenCalled();
+  });
+
+  it('does not send the note to a user who blocked the bot earlier in the same run', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    // The quiet search is polled first, then the fresh one hits the 403.
+    subscriptions.listActive.mockResolvedValue([quietSub(2), quietSub(1)]);
+    watch.poll.mockImplementation((s: Subscription) =>
+      Promise.resolve(
+        s.id === '1'
+          ? { kind: 'fresh', priceChanges: [], removed: [], listings: [listing(1)] }
+          : { kind: 'nothing' },
+      ),
+    );
+    telegram.notifyCard.mockRejectedValue(
+      new GrammyError(
+        'Forbidden',
+        { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' },
+        'sendPhoto',
+        {},
+      ),
+    );
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).not.toHaveBeenCalledWith(7, expect.stringContaining('🔕'));
+  });
+
+  it('pauses a user who blocked the bot, as the delivery path does', async () => {
+    const { subscriptions, watch, telegram, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([quietSub(1)]);
+    watch.poll.mockResolvedValue({ kind: 'nothing' });
+    telegram.notify.mockRejectedValue(
+      new GrammyError(
+        'Forbidden',
+        { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' },
+        'sendMessage',
+        {},
+      ),
+    );
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('7');
+    expect(subscriptions.markNotified).not.toHaveBeenCalled();
+  });
+});
+
 describe('WatchScheduler daily job', () => {
   afterEach(() => jest.restoreAllMocks());
 
@@ -635,7 +948,10 @@ describe('WatchScheduler daily job', () => {
 });
 
 describe('WatchScheduler.runDaily overlap', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
 
   it('skips the run and alerts the admin when a poll is already in progress', async () => {
     const { subscriptions, telegram, status, scheduler } = build({ adminTelegramId: 99 });
@@ -648,12 +964,28 @@ describe('WatchScheduler.runDaily overlap', () => {
     expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('пропущен'));
   });
 
+  // A stuck slot is otherwise invisible: the bot simply stops checking, and the run that hung
+  // left no trace. The alert is the only thing that turns it into something anyone can notice.
+  it('runs anyway when the slot was stuck, and tells the admin it was reclaimed', async () => {
+    const { subscriptions, telegram, status, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([]);
+    jest.useFakeTimers();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    status.tryStartPolling(); // a run that will never release it
+    jest.advanceTimersByTime(POLL_STUCK_AFTER_MS);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.listActive).toHaveBeenCalled();
+    expect(telegram.notify).toHaveBeenCalledWith(99, expect.stringContaining('завис'));
+  });
+
   it('releases the slot when the run throws', async () => {
     const { subscriptions, status, scheduler } = build();
     subscriptions.listActive.mockRejectedValue(new Error('db down'));
 
     await expect(scheduler.runDaily()).rejects.toThrow('db down');
 
-    expect(status.tryStartPolling()).toBe(true);
+    expect(status.tryStartPolling().claim).toBe('started');
   });
 });

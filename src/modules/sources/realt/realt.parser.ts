@@ -1,7 +1,22 @@
 import { detail, listingDetails } from '../listing-details';
-import { asArray, asPositiveNumber, asRecord, asText, parseNextData } from '../scraping/next-data';
+import { ISO_NUMERIC } from '../scraping/currency';
+import {
+  asArray,
+  asCoordinates,
+  asPositiveNumber,
+  asPrice,
+  asRecord,
+  asText,
+  asTexts,
+  requireNextData,
+  withIds,
+} from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import type { PageContext, SearchPage } from '../source-definition';
+
+/** The site's host — every search and every listing link is on it. */
+export const HOST = 'realt.by';
 
 /** Raw object shape from realt.by's `__NEXT_DATA__` JSON — only the fields we read. */
 interface RawRealtObject {
@@ -27,23 +42,23 @@ interface RawRealtObject {
   storeys?: number | null;
   levels?: number | null;
   contactName?: string | null;
+  /** `[longitude, latitude]` — longitude first, same order as kufar. */
+  location?: number[] | null;
   /** Pre-built CDN URLs. */
-  images?: string[];
+  images?: unknown;
 }
 
-// realt.by priceRates currency codes (ISO 4217 numeric).
-const CURRENCY_USD = '840';
-const CURRENCY_BYN = '933';
-
 interface RawPagination {
-  pageSize: number;
   totalCount: number;
 }
 
-/** One page of a realt search: objects + pagination block (null = unknown). */
+/** One page of a realt search: objects, pagination block and object-URL slug (null = unknown). */
 export interface RealtPage {
   objects: RawRealtObject[];
+  /** How many objects realt sent, before any malformed one was dropped — what totalCount counts. */
+  received: number;
   pagination: RawPagination | null;
+  linkPath: string | null;
 }
 
 /**
@@ -54,8 +69,7 @@ export interface RealtPage {
  * (observed live).
  */
 export function extractPage(html: string): RealtPage {
-  const data = parseNextData(html);
-  if (!data) throw new SourceUnavailableError('realt: __NEXT_DATA__ missing or unparseable');
+  const data = requireNextData(html, 'realt');
 
   const props = asRecord(data.props);
   // NOTE: asRecord rejects a non-object `pageProps` (an array, a string) where the previous cast
@@ -76,16 +90,40 @@ export function extractPage(html: string): RealtPage {
     throw new SourceUnavailableError('realt: objects is not an array — page layout changed?');
   }
   return {
-    objects: objects ?? [],
-    // Left a plain cast, unlike `objects`: nothing dereferences this block, the adapter only
-    // reads two numbers off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
+    objects: withIds(objects ?? [], (obj) => obj.code, 'realt'),
+    received: objects?.length ?? 0,
+    linkPath: linkPath(pageProps),
+    // Left a plain cast, unlike `objects`: nothing dereferences this block, parsePage only
+    // reads `totalCount` off it, and a wrong shape yields NaN → "no next page". Nothing to guard.
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
 }
 
+/** A search page as the shared walk reads it — the object-URL slug comes from the search URL. */
+export function parsePage(html: string, { url, sent }: PageContext): SearchPage<boolean> {
+  const { objects, received, pagination, linkPath } = extractPage(html);
+  // The search URL first, the page's own declaration second: `seoPayload.parentUrl` reads `/`
+  // on region-prefixed pages (measured on /grodno-region/sale/cottages/).
+  const slug = slugFromSearch(url) ?? linkPath;
+  if (slug === null) throw new SourceUnavailableError(`realt: no object-URL slug for ${url}`);
+  // A running count, not `page × pageSize`: realt bundles its first k pages into page 1
+  // (pageSize 30…360, measured) and then serves `?page=2` as its page k+1, so our page number
+  // and its page size do not multiply. A page past the end is served as page 1 again.
+  const more = pagination !== null && sent + received < pagination.totalCount;
+  return { listings: objects.map((obj) => mapObject(obj, slug)), next: more, sent: received };
+}
+
+// NOTE: object URLs are https://realt.by/<sale|rent>-<type>/object/<code>/. Most search URLs
+// carry a /<sale|rent>/<type>/ segment to derive it from; null when they don't (see the linkPath
+// docblock below for why a guess is worse than a failure).
+function slugFromSearch(url: string): string | null {
+  const match = new URL(url).pathname.match(/\/(sale|rent)\/([a-z-]+)/);
+  return match ? `${match[1]}-${match[2]}` : null;
+}
+
 /**
  * Map a raw object to a normalized listing.
- * `linkPath` is the object-URL slug (e.g. `sale-plots`) derived from the search URL.
+ * `linkPath` is the object-URL slug (e.g. `sale-plots`) — see the helper of that name below.
  */
 export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
   // NOTE: title is often empty on realt — fall back to town + street, then a generic label.
@@ -94,15 +132,15 @@ export function mapObject(obj: RawRealtObject, linkPath: string): Listing {
 
   return {
     externalId: String(obj.code),
-    link: `https://realt.by/${linkPath}/object/${obj.code}/`,
+    link: `https://${HOST}/${linkPath}/object/${obj.code}/`,
     title,
     description: asText(obj.headline) ?? asText(obj.description),
-    priceByn: toPrice(obj.priceRates?.[CURRENCY_BYN]),
-    priceUsd: toPrice(obj.priceRates?.[CURRENCY_USD]),
+    priceByn: asPrice(obj.priceRates?.[ISO_NUMERIC.BYN], { minorUnits: false }),
+    priceUsd: asPrice(obj.priceRates?.[ISO_NUMERIC.USD], { minorUnits: false }),
     address: asText(obj.address),
     listTime: obj.updatedAt,
-    images: obj.images ?? [],
-    // NOTE: no coordinates — realt's search payload carries none, so its cards get no map pin.
+    images: asTexts(obj.images),
+    coordinates: asCoordinates(obj.location),
     seller: asText(obj.contactName),
     details: listingDetails(
       detail('Площадь', asPositiveNumber(obj.areaTotal), 'м²'),
@@ -124,6 +162,21 @@ function levels(obj: RawRealtObject): number | undefined {
   return value === asPositiveNumber(obj.storeys) ? undefined : value;
 }
 
-function toPrice(value: number | undefined): number | undefined {
-  return typeof value === 'number' && value > 0 ? Math.round(value) : undefined;
+/**
+ * The object-URL slug the search page declares for itself, or null.
+ *
+ * Why this matters at all: an object of a plots search lives at `/sale-plots/object/<code>/`, and
+ * a *wrong* slug is worse than no link — `realt.by/sale/object/<code>/` answers 301 to the
+ * `/sale/` search page (measured), so the reader lands on an unrelated list while the listing is
+ * already marked seen. That is why parsePage fails the poll rather than guessing.
+ *
+ * This is the fallback, not the primary source: `parentUrl` reads `/` on region-prefixed pages
+ * (measured on /grodno-region/sale/cottages/), so it is only useful for search URLs slugFromSearch's
+ * own regex cannot read. The shape check is deliberately narrow for the same reason — a slug of
+ * one segment is exactly the 301 case above.
+ */
+function linkPath(pageProps: Record<string, unknown>): string | null {
+  const parentUrl = asText(asRecord(pageProps.seoPayload)?.parentUrl);
+  const slug = parentUrl?.replace(/^\/+|\/+$/g, '').replace(/\//g, '-');
+  return slug !== undefined && /^(sale|rent)-[a-z]+(-[a-z]+)*$/.test(slug) ? slug : null;
 }

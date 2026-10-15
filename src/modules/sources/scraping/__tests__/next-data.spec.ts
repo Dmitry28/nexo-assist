@@ -1,4 +1,19 @@
-import { asArray, asNumber, asPositiveNumber, asRecord, asText, parseNextData } from '../next-data';
+import { SourceUnavailableError } from '../../source-adapter';
+import {
+  asArray,
+  asCoordinates,
+  asNumber,
+  asPositiveNumber,
+  asPrice,
+  asRecord,
+  asText,
+  asTexts,
+  parseNextData,
+  requireArray,
+  requireNextData,
+  withIds,
+  withoutStalePromos,
+} from '../next-data';
 
 const wrap = (json: string): string =>
   `<html><script id="__NEXT_DATA__" type="application/json">${json}</script></html>`;
@@ -59,6 +74,18 @@ describe('asText', () => {
 });
 
 describe('asNumber', () => {
+  // kufar wraps some numeric parameters in a one-element array — see asNumber's docstring.
+  it('unwraps a one-element array', () => {
+    expect(asNumber([11])).toBe(11);
+  });
+
+  it.each([
+    ['a longer array', [11, 9]],
+    ['an empty array', []],
+  ])('reads %s as no value', (_label, value) => {
+    expect(asNumber(value)).toBeUndefined();
+  });
+
   it('passes a number through', () => {
     expect(asNumber(114.6)).toBe(114.6);
   });
@@ -100,8 +127,16 @@ describe('parseNextData', () => {
     expect(parseNextData(wrap('{"props":{"a":1}}'))).toEqual({ props: { a: 1 } });
   });
 
+  // av.by's tag carries one more attribute.
+  it('parses a tag with extra attributes', () => {
+    const html =
+      '<script id="__NEXT_DATA__" type="application/json" crossorigin="anonymous">{}</script>';
+    expect(parseNextData(html)).toEqual({});
+  });
+
   it.each([
     ['the open tag is absent', '<html>nothing here</html>'],
+    ['the open tag is cut short', '{"props":{}}</script><script id="__NEXT_DATA__"'],
     ['the closing script tag is absent', '<script id="__NEXT_DATA__" type="application/json">{}'],
     ['the JSON is malformed', wrap('{not json')],
     // A blob that parses to a non-object is not a page — it must not reach the parsers as one.
@@ -113,5 +148,114 @@ describe('parseNextData', () => {
 
   it('keeps a "<" inside the JSON — the slice is positional, not a regex', () => {
     expect(parseNextData(wrap('{"title":"a < b"}'))).toEqual({ title: 'a < b' });
+  });
+});
+
+describe('asCoordinates', () => {
+  it('reads a [longitude, latitude] pair — longitude first', () => {
+    expect(asCoordinates([27.53, 53.9])).toEqual({ lat: 53.9, lon: 27.53 });
+  });
+
+  it.each([
+    ['malformed', 'not a pair'],
+    ['half-filled', [27.53]],
+    ['out of range', [27.53, 953.9]],
+    // A zeroed pair is an unfilled field, not a spot in the Atlantic.
+    ['zeroed', [0, 0]],
+  ])('drops %s input rather than pinning the wrong place', (_label, value) => {
+    expect(asCoordinates(value)).toBeUndefined();
+  });
+});
+
+describe('requireNextData', () => {
+  it('returns the blob, and throws a source error on a page without one', () => {
+    expect(requireNextData(wrap('{"a":1}'), 'kufar')).toEqual({ a: 1 });
+    expect(() => requireNextData('<html>bot wall</html>', 'kufar')).toThrow(SourceUnavailableError);
+  });
+});
+
+describe('requireArray', () => {
+  it('returns the array — an empty one is a real zero-result page', () => {
+    expect(requireArray([], 'kufar', 'listing.ads')).toEqual([]);
+  });
+
+  it.each([undefined, null, {}, 'x'])('throws a source error on %p', (value) => {
+    expect(() => requireArray(value, 'kufar', 'listing.ads')).toThrow(SourceUnavailableError);
+  });
+});
+
+describe('withIds', () => {
+  const idOf = (item: { id?: unknown }): unknown => item.id;
+
+  it('keeps numeric and text ids, drops an item without a usable one', () => {
+    const items = [{ id: 1 }, { id: 'a7' }, { id: '  ' }, { id: Number.NaN }, {}];
+
+    expect(withIds(items, idOf, 'kufar')).toEqual([{ id: 1 }, { id: 'a7' }]);
+  });
+
+  // A renamed id field: every listing would become "undefined" and merge into one.
+  it('throws a source error when a non-empty page has no id at all', () => {
+    expect(() => withIds([{}, {}], idOf, 'kufar')).toThrow(SourceUnavailableError);
+  });
+
+  it('accepts an empty page', () => {
+    expect(withIds([], idOf, 'kufar')).toEqual([]);
+  });
+});
+
+describe('asPrice', () => {
+  it.each([
+    ['1385000', true, 13850],
+    [7500, true, 75],
+    [45000.4, false, 45000],
+    ['45000', false, 45000],
+    ['49', true, undefined], // rounds to 0 — not a price
+    [0.4, false, undefined],
+    [-500, false, undefined],
+    [0, false, undefined],
+    ['12 BYN', false, undefined],
+    [undefined, true, undefined],
+  ])('asPrice(%p, minorUnits %p) → %p', (value, minorUnits, expected) => {
+    expect(asPrice(value, { minorUnits })).toBe(expected);
+  });
+});
+
+describe('asTexts', () => {
+  it.each([
+    [
+      ['a', ' b ', '', 3, null],
+      ['a', 'b'],
+    ],
+    ['single', ['single']],
+    [undefined, []],
+    [{}, []],
+  ])('asTexts(%p) → %p', (value, expected) => {
+    expect(asTexts(value)).toEqual(expected);
+  });
+});
+
+describe('withoutStalePromos', () => {
+  const item = (id: number, time: string | undefined, promo = false) => ({ id, time, promo });
+  const run = (items: ReturnType<typeof item>[]) =>
+    withoutStalePromos(
+      items,
+      (i) => i.promo,
+      (i) => i.time,
+    ).map((i) => i.id);
+
+  it('drops a promo older than the page, keeps one inside its span', () => {
+    expect(
+      run([
+        item(1, '2026-09-01T00:00:00Z', true),
+        item(2, '2026-10-06T10:00:00Z'),
+        item(3, '2026-10-06T09:00:00Z', true),
+        item(4, '2026-10-06T08:00:00Z'),
+      ]),
+    ).toEqual([2, 3, 4]);
+  });
+
+  it('keeps a page of only promos whole, and drops an undated promo', () => {
+    expect(run([item(1, '2026-09-01T00:00:00Z', true)])).toEqual([1]);
+    expect(run([item(1, undefined, true), item(2, '2026-10-06T10:00:00Z')])).toEqual([2]);
   });
 });

@@ -1,11 +1,19 @@
 import { makeListing as listing } from '@/__tests__/helpers/listing';
+import type { Listing } from '@/modules/sources/source-adapter';
+import { SOURCES } from '@/modules/sources/sources';
+import type { ListingSnapshot } from '@/modules/subscriptions/price-change';
 
 import {
+  deadSubscriptionNotice,
   BOT_COMMANDS,
   DIGEST_LIMIT,
   HELP_MESSAGE,
+  MAX_LABEL_CHARS,
   MAX_LINE_CHARS,
   formatCurrentListings,
+  priceChangeBatches,
+  removalBatches,
+  searchLabel,
   tailBatches,
 } from '../telegram.format';
 
@@ -13,6 +21,12 @@ import {
 const PRICE_5000 = '$5\u00A0000';
 
 describe('tailBatches', () => {
+  it('prints a price the source gave as text — a salary range', () => {
+    const [{ text }] = tailBatches([listing(1, { priceText: '1200 – 1500 руб.' })]);
+
+    expect(text).toContain('1200 – 1500 руб.');
+  });
+
   it('shows the count header and listing fields', () => {
     const [{ text }] = tailBatches([listing(1, { priceUsd: 5000 })]);
 
@@ -28,9 +42,9 @@ describe('tailBatches', () => {
 
     expect(batches).toHaveLength(2);
     expect(batches[0].text).toContain(`🆕 Ещё объявлений: ${DIGEST_LIMIT + 2} (1/2)`);
-    expect(batches[1].listings).toHaveLength(2);
+    expect(batches[1].items).toHaveLength(2);
     // Every listing ends up in exactly one message — nothing silently lost.
-    expect(batches.flatMap((b) => b.listings.map((l) => l.externalId))).toEqual(
+    expect(batches.flatMap((b) => b.items.map((l) => l.externalId))).toEqual(
       many.map((l) => l.externalId),
     );
   });
@@ -42,7 +56,7 @@ describe('tailBatches', () => {
 
     const batches = tailBatches(many);
 
-    expect(batches.flatMap((b) => b.listings)).toHaveLength(120);
+    expect(batches.flatMap((b) => b.items)).toHaveLength(120);
     expect(batches.map((b) => b.text).join()).not.toContain('в следующую проверку');
   });
 
@@ -56,7 +70,7 @@ describe('tailBatches', () => {
   it('truncates a pathological title but keeps the price and link intact', () => {
     const link = 'https://re.kufar.by/vi/1';
 
-    const [{ text, listings: delivered }] = tailBatches([
+    const [{ text, items: delivered }] = tailBatches([
       listing(1, { title: 't'.repeat(5000), priceUsd: 5000, link }),
     ]);
 
@@ -79,7 +93,7 @@ describe('tailBatches', () => {
   });
 
   it('clamps a pathological link too — a single huge link still delivers one item', () => {
-    const [{ text, listings: delivered }] = tailBatches([
+    const [{ text, items: delivered }] = tailBatches([
       listing(1, { link: `https://x.by/${'x'.repeat(5000)}` }),
     ]);
 
@@ -110,7 +124,7 @@ describe('tailBatches', () => {
 
     expect(batches.length).toBeGreaterThan(1); // char budget, not the item count, forced the split
     for (const batch of batches) expect(batch.text.length).toBeLessThan(4096);
-    expect(batches.flatMap((b) => b.listings)).toHaveLength(10);
+    expect(batches.flatMap((b) => b.items)).toHaveLength(10);
   });
 
   it('falls back through the price options', () => {
@@ -136,6 +150,115 @@ describe('HELP_MESSAGE', () => {
 
   it('says what is stored and how to have it deleted', () => {
     expect(HELP_MESSAGE).toContain('telegram-id');
+    // Every registered source, one line each — no hand-kept list to forget a new one in.
+    for (const { host, about } of SOURCES) expect(HELP_MESSAGE).toContain(`• ${host} — ${about}`);
     expect(HELP_MESSAGE).toContain('удалить');
+  });
+});
+
+describe('searchLabel', () => {
+  // A reader can be watching dozens of searches; until now a card said what was found and never
+  // which search found it.
+  it('names the search by the part of the URL the reader chose', () => {
+    expect(
+      searchLabel({ source: 'kufar', url: 'https://re.kufar.by/l/grodno/kupit/dom?cur=USD' }),
+    ).toBe('kufar.by · grodno/kupit/dom');
+  });
+
+  // `/l/` and its like are routing, not meaning — dropping single-character segments keeps the
+  // helper free of any one source's URL shape.
+  it('drops single-character path segments', () => {
+    expect(searchLabel({ source: 'realt', url: 'https://realt.by/sale/plots/' })).toBe(
+      'realt.by · sale/plots',
+    );
+  });
+
+  it('falls back to the source name when the path carries nothing', () => {
+    expect(searchLabel({ source: 'kufar', url: 'https://re.kufar.by/' })).toBe('kufar.by');
+    // The reader sees the site, not our storage id («kufar-travel» names no site).
+    expect(searchLabel({ source: 'kufar-travel', url: 'https://travel.kufar.by/' })).toBe(
+      'travel.kufar.by',
+    );
+  });
+
+  it('keeps a stored URL that no longer parses from failing the delivery', () => {
+    expect(searchLabel({ source: 'kufar', url: 'not a url' })).toBe('kufar.by');
+  });
+
+  // A lone `%` in a path is real (realt has them) and decodeURIComponent throws on it. The label
+  // is built before the delivery starts, so a throw here would abort a subscription that polled
+  // fine — every run, forever.
+  it('survives a path that cannot be percent-decoded', () => {
+    expect(searchLabel({ source: 'realt', url: 'https://realt.by/sale/100%/x' })).toBe('realt.by');
+  });
+
+  it('puts the label in the digest header too', () => {
+    const [batch] = tailBatches([listing(1)], 'kufar.by · grodno/kupit/dom');
+
+    expect(batch.text).toContain('kufar.by · grodno/kupit/dom');
+  });
+
+  it('cuts a long path, and only a long one', () => {
+    const long = searchLabel({
+      source: 'kufar',
+      url: 'https://re.kufar.by/l/r~brestskaya-oblast/kupit/uchastok-pod-stroitelstvo-doma',
+    });
+
+    expect(long.endsWith('…')).toBe(true);
+    expect(long.length).toBeLessThanOrEqual('kufar.by · '.length + MAX_LABEL_CHARS);
+    expect(searchLabel({ source: 'realt', url: 'https://realt.by/sale/plots/' })).not.toContain(
+      '…',
+    );
+  });
+});
+
+describe('deadSubscriptionNotice', () => {
+  it('names the site, not our id for it', () => {
+    expect(
+      deadSubscriptionNotice({ source: 'kufar-travel', url: 'https://travel.kufar.by/l' }),
+    ).toContain('Поиск на travel.kufar.by перестал отвечать');
+  });
+});
+
+describe('priceChangeBatches', () => {
+  const change = (before: ListingSnapshot, after: Listing) => ({ before, after });
+
+  it('shows both sides in a currency both carry', () => {
+    const after = listing(1, { priceByn: 270_000, priceUsd: 90_000 });
+    const [{ text }] = priceChangeBatches([
+      change({ link: after.link, title: 't1', priceByn: 300_000 }, after),
+    ]);
+    expect(text).toContain('300\u00a0000 BYN → 270\u00a0000 BYN');
+  });
+
+  it('ignores a text price on the new side — the change was measured on numbers', () => {
+    const after = listing(1, { priceUsd: 90, priceText: '90 у.е.' });
+    const [{ text }] = priceChangeBatches([
+      change({ link: after.link, title: 't1', priceUsd: 100 }, after),
+    ]);
+    expect(text).toContain('$100 → $90');
+  });
+
+  it('says a price appeared', () => {
+    const after = listing(1, { priceUsd: 90 });
+    const [{ text }] = priceChangeBatches([change({ link: after.link, title: 't1' }, after)]);
+    expect(text).toContain('цена не указана → $90');
+  });
+});
+
+describe('removalBatches', () => {
+  it('lists each sold listing with its last price, the text one included', () => {
+    const [{ text }] = removalBatches(
+      [
+        {
+          externalId: '1',
+          last: { link: 'https://ghb.by/x', title: 'Дом 5', priceText: '3 500 руб./м²' },
+        },
+      ],
+      'ghb.by · price_apartments',
+    );
+    expect(text).toContain('🚫 Снято с продажи: 1');
+    expect(text).toContain('ghb.by · price_apartments');
+    expect(text).toContain('Дом 5\n3 500 руб./м²\nhttps://ghb.by/x');
   });
 });

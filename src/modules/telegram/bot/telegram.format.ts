@@ -2,6 +2,9 @@ import type { BotCommand } from 'grammy/types';
 
 import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
+import { SOURCES, siteName } from '@/modules/sources/sources';
+import type { Removal } from '@/modules/subscriptions/findings';
+import type { PriceChange } from '@/modules/subscriptions/price-change';
 
 /** Reusable "no link preview" message option. */
 export const NO_LINK_PREVIEW = { is_disabled: true } as const;
@@ -32,51 +35,89 @@ export const truncate = (text: string, max: number, dropTrailing?: RegExp): stri
 
 // One currency keeps the compact line short; the grouping matches the cards in the same delivery
 // (listing-card.ts formatPrice), which otherwise print the same number two ways.
-function price(listing: Listing): string {
+function price(listing: Pick<Listing, 'priceText' | 'priceByn' | 'priceUsd'>): string {
+  if (listing.priceText !== undefined) return listing.priceText;
   if (listing.priceUsd !== undefined) return `$${listing.priceUsd.toLocaleString(LOCALE)}`;
   if (listing.priceByn !== undefined) return `${listing.priceByn.toLocaleString(LOCALE)} BYN`;
   return 'цена не указана';
 }
 
-function formatOne(listing: Listing): string {
+/** One digest item: title, a price line, link. */
+function formatItem({
+  title,
+  price,
+  link,
+}: {
+  title: string;
+  price: string;
+  link: string;
+}): string {
   // Truncate the TITLE first and keep the link whole: the item is marked seen once delivered, so
   // a listing that arrives without its link is lost for good. Only when trimming the title still
   // can't fit the line does the backstop below cut the whole line, link included.
-  const tail = `\n${price(listing)}\n${listing.link}`;
+  const tail = `\n${price}\n${link}`;
   const titleBudget = MAX_LINE_CHARS - tail.length;
-  const title =
-    listing.title.length > titleBudget ? truncate(listing.title, titleBudget) : listing.title;
-  const line = `${title}${tail}`;
+  const shown = title.length > titleBudget ? truncate(title, titleBudget) : title;
+  const line = `${shown}${tail}`;
   // Backstop for an absurdly long link, where trimming the title alone can't bring the line down.
   // Nothing useful survives such a link anyway; the cap keeps one item from starving the digest.
   return line.length > MAX_LINE_CHARS ? truncate(line, MAX_LINE_CHARS) : line;
 }
 
+const formatListing = (listing: Listing): string =>
+  formatItem({ title: listing.title, price: price(listing), link: listing.link });
+
+type Prices = Pick<Listing, 'priceByn' | 'priceUsd'>;
+
+// Both sides in a currency both carry — `price` picks one per listing, and «1 000 BYN → $300»
+// reads as nonsense. Numbers only: the change was measured on them, not on a text price.
+function inOneCurrency(before: Prices, after: Prices): [Prices, Prices] {
+  if (before.priceUsd !== undefined && after.priceUsd !== undefined) {
+    return [{ priceUsd: before.priceUsd }, { priceUsd: after.priceUsd }];
+  }
+  if (before.priceByn !== undefined && after.priceByn !== undefined) {
+    return [{ priceByn: before.priceByn }, { priceByn: after.priceByn }];
+  }
+  return [before, { priceByn: after.priceByn, priceUsd: after.priceUsd }];
+}
+
+function formatPriceChange({ before, after }: PriceChange): string {
+  const [was, now] = inOneCurrency(before, after);
+  return formatItem({
+    title: after.title,
+    price: `${price(was)} → ${price(now)}`,
+    link: after.link,
+  });
+}
+
+const formatRemoval = ({ last }: Removal): string =>
+  formatItem({ title: last.title, price: price(last), link: last.link });
+
 /**
- * As many listings as fit `budget` chars (and DIGEST_LIMIT items). Always takes at least one:
- * formatOne clamps a line to MAX_LINE_CHARS, which is far below any budget we pass — so callers
+ * As many items as fit `budget` chars (and DIGEST_LIMIT items). Always takes at least one:
+ * formatItem clamps a line to MAX_LINE_CHARS, which is far below any budget we pass — so callers
  * that loop over the remainder always make progress.
  */
-function takeChunk(listings: Listing[], budget: number): Listing[] {
-  const shown: Listing[] = [];
+function takeChunk<T>(items: T[], budget: number, format: (item: T) => string): T[] {
+  const shown: T[] = [];
   let length = 0;
-  for (const listing of listings) {
+  for (const item of items) {
     if (shown.length >= DIGEST_LIMIT) break;
-    const line = formatOne(listing);
+    const line = format(item);
     if (shown.length > 0 && length + line.length > budget) break;
-    shown.push(listing);
+    shown.push(item);
     length += line.length + '\n\n'.length;
   }
   return shown;
 }
 
 /**
- * One message: header, blank line, the formatted items, an optional footer. Both digest builders
- * assemble the same shape, and the separator is load-bearing — takeChunk measures the budget with
+ * One message: header, blank line, the formatted items, an optional footer. Every digest builder
+ * assembles the same shape, and the separator is load-bearing — takeChunk measures the budget with
  * `'\n\n'.length` between items, so a change here has to be a change there.
  */
-function compose(header: string, listings: Listing[], footer = ''): string {
-  return `${header}\n\n${listings.map(formatOne).join('\n\n')}${footer}`;
+function compose<T>(header: string, items: T[], format: (item: T) => string, footer = ''): string {
+  return `${header}\n\n${items.map(format).join('\n\n')}${footer}`;
 }
 
 /** A listings digest under `header`: items up to the caps, then a "…и ещё N" footer. */
@@ -84,10 +125,10 @@ function compose(header: string, listings: Listing[], footer = ''): string {
 // tailBatches reserves HEADER_RESERVE_CHARS for. Safe only thanks to the 596-char slack under
 // Telegram's 4096; reserve the footer too before MAX_MESSAGE_BUDGET_CHARS is raised.
 function digest(listings: Listing[], header: string): { text: string; shown: Listing[] } {
-  const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length);
+  const shown = takeChunk(listings, MAX_MESSAGE_BUDGET_CHARS - header.length, formatListing);
   const more = listings.length - shown.length;
   const footer = more > 0 ? `\n\n…и ещё ${more}` : '';
-  return { text: compose(header, shown, footer), shown };
+  return { text: compose(header, shown, formatListing, footer), shown };
 }
 
 export const formatCurrentListings = (listings: Listing[]): string =>
@@ -108,10 +149,38 @@ export const CARDS_PER_DELIVERY = 30;
 // listings are chunked.
 const HEADER_RESERVE_CHARS = 120;
 
-/** One message of a batched digest and the listings it carries. */
-export interface DigestBatch {
+/** One message of a batched digest and the items it carries. */
+export interface DigestBatch<T> {
   text: string;
-  listings: Listing[];
+  items: T[];
+}
+
+/**
+ * Items as however many digest messages they take, every one headed `title(count)` plus the part
+ * number and the search label. Callers must record only the batches that were actually sent.
+ */
+function batches<T>(
+  items: T[],
+  { title, format, search }: { title: string; format: (item: T) => string; search?: string },
+): DigestBatch<T>[] {
+  const label = search === undefined ? '' : `\n${search}`;
+  const chunks: T[][] = [];
+  let rest = items;
+  while (rest.length > 0) {
+    // Reserve room for the header (counter line plus the search label), added after chunking —
+    // otherwise the measured string is not the string sent, and an oversized message fails on
+    // every retry.
+    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS, format);
+    chunks.push(chunk);
+    rest = rest.slice(chunk.length);
+  }
+  return chunks.map((chunk, i) => {
+    const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
+    return {
+      text: compose(`${title}: ${items.length}${part}${label}`, chunk, format),
+      items: chunk,
+    };
+  });
 }
 
 /**
@@ -121,38 +190,80 @@ export interface DigestBatch {
  * CARDS_PER_DELIVERY and this carries the rest, so nothing is deferred to "the next check" —
  * a promise the page window could not keep, since a deferred tail can age out of it and be
  * lost (PRODUCT_PLAN.md § Технический бэклог).
- *
- * Callers must markSeen only the batches that were actually sent.
  */
-export function tailBatches(listings: Listing[]): DigestBatch[] {
-  const chunks: Listing[][] = [];
-  let rest = listings;
-  while (rest.length > 0) {
-    // Reserve room for the header, which is added after chunking — otherwise the measured
-    // string is not the string sent, and an oversized message fails on every retry.
-    const chunk = takeChunk(rest, MAX_MESSAGE_BUDGET_CHARS - HEADER_RESERVE_CHARS);
-    chunks.push(chunk);
-    rest = rest.slice(chunk.length);
-  }
+export const tailBatches = (listings: Listing[], search?: string): DigestBatch<Listing>[] =>
+  batches(listings, { title: '🆕 Ещё объявлений', format: formatListing, search });
 
-  return chunks.map((chunk, i) => {
-    const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
-    return {
-      text: compose(`🆕 Ещё объявлений: ${listings.length}${part}`, chunk),
-      listings: chunk,
-    };
-  });
+/** Price changes on listings already delivered: title, `old → new`, link. */
+export const priceChangeBatches = (
+  changes: PriceChange[],
+  search?: string,
+): DigestBatch<PriceChange>[] =>
+  batches(changes, { title: '💸 Цена изменилась', format: formatPriceChange, search });
+
+/** Delivered listings gone from their sale list: title, last price, link. */
+export const removalBatches = (removed: Removal[], search?: string): DigestBatch<Removal>[] =>
+  batches(removed, { title: '🚫 Снято с продажи', format: formatRemoval, search });
+
+/** Longest path a label will show. In a card the header shares the caption budget with the
+ *  listing itself; in a digest it is a line of its own. */
+export const MAX_LABEL_CHARS = 40;
+
+/**
+ * A short name for the search a delivery came from, e.g. «kufar · grodno/kupit/dom».
+ *
+ * A reader can hold up to MAX_SUBSCRIPTIONS_PER_USER searches, and until now a card said only
+ * what was found, never which search found it. The path is the cheapest honest answer: it is
+ * what the reader picked on the site, in their own words, and it needs no knowledge of any
+ * particular source. Single-character segments are dropped — kufar's `/l/` prefix and its like
+ * carry nothing for a reader. Naming a subscription by hand is the natural upgrade and would
+ * replace this (PRODUCT_PLAN.md § Фаза 7).
+ */
+export function searchLabel({ source, url }: { source: string; url: string }): string {
+  const site = siteName(source);
+  let path: string;
+  try {
+    path = new URL(url).pathname
+      .split('/')
+      .filter((segment) => segment.length > 1)
+      // Percent-decoded for readability (Cyrillic paths arrive encoded). Inside the try on
+      // purpose: `decodeURIComponent` throws URIError on a lone `%`, which realt paths really
+      // can carry, and that would abort the delivery of a subscription that polled just fine.
+      .map(decodeURIComponent)
+      .join('/');
+  } catch {
+    // A stored URL that no longer parses — or decodes — is not worth failing a delivery over:
+    // the source name alone still tells the reader more than nothing.
+    return site;
+  }
+  if (path === '') return site;
+  // `truncate` always appends the ellipsis — deciding there is something to cut is the caller's
+  // job (see its docblock), so a path that fits must not go through it.
+  const shown = path.length > MAX_LABEL_CHARS ? truncate(path, MAX_LABEL_CHARS) : path;
+  return `${site} · ${shown}`;
 }
+
+/** The site swapped the pasted search for another one, so it cannot be watched (realt `addressV2`). */
+export const searchRewrittenNotice = ({ from, to }: { from: string; to: string }): string =>
+  `Не могу следить за этой ссылкой:\n${from}\n\n` +
+  `Сайт подменяет её другим, более широким поиском:\n${to}\n\n` +
+  'Обычно так делает фильтр адреса. Выберите город или район в самом разделе сайта (не в ' +
+  'фильтре), откройте поиск и пришлите ссылку снова.';
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
-  `⚠️ Поиск на ${source} перестал отвечать — я поставил его на паузу.\n` +
+  `⚠️ Поиск на ${siteName(source)} перестал отвечать — я поставил его на паузу.\n` +
   `Проверьте ссылку и пришлите её снова, если она рабочая.\n${url}`;
 
 // NOTE: user-facing text is Russian — the beta audience is the kufar.by/realt.by one.
 // Per-profile language: PRODUCT_PLAN.md § Фаза 7 «i18n».
+// Built from the registered sources, so a new one appears here without an edit. One line each, in
+// /help only: a prompt listing hundreds of sites would bury the instruction it carries.
+const SITES = SOURCES.map((source) => `• ${source.host} — ${source.about}`).join('\n');
+
 export const PROMPT =
-  'Пришлите ссылку на поиск с kufar.by или realt.by — буду следить за новыми объявлениями.';
+  'Пришлите ссылку на поиск с поддерживаемого сайта (список — в /help) — буду следить за ' +
+  'новыми объявлениями.';
 
 /**
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:
@@ -166,23 +277,37 @@ export const BOT_COMMANDS = [
 
 /** `/help` — built from BOT_COMMANDS so the menu and the text cannot drift apart. */
 export const HELP_MESSAGE = [
-  // TODO [L]: the source list is hardcoded here and in PROMPT — a third adapter would
-  // leave both wrong. Derive it from SourceRegistry when that adapter lands.
-  '🔎 Слежу за поиском на kufar.by и realt.by и присылаю новые объявления.',
+  '🔎 Слежу за поиском на сайтах ниже и присылаю новые объявления.',
+  SITES,
   '',
   'Как начать: пришлите ссылку на поиск с уже выставленными фильтрами — предложу кнопку ' +
     '«Следить». Дальше проверяю раз в сутки и присылаю то, что появилось с прошлой ' +
-    `проверки: карточкой с фото на каждое объявление, а если их больше ${CARDS_PER_DELIVERY} — ` +
+    `проверки: карточкой на каждое объявление (с фото, если они есть), а если их больше ${CARDS_PER_DELIVERY} — ` +
     'остальные компактным списком.',
   '',
   'Команды:',
   ...BOT_COMMANDS.map((c) => `/${c.command} — ${c.description.toLowerCase()}`),
+  '',
+  'Если неделю нового нет, пришлю короткое «пока нет» — чтобы было видно, что я работаю.',
   '',
   'В /list: ❌ — удалить поиск, ⏸ — он на паузе (не отвечал), ▶️ — вернуть его в работу.',
   '',
   'Данные: храню ваш telegram-id, имя, @username, язык интерфейса и ссылки, за которыми ' +
     'слежу, — только чтобы присылать уведомления. Хотите удалить — напишите владельцу бота.',
 ].join('\n');
+
+/**
+ * The weekly «still watching» note for a user who heard nothing for a while (watch.scheduler.ts
+ * § reportQuiet). No «за неделю»: the gap can be a month, or a search added two days ago.
+ * Plain text, like the digest.
+ */
+export const quietReport = (subs: { source: string; url: string }[]): string =>
+  [
+    '🔕 Новых объявлений пока нет. Проверяю каждый день — напишу, как только появятся.',
+    '',
+    'Слежу за:',
+    ...subs.map((s) => `• ${searchLabel(s)}`),
+  ].join('\n');
 
 /** Admin `/stats` snapshot. */
 export const formatStats = (stats: {

@@ -19,7 +19,7 @@ Deduplicate and use the combined list.
 | Changed files | Command                                                                                     |
 | ------------- | ------------------------------------------------------------------------------------------- |
 | `.ts`         | `npx eslint <files> --no-fix`                                                               |
-| `.ts`         | `npx tsc --noEmit`                                                                          |
+| `.ts`         | `npm run typecheck`                                                                         |
 | `*.spec.ts`   | `npx jest <test-file>`                                                                      |
 | any           | `npm run format:check` — if fails, run `npx prettier --write <failing-files>`, then recheck |
 
@@ -32,8 +32,11 @@ All commands are read-only and safe — no approval needed. Run for the final ve
 1. `npm run typecheck`
 2. `npm run lint`
 3. `npm test`
-4. `npm run test:e2e`
-5. `npm run build`
+4. `npm run test:e2e` — needs Postgres (`docker compose up -d`). `npm test` excludes it and
+   typecheck misses a stale e2e assertion (`expect(aNumber).toEqual({…})` is legal TypeScript),
+   so a changed exported signature or return type fails only here — or in CI.
+5. `npm run check:dead-code`
+6. `npm run build`
 
 ## Completion claims
 
@@ -52,5 +55,6 @@ Report only what a command printed in this session, with the actual numbers
 ✅ lint
 ✅ unit
 ✅ e2e
+✅ dead-code
 ✅ build
 ```

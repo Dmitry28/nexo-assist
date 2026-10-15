@@ -1,11 +1,14 @@
 import type { Logger } from '@nestjs/common';
 
-import type { Listing } from '../source-adapter';
+import { MAX_LISTINGS } from '../source-adapter';
+import type { FetchResult, Listing } from '../source-adapter';
 
 import { fetchHtml } from './http';
 
-// NOTE: page-cap bound (not a time window) — deterministic and enough for daily volumes
-// (e.g. 5 × ~30 = 150 listings). A lookback window can be added later if it proves wasteful.
+// NOTE: a count bound (MAX_LISTINGS newest, at most MAX_PAGES requests), not a time window —
+// deterministic and enough for daily volumes. A lookback window can be added later if it proves
+// wasteful.
+// Outgrowing it is observable: the walk reports `capped`, and WatchService warns on overflow.
 //
 // The cap is also what lets pages be fetched back-to-back with no pause: kufar rate-limits
 // sustained pagination, and the prototype measured HTTP 429 on page 12 of a feed walked
@@ -20,10 +23,10 @@ export interface ParsedPage {
 }
 
 /**
- * Fetch pages newest-first via `parsePage` until there is no next page, a page is
- * empty, or MAX_PAGES is reached. Fetches are pinned to `host` (redirects must not
- * leave it). De-duplicates by externalId across pages (a listing can shift between
- * page fetches); seen-dedup happens in WatchService.
+ * Fetch pages newest-first via `parsePage` until there is no next page, a page is empty, MAX_PAGES
+ * is reached or MAX_LISTINGS are collected (the result is trimmed to it). Fetches are pinned to
+ * `host` (redirects must not leave it). De-duplicates by externalId across pages (a listing can
+ * shift between page fetches); seen-dedup happens in WatchService.
  *
  * A failed FIRST page — fetch or parse — throws: an outage, bot-wall or layout
  * change must not look like an empty search. A failure on a later page returns
@@ -35,6 +38,8 @@ export async function paginate({
   parsePage,
   logger,
   useProxy,
+  pinPath,
+  load,
 }: {
   firstUrl: string;
   host: string;
@@ -42,20 +47,24 @@ export async function paginate({
   logger: Logger;
   /** Route fetches through SCRAPE_PROXY_URL — for sources that block datacenter IPs. */
   useProxy?: boolean;
-}): Promise<Listing[]> {
+  /** Fail on a redirect to another path — see fetchHtml. */
+  pinPath?: boolean;
+  /** How to get a page's body, when it takes more than one request (gcn's grid); fetchHtml else. */
+  load?: (url: string) => Promise<string>;
+}): Promise<FetchResult> {
   const byId = new Map<string, Listing>();
+  let complete = true;
+  let capped = false;
   let url: string | null = firstUrl;
-  for (let page = 1; url !== null && page <= MAX_PAGES; page++) {
+  for (let page = 1; url !== null && page <= MAX_PAGES && byId.size < MAX_LISTINGS; page++) {
     let parsed: ParsedPage;
     try {
-      parsed = parsePage(await fetchHtml({ url, host, useProxy }), page);
+      const body = load ? await load(url) : await fetchHtml({ url, host, useProxy, pinPath });
+      parsed = parsePage(body, page);
     } catch (err) {
       if (page === 1) throw err;
-      // TODO [M]: a later-page failure is invisible outside the logs — and `parsePage` runs in
-      // this same try, so a layout change (or a bug of ours) that breaks only page 2+ leaves
-      // page 1 working, the run green, and every search silently capped at one page. A warn
-      // cannot say that; reporting it needs a caller-supplied context, since `reportUserFacing`
-      // lives in modules/telegram and its tags are the bot's, not the scraper's.
+      // A prefix, not a failure — see FetchResult for what `complete` is for.
+      complete = false;
       logger.warn(
         { err },
         `Page ${page} failed for ${firstUrl} — returning ${byId.size} collected`,
@@ -69,6 +78,11 @@ export async function paginate({
       if (!byId.has(listing.externalId)) byId.set(listing.externalId, listing);
     }
     url = nextUrl;
+    // Set here, not from `url` after the loop: an empty-page break leaves `url` non-null too.
+    const stopsHere = page === MAX_PAGES || byId.size >= MAX_LISTINGS;
+    if (stopsHere && nextUrl !== null) capped = true;
   }
-  return [...byId.values()];
+  // More than the window arrived (one big page can overshoot it): keep the newest, say so.
+  if (byId.size > MAX_LISTINGS) capped = true;
+  return { listings: [...byId.values()].slice(0, MAX_LISTINGS), complete, capped };
 }

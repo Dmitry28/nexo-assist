@@ -4,10 +4,11 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 
 import { SEND_DELAY_MS } from '../send-card';
 import type { DeliveryTargets } from '../telegram.deliver';
-import { deliverAndMark, deliverListings } from '../telegram.deliver';
+import { deliverAndRecord, deliverFindings } from '../telegram.deliver';
 import { CARDS_PER_DELIVERY, DIGEST_LIMIT } from '../telegram.format';
 
 const many = (n: number) => Array.from({ length: n }, (_, i) => listing(i + 1));
+const found = (n: number) => ({ listings: many(n), priceChanges: [], removed: [] });
 
 /** A delivery target that records what went out as what. */
 const stubTargets = () => ({
@@ -19,17 +20,17 @@ const stubTargets = () => ({
 const messages = (send: DeliveryTargets & { card: jest.Mock; digest: jest.Mock }): number =>
   send.card.mock.calls.length + send.digest.mock.calls.length;
 
-describe('deliverListings', () => {
+describe('deliverFindings', () => {
   afterEach(() => jest.useRealTimers());
 
   it('sends a single listing as one card, without waiting first', async () => {
     const send = stubTargets();
 
-    const { delivered, error } = await deliverListings(many(1), send);
+    const { delivered, error } = await deliverFindings(found(1), send);
 
     expect(send.card).toHaveBeenCalledTimes(1);
     expect(send.digest).not.toHaveBeenCalled();
-    expect(delivered).toHaveLength(1);
+    expect(delivered.listings).toHaveLength(1);
     expect(error).toBeUndefined();
   });
 
@@ -37,7 +38,7 @@ describe('deliverListings', () => {
     jest.useFakeTimers();
     const send = stubTargets();
 
-    const run = deliverListings(many(3), send);
+    const run = deliverFindings(found(3), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 3);
     await run;
 
@@ -52,20 +53,20 @@ describe('deliverListings', () => {
     const send = stubTargets();
     const fresh = CARDS_PER_DELIVERY + DIGEST_LIMIT;
 
-    const run = deliverListings(many(fresh), send);
+    const run = deliverFindings(found(fresh), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * fresh);
     const { delivered } = await run;
 
     expect(send.card).toHaveBeenCalledTimes(CARDS_PER_DELIVERY);
     expect(send.digest).toHaveBeenCalledTimes(1);
-    expect(delivered).toHaveLength(fresh);
+    expect(delivered.listings).toHaveLength(fresh);
   });
 
   it('paces the messages after the first', async () => {
     jest.useFakeTimers();
     const send = stubTargets();
 
-    const run = deliverListings(many(2), send);
+    const run = deliverFindings(found(2), send);
     await Promise.resolve();
     expect(messages(send)).toBe(1); // the second waits
 
@@ -80,11 +81,11 @@ describe('deliverListings', () => {
     const send = stubTargets();
     send.card.mockResolvedValueOnce(undefined).mockRejectedValue(new Error('send failed'));
 
-    const run = deliverListings(many(3), send);
+    const run = deliverFindings(found(3), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 3);
     const { delivered, error } = await run;
 
-    expect(delivered).toHaveLength(1);
+    expect(delivered.listings).toHaveLength(1);
     expect(error).toEqual(new Error('send failed'));
   });
 
@@ -98,12 +99,12 @@ describe('deliverListings', () => {
       .mockRejectedValueOnce(new Error('send failed'))
       .mockResolvedValue(undefined);
 
-    const run = deliverListings(many(5), send);
+    const run = deliverFindings(found(5), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
     const { delivered, error } = await run;
 
     expect(send.card).toHaveBeenCalledTimes(5);
-    expect(delivered.map((l) => l.externalId)).toEqual(['1', '3', '4', '5']);
+    expect(delivered.listings.map((l) => l.externalId)).toEqual(['1', '3', '4', '5']);
     // The failure is still reported — the caller tells the user part of it is coming later.
     expect(error).toEqual(new Error('send failed'));
   });
@@ -113,12 +114,12 @@ describe('deliverListings', () => {
     const send = stubTargets();
     send.card.mockRejectedValue(new Error('telegram is down'));
 
-    const run = deliverListings(many(20), send);
+    const run = deliverFindings(found(20), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 20);
     const { delivered, error } = await run;
 
     expect(send.card).toHaveBeenCalledTimes(3);
-    expect(delivered).toHaveLength(0);
+    expect(delivered.listings).toHaveLength(0);
     expect(error).toEqual(new Error('telegram is down'));
   });
 
@@ -131,12 +132,12 @@ describe('deliverListings', () => {
       ++n % 2 === 0 ? Promise.reject(new Error('send failed')) : Promise.resolve(undefined),
     );
 
-    const run = deliverListings(many(16), send);
+    const run = deliverFindings(found(16), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 16);
     const { delivered } = await run;
 
     expect(send.card).toHaveBeenCalledTimes(16);
-    expect(delivered).toHaveLength(8);
+    expect(delivered.listings).toHaveLength(8);
   });
 
   it('stops when the chat is blocked — everything after it would be refused too', async () => {
@@ -150,79 +151,140 @@ describe('deliverListings', () => {
     );
     send.card.mockResolvedValueOnce(undefined).mockRejectedValue(blocked);
 
-    const run = deliverListings(many(5), send);
+    const run = deliverFindings(found(5), send);
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 5);
     const { delivered, error } = await run;
 
     expect(send.card).toHaveBeenCalledTimes(2);
-    expect(delivered).toHaveLength(1);
+    expect(delivered.listings).toHaveLength(1);
     expect(error).toBe(blocked);
   });
 });
 
-describe('deliverAndMark', () => {
+describe('deliverAndRecord', () => {
   afterEach(() => jest.useRealTimers());
 
-  it('skips markSeen when nothing was delivered', async () => {
+  it('records nothing when nothing was delivered', async () => {
     const send = stubTargets();
     send.card.mockRejectedValue(new Error('send failed'));
-    const markSeen = jest.fn().mockResolvedValue(undefined);
+    const record = jest.fn().mockResolvedValue(undefined);
 
-    const { delivered, error, markSeenError } = await deliverAndMark({
-      listings: many(1),
+    const { delivered, error, recordError } = await deliverAndRecord({
+      found: found(1),
       send,
-      markSeen,
+      record,
     });
 
-    expect(markSeen).not.toHaveBeenCalled();
-    expect(delivered).toEqual([]);
+    expect(record).not.toHaveBeenCalled();
+    expect(delivered).toEqual({ listings: [], priceChanges: [], removed: [] });
     expect(error).toEqual(new Error('send failed'));
-    expect(markSeenError).toBeUndefined();
+    expect(recordError).toBeUndefined();
   });
 
-  it('returns a markSeen failure instead of throwing — the card already reached the user', async () => {
+  it('returns a recording failure instead of throwing — the card already reached the user', async () => {
     const send = stubTargets();
-    const markSeen = jest.fn().mockRejectedValue(new Error('db down'));
+    const record = jest.fn().mockRejectedValue(new Error('db down'));
 
-    const { delivered, error, markSeenError } = await deliverAndMark({
-      listings: many(1),
+    const { delivered, error, recordError } = await deliverAndRecord({
+      found: found(1),
       send,
-      markSeen,
+      record,
     });
 
-    expect(delivered).toHaveLength(1);
+    expect(delivered.listings).toHaveLength(1);
     expect(error).toBeUndefined();
-    expect(markSeenError).toEqual(new Error('db down'));
+    expect(recordError).toEqual(new Error('db down'));
   });
 
-  it('marks the delivered prefix seen when a later message fails', async () => {
+  it('records the delivered prefix when a later message fails', async () => {
     jest.useFakeTimers();
     const send = stubTargets();
     send.card.mockResolvedValueOnce(undefined).mockRejectedValue(new Error('send failed'));
-    const markSeen = jest.fn().mockResolvedValue(undefined);
+    const record = jest.fn().mockResolvedValue(undefined);
 
-    const run = deliverAndMark({ listings: many(3), send, markSeen });
+    const run = deliverAndRecord({ found: found(3), send, record });
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 3);
-    const { delivered, error, markSeenError } = await run;
+    const { delivered, error, recordError } = await run;
 
-    expect(delivered).toHaveLength(1);
-    expect(markSeen).toHaveBeenCalledWith(delivered);
+    expect(delivered.listings).toHaveLength(1);
+    expect(record).toHaveBeenCalledWith(delivered);
     expect(error).toEqual(new Error('send failed'));
-    expect(markSeenError).toBeUndefined();
+    expect(recordError).toBeUndefined();
   });
 
   it('reports no failure when everything went through', async () => {
     const send = stubTargets();
-    const markSeen = jest.fn().mockResolvedValue(undefined);
+    const record = jest.fn().mockResolvedValue(undefined);
 
-    const { delivered, error, markSeenError } = await deliverAndMark({
-      listings: many(1),
+    const { delivered, error, recordError } = await deliverAndRecord({
+      found: found(1),
       send,
-      markSeen,
+      record,
     });
 
-    expect(delivered).toHaveLength(1);
+    expect(delivered.listings).toHaveLength(1);
     expect(error).toBeUndefined();
-    expect(markSeenError).toBeUndefined();
+    expect(recordError).toBeUndefined();
+  });
+});
+
+describe('price changes', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('go out after the new listings, as a digest, and are reported delivered', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    const after = listing(9, { priceUsd: 90_000 });
+    const change = { before: { link: after.link, title: after.title, priceUsd: 100_000 }, after };
+
+    const run = deliverFindings(
+      { listings: many(1), priceChanges: [change], removed: [] },
+      send,
+      'realt.by · x',
+    );
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 2);
+    const { delivered } = await run;
+
+    expect(send.card).toHaveBeenCalledTimes(1);
+    const [text] = send.digest.mock.calls[0] as [string];
+    expect(text).toContain('💸 Цена изменилась: 1');
+    expect(text).toContain('realt.by · x');
+    expect(text).toContain('$100\u00a0000 → $90\u00a0000');
+    expect(delivered).toEqual({ listings: [listing(1)], priceChanges: [change], removed: [] });
+  });
+});
+
+describe('removals', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('go out last, as a digest, and are reported delivered', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    const removal = { externalId: '7', last: { link: 'https://ghb.by/7', title: 'Кв. 7' } };
+
+    const run = deliverFindings({ listings: many(1), priceChanges: [], removed: [removal] }, send);
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 2);
+    const { delivered } = await run;
+
+    expect(send.digest.mock.calls[0][0]).toContain('🚫 Снято с продажи: 1');
+    expect(delivered.removed).toEqual([removal]);
+  });
+});
+
+// The helper and the composer are covered on their own; this is the wiring between them — a
+// dropped argument in `plan` would leave every header unlabelled with the suite still green.
+describe('the search label reaches the messages', () => {
+  it('puts it in both the card header and the digest header', async () => {
+    jest.useFakeTimers();
+    const send = stubTargets();
+    const fresh = CARDS_PER_DELIVERY + 1;
+
+    const run = deliverFindings(found(fresh), send, 'kufar · grodno/kupit/dom');
+    await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * (fresh + 1));
+    await run;
+
+    const [card] = send.card.mock.calls[0] as [{ caption: string }];
+    expect(card.caption).toContain('kufar · grodno/kupit/dom');
+    expect(send.digest.mock.calls[0][0]).toContain('kufar · grodno/kupit/dom');
   });
 });

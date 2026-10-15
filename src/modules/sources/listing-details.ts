@@ -6,7 +6,9 @@ import type { ListingDetail } from './source-adapter';
  * adapter's conditionals. Only details pass through here; `address` and `seller` are free text,
  * where these exact strings are not how a source spells "empty".
  */
-const PLACEHOLDER_VALUES = new Set(['не указано', 'не указан', 'не указана', 'n/a']);
+// `-` earns its place from a measurement: kufar spells a false boolean that way («Мебель: -»
+// on an unfurnished flat), and a dash is never a value a reader wants on a card.
+const PLACEHOLDER_VALUES = new Set(['не указано', 'не указан', 'не указана', 'n/a', '-']);
 
 /**
  * A labelled detail, or `undefined` when the source left the field empty — pass the result to

@@ -26,21 +26,22 @@ export function extractUrl(text: string): string | null {
   return url !== null && url.length <= MAX_URL_LENGTH ? url : null;
 }
 
-// Params that don't change a search's identity — pagination/order (adapters re-pin these
-// anyway) and tracking. Dropped so the same search dedups however the link was pasted.
-const VOLATILE_PARAMS = ['cursor', 'page', 'sort', 'sortType'];
+// Ad-click ids a shared link picks up — like utm_*, they name the visit, never a search.
+const CLICK_IDS = new Set(['fbclid', 'gclid', 'yclid']);
 
 /**
- * Canonical form of a search URL for dedup: lowercased host without `www.`, volatile and
- * `utm_*` params dropped, remaining params sorted, no trailing slash or fragment.
- * Heuristic and source-agnostic; refine per adapter only if a real collision shows up.
+ * Canonical form of a search URL for dedup: lowercased host without `www.`, `volatileParams`
+ * (sort, paging — they don't name a search), `utm_*` and ad-click ids dropped, remaining params
+ * sorted, no trailing slash or fragment. `volatileParams` is the subscription's source's own list.
  */
-export function normalizeUrl(url: string): string {
+export function normalizeUrl(url: string, volatileParams: readonly string[]): string {
   const parsed = new URL(url);
   parsed.hash = '';
   parsed.hostname = stripWww(parsed.hostname);
   for (const key of [...parsed.searchParams.keys()]) {
-    if (VOLATILE_PARAMS.includes(key) || key.startsWith('utm_')) parsed.searchParams.delete(key);
+    if (volatileParams.includes(key) || key.startsWith('utm_') || CLICK_IDS.has(key)) {
+      parsed.searchParams.delete(key);
+    }
   }
   parsed.searchParams.sort();
   parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';

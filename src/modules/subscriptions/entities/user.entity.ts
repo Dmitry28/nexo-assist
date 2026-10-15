@@ -37,6 +37,11 @@ export class User {
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
+  /** Last time the user was sent anything about their searches — listings or the quiet report.
+   * Drives the weekly «нового нет» (watch.scheduler.ts § reportQuiet). null = never, since signup. */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastNotifiedAt: Date | null;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

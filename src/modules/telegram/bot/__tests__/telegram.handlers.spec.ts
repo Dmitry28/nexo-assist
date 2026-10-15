@@ -2,12 +2,15 @@ import { Logger } from '@nestjs/common';
 import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
+import { sentryCapture } from '@/__tests__/helpers/sentry';
+import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
-import { KufarAdapter } from '@/modules/sources/kufar/kufar.adapter';
+import { SearchRewrittenError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
+  ProtectedLimitError,
   SubscriptionLimitError,
 } from '@/modules/subscriptions/subscriptions.service';
 import type { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -65,7 +68,7 @@ describe('TelegramHandlers', () => {
       config,
       subscriptions as unknown as SubscriptionsService,
       watch as unknown as WatchService,
-      new SourceRegistry([new KufarAdapter()]),
+      new SourceRegistry([sourceAdapter('kufar')]),
       status,
       check as unknown as CheckHandlers,
     );
@@ -180,6 +183,14 @@ describe('TelegramHandlers', () => {
     expect(watch.baseline).not.toHaveBeenCalled();
   });
 
+  it('says the protected-source slots are taken instead of subscribing', async () => {
+    subscriptions.add.mockRejectedValue(new ProtectedLimitError());
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk');
+    const ctx = await pressButton(`subscribe:${nonce}`);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('защищён от ботов'));
+    expect(watch.baseline).not.toHaveBeenCalled();
+  });
+
   it("ignores another user's subscribe tap", async () => {
     const { nonce } = await pasteLink('https://re.kufar.by/l/minsk', 1);
     const ctx = await pressButton(`subscribe:${nonce}`, 999);
@@ -200,6 +211,25 @@ describe('TelegramHandlers', () => {
       expect.stringContaining('Сайт сейчас не отвечает'),
       expect.anything(),
     );
+  });
+
+  // The search behind the redirect is not the one the user chose, and every poll would hit it.
+  it('drops the subscription and says why when the site rewrites the search', async () => {
+    // Only realt pins its path in production; here the baseline is mocked, so the URLs are data.
+    watch.baseline.mockRejectedValue(
+      new SearchRewrittenError('https://re.kufar.by/l/minsk', 'https://re.kufar.by/l/belarus'),
+    );
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk', 5);
+
+    const ctx = await pressButton(`subscribe:${nonce}`, 5);
+
+    expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
+    const [text] = ctx.editMessageText.mock.calls[0] as [string];
+    expect(text).toContain('https://re.kufar.by/l/minsk'); // what they sent
+    expect(text).toContain('https://re.kufar.by/l/belarus'); // where the site took it
+    // The link is user input, not our defect — nothing for Sentry.
+    expect(sentryCapture()).not.toHaveBeenCalled();
   });
 
   it("ignores another user's cancel tap — the owner's prompt stays subscribable", async () => {
@@ -293,8 +323,8 @@ describe('TelegramHandlers', () => {
       string,
       { reply_markup: { inline_keyboard: Array<Array<{ callback_data: string }>> } },
     ];
-    expect(text).toContain('#2 — kufar ⏸ на паузе');
-    expect(text).not.toContain('#1 — kufar ⏸');
+    expect(text).toContain('#2 — kufar.by ⏸ на паузе');
+    expect(text).not.toContain('#1 — kufar.by ⏸');
     const buttons = options.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
     expect(buttons).toContain('resume:paused');
     expect(buttons).not.toContain('resume:active');

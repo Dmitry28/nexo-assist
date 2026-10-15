@@ -32,6 +32,18 @@ export class SourceTally {
     this.stats.set(source, tally);
   }
 
+  /**
+   * Sources that answered at least once this run — proof of life, not merely absence of a
+   * verdict. A source polled too few times to be called down is NOT proof of anything: the
+   * outage verdict needs SOURCE_FAILURE_MIN_POLLS, so a still-broken source whose subscriptions
+   * dropped below that would otherwise read as recovered.
+   */
+  succeededSources(): SourceId[] {
+    return [...this.stats]
+      .filter(([, { attempts, failures }]) => failures < attempts)
+      .map(([source]) => source);
+  }
+
   /** Sources whose polls ALL failed this run, with enough polls to rule out one bad URL. */
   failedSources(): SourceOutage[] {
     const failed: SourceOutage[] = [];

@@ -58,9 +58,8 @@ restate them here. Our choices:
 - **Background rule** (auto-loaded on triggers): `user-invocable: false` — the default is `true`.
 - **Command**: `user-invocable: true`, and leave it model-invocable. `disable-model-invocation`
   is set nowhere here: `review-code`, `logic-review` and `verify-task-result` are commands the
-  rules tell the model to run, and on `git-commit` the flag would be a false guardrail — it hides
-  the procedure that says _propose the command, never run it_ while `git commit` itself stays one
-  Bash call away.
+  rules tell the model to run, and `git-commit` is how the model commits a diff the owner approved
+  ([github.md § Approval](github.md#approval)).
 - **Large output** (diffs, reviews, PR descriptions): `context: fork`, so the output stays out of
   the main conversation.
 
@@ -101,4 +100,3 @@ session). Specific — file types, domain terms, action verbs — and phrased as
 1. Create content file in `docs/llm/rules/` or `docs/llm/commands/`.
 2. Create skill wrapper in `.claude/skills/<name>/SKILL.md` — the frontmatter is the single source for the skill's description/triggers; no separate registration anywhere.
 3. **Final pass** — re-read the content file: correct (verified, no recall)? DRY (link instead of duplicate)? concise (cut what loses nothing)? clear to a new contributor? If any "no" — revise before committing. Sloppy skills compound — they get followed and copied.
-4. **Format check** — markdown skips lint-staged's ESLint, so run `npx prettier --check <file>` on every modified instruction file; fix with `--write`.

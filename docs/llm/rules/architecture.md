@@ -30,10 +30,12 @@ src/
     ├── sources/        # Source-plugin layer (specialized module)
     │   ├── source-adapter.ts   # Contract: SourceAdapter + Listing + SourceId
     │   ├── source-registry.ts  # Resolves an adapter by URL/id
-    │   ├── listing-details.ts  # Builds the labelled detail lines adapters fill
+    │   ├── source-definition.ts # SourceDefinition → SourceAdapter (shared matching, paging)
+    │   ├── listing-details.ts  # Builds the labelled detail lines parsers fill
+    │   ├── listing-text.ts     # Shared wording: salary, preview, rating
     │   ├── sources.module.ts
-    │   ├── scraping/           # Shared scraping toolkit (fetch, __NEXT_DATA__, paginate)
-    │   └── <site>/             # One adapter per site (kufar, realt) + parser
+    │   ├── scraping/           # Shared reading: fetch, paginate, JSON/HTML/text helpers
+    │   └── <site>/             # One folder per site: its parser + its SourceDefinition
     └── telegram/       # Two subsystems in concern subfolders — see § Module Rules
         ├── telegram.module.ts
         ├── report.ts           # Owned by neither concern → module root
@@ -105,6 +107,40 @@ Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What
   DTOs at the controller boundary** — never return a raw entity.
 - Throw Nest HTTP exceptions; the global `AllExceptionsFilter` shapes the response.
 - Schema changes only via a generated migration (see below).
+
+## Adding a Source
+
+Sources will number in the hundreds, so **a source holds only knowledge of its site**: where the
+data sits, which keys and codes it uses, its quirks. Code that is not about one site — wording a
+field (`listing-text.ts`), reading text, HTML or JSON (`scraping/`), paging, page checks — lives in
+those shared modules from the start: that is placement, not a premature abstraction.
+
+A source is a folder `sources/<site>/` — mirror `rabota/`:
+
+- `<site>.parser.ts` — the site: `HOST`, raw types, the mapper, and `parsePage(html, ctx)` — the
+  one function the definition points at. Built on the shared helpers (`requireArray`, `withIds`,
+  `withoutStalePromos`, `asPrice`…), so a missing key fails the poll instead of reading as empty.
+- `<site>.source.ts` — `defineSource({...})`: id (the folder name; stored with subscriptions, never
+  renamed), host, a real `sample` search, `about` (a few words for /help), optional search path,
+  pinned params (newest-first sort, page size), page or cursor paging, or `singlePage: true`
+  (one fixed page), noise params, `requestUrl` (when the data sits behind a widget's API), for a single page
+  `load`/`enrich` (a second request for the list; an item-page visit for a missing field), `parse`,
+  `reportsRemoved` when leaving the page means sold (see its doc);
+  `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)),
+  `protection` for a site behind anti-bot protection (the fetch ladder, paid; see its doc).
+  Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its
+  `pins` NOTE: changing them later needs a re-normalizing migration).
+- `__tests__/` — parser specs on a trimmed live fixture `fixtures/<id>-search.<html|json>` (or `.1.*`, `.2.*`
+  for a page that takes two requests, plus `<id>-item.*` for item-page visits; that name
+  is what the contract spec loads; redacted — the repo is public).
+- Register: one line in `SOURCES` (`sources.ts`) — `SourceId`, /help's list of sites and the
+  contract spec follow from it. The contract spec checks every source for registration, host
+  overlap, outages, a data-less page and its fixture's listings.
+- The source's own spec covers only what is its own — `matches` cases and quirks (realt's slug,
+  rabota's page 0); shared paging and pinning are tested once, in `source-definition.spec.ts`.
+- Taking over a host another source matched? Its stored subscriptions need a data migration
+  (precedent: `MoveTravelSubscriptions`).
+- The source's measured gotchas also go into its entry in PRODUCT_PLAN.md.
 
 ## Database & migrations
 

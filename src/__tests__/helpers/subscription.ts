@@ -15,11 +15,13 @@ export const makeSubscription = (overrides: SubscriptionOverrides = {}): Subscri
   ({
     id: 'sub-1',
     userId: 'user-1',
-    user: { telegramId: 1 },
     source: 'kufar',
     url: 'https://kufar.by/l',
     baselinedAt: null,
     pausedAt: null,
     consecutiveFailures: 0,
     ...overrides,
+    // Merged, so a spec setting only telegramId keeps a user who just heard from us — not due for
+    // the quiet report unless the spec says so.
+    user: { telegramId: 1, createdAt: new Date(), lastNotifiedAt: null, ...overrides.user },
   }) as Subscription;
