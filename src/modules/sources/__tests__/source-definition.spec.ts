@@ -8,6 +8,9 @@ import type { Listing } from '../source-adapter';
 import type { SourceDefinition } from '../source-definition';
 import { createSourceAdapters } from '../source-definition';
 
+// The pause between pages is real time (paginate.ts); these specs test what is fetched, not when.
+jest.mock('@/common/wait', () => ({ wait: () => Promise.resolve() }));
+
 const listing = (id: string) => ({
   externalId: id,
   link: `https://a.by/${id}`,

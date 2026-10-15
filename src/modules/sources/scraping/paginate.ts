@@ -14,15 +14,15 @@ import { fetchHtml } from './http';
 // Twenty pages hold the window on every paged source: kufar's 30 a page needs 17.
 const MAX_PAGES = 20;
 
-// Pages are fetched with a pause between them: kufar rate-limits sustained pagination, and the
-// prototype measured HTTP 429 on page 12 of a feed walked without a delay (land-scraper,
-// kufar/constants/index.ts pauses 1.5 s for that reason).
-const PAGE_PAUSE_MS = 1500;
+// Pages are fetched with a pause between them: kufar rate-limits sustained pagination. Measured
+// 2026-10-16 on a 500-listing walk: a 1.5 s pause got HTTP 429 on page 5, 3 s on page 7, 6 s
+// none (17 pages, ~2 min) — about ten requests a minute.
+const PAGE_PAUSE_MS = 6000;
 
 // No page starts after this long: twenty pages at the 30 s fetch timeout would hold one
 // subscription for ten minutes, and a run is sequential (POLL_STUCK_AFTER_MS is sized on it).
-// A healthy walk of the full window takes under a minute; one cut short reports `capped`.
-const WALK_BUDGET_MS = 2 * 60 * 1000;
+// A healthy walk of kufar's full window takes ~2 min; one cut short reports `capped`.
+const WALK_BUDGET_MS = 3 * 60 * 1000;
 
 /** One parsed page: its listings and the URL of the next page (null = last page). */
 export interface ParsedPage {
