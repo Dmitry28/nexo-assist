@@ -12,9 +12,7 @@ export const kufarTravel = defineSource({
   pins: { sort: 'lst.d' },
   // A page holds `size` objects plus a few interleaved hotels (35 of 30, measured 2026-10-06).
   page: { param: 'page', first: 1 },
-  // Same owner as kufar, which blocks datacenter IP ranges.
-  // TODO [M]: assumed, not measured — curl travel.kufar.by from the Hetzner host; drop the proxy if
-  // it answers 200 directly.
+  // Same owner as kufar: blocks datacenter IP ranges (403 from the Hetzner pod, 2026-10-15).
   useProxy: true,
   parse: parsePage,
 });
