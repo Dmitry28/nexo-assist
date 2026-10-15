@@ -2,10 +2,14 @@ import { Logger } from '@nestjs/common';
 
 import { makeListing } from '@/__tests__/helpers/listing';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
+import { wait } from '@/common/wait';
 
 import { MAX_LISTINGS } from '../../source-adapter';
 import { paginate } from '../paginate';
 import type { ParsedPage } from '../paginate';
+
+// The pause between pages is real time; what is tested is that it happens, not its length.
+jest.mock('@/common/wait', () => ({ wait: jest.fn(() => Promise.resolve()) }));
 
 describe('paginate', () => {
   const fetchMock = undiciFetchMock();
@@ -77,8 +81,36 @@ describe('paginate', () => {
 
     const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
-    expect(result.listings).toHaveLength(5); // MAX_PAGES
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(result.listings).toHaveLength(20); // MAX_PAGES
+    expect(fetchMock).toHaveBeenCalledTimes(20);
+    expect(result).toMatchObject({ complete: true, capped: true });
+  });
+
+  // kufar answers 429 to a walk paced faster than about ten pages a minute.
+  it('pauses before every page but the first', async () => {
+    const pages: ParsedPage[] = [
+      { listings: [makeListing(1)], nextUrl: 'p2' },
+      { listings: [makeListing(2)], nextUrl: 'p3' },
+      { listings: [makeListing(3)], nextUrl: null },
+    ];
+    const parsePage = jest.fn().mockImplementation(() => pages.shift());
+
+    await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+    expect(wait).toHaveBeenCalledTimes(2);
+  });
+
+  // A slow site must not hold the sequential run for twenty timeouts.
+  it('starts no page once the walk budget is spent, and reports the window capped', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(0);
+    const parsePage = jest.fn().mockImplementation(() => {
+      now.mockReturnValue(4 * 60 * 1000);
+      return { listings: [makeListing(1)], nextUrl: 'p2' };
+    });
+
+    const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ complete: true, capped: true });
   });
 
@@ -123,7 +155,7 @@ describe('paginate', () => {
     });
 
     it('keeps the first MAX_LISTINGS of one oversized page and reports the overflow', async () => {
-      const parsePage = jest.fn().mockReturnValue(page(1, 360, 'next'));
+      const parsePage = jest.fn().mockReturnValue(page(1, MAX_LISTINGS + 100, 'next'));
 
       const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
@@ -136,8 +168,8 @@ describe('paginate', () => {
     it('stops at the window across pages', async () => {
       const parsePage = jest
         .fn()
-        .mockReturnValueOnce(page(1, 120, 'p2'))
-        .mockReturnValueOnce(page(121, 60, 'p3'));
+        .mockReturnValueOnce(page(1, MAX_LISTINGS - 100, 'p2'))
+        .mockReturnValueOnce(page(MAX_LISTINGS - 99, 200, 'p3'));
 
       const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 
@@ -158,7 +190,7 @@ describe('paginate', () => {
     // A source can hand its whole result over in one page (realt bundles pages): no next page,
     // yet more than the window — what was cut off must still be reported.
     it('reports an oversized last page as capped, though it advertises no next', async () => {
-      const parsePage = jest.fn().mockReturnValue(page(1, 360, null));
+      const parsePage = jest.fn().mockReturnValue(page(1, MAX_LISTINGS + 100, null));
 
       const result = await paginate({ firstUrl: 'p1', host: 'x.by', parsePage, logger });
 

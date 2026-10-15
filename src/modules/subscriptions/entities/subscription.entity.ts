@@ -55,4 +55,9 @@ export class Subscription {
    * the subscription is auto-paused and the user is asked to refresh the link. */
   @Column({ type: 'int', default: 0 })
   consecutiveFailures: number;
+
+  /** The window size the seen set was built with, when the window has grown since (set by the
+   * migration that grows it). null = nothing to catch up; see WatchService.check. */
+  @Column({ type: 'int', nullable: true })
+  widenedFrom: number | null;
 }

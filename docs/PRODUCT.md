@@ -18,10 +18,10 @@ start; more frequent once throttling/dedupe land).
   units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
   used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
   `/filter` links ignore their filters), US auction lots from bid.cars** — via the adapter
-  registry. A paged search is fetched newest-first, and a run looks at its **newest 150 listings**
-  (up to 5 pages) — a pasted sort or page number is overridden; a search that gains more than that
+  registry. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
+  (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
-  first page only (each page may be paid; a run fetches a search once, however many users watch
+  first page only (a page with nothing seen before tells the owner the same way; each page may be paid; a run fetches a search once, however many users watch
   it, and a new search past its site group's daily paid-credit budget is refused — one already watched
   never is): av.by's 25 «актуальные» and bid.cars's 50 lots with the latest
   auctions — neither sorts by newest in a link (on a search over 50 lots, one whose auction is

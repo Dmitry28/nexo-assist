@@ -10,6 +10,9 @@ import { matchesHost } from '@/common/url';
 import { SourceUnavailableError } from '../source-adapter';
 import { ADAPTERS, SOURCES } from '../sources';
 
+// The pause between pages is real time (paginate.ts); these specs test what is fetched, not when.
+jest.mock('@/common/wait', () => ({ wait: () => Promise.resolve() }));
+
 // A source folder whose definition is left out of SOURCES would pass every check below: each
 // `<id>/<id>.source.ts` on disk must be registered (folder name = id, as the fixtures assume).
 it('registers every source folder, once', () => {

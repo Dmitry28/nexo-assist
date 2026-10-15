@@ -1,5 +1,7 @@
 import type { Logger } from '@nestjs/common';
 
+import { wait } from '@/common/wait';
+
 import { MAX_LISTINGS } from '../source-adapter';
 import type { FetchResult, Listing } from '../source-adapter';
 
@@ -9,12 +11,18 @@ import { fetchHtml } from './http';
 // deterministic and enough for daily volumes. A lookback window can be added later if it proves
 // wasteful.
 // Outgrowing it is observable: the walk reports `capped`, and WatchService warns on overflow.
-//
-// The cap is also what lets pages be fetched back-to-back with no pause: kufar rate-limits
-// sustained pagination, and the prototype measured HTTP 429 on page 12 of a feed walked
-// without a delay (land-scraper, kufar/constants/index.ts pauses 1.5 s for that reason).
-// Five is far enough under it; raising this number means pacing the loop as well.
-const MAX_PAGES = 5;
+// Twenty pages hold the window on every paged source: kufar's 30 a page needs 17.
+const MAX_PAGES = 20;
+
+// Pages are fetched with a pause between them: kufar rate-limits sustained pagination. Measured
+// 2026-10-16 on a 500-listing walk: a 1.5 s pause got HTTP 429 on page 5, 3 s on page 7, 6 s
+// none (17 pages, ~2 min) — about ten requests a minute.
+const PAGE_PAUSE_MS = 6000;
+
+// No page starts after this long: twenty pages at the 30 s fetch timeout would hold one
+// subscription for ten minutes, and a run is sequential (POLL_STUCK_AFTER_MS is sized on it).
+// A healthy walk of kufar's full window takes ~2 min; one cut short reports `capped`.
+const WALK_BUDGET_MS = 3 * 60 * 1000;
 
 /** One parsed page: its listings and the URL of the next page (null = last page). */
 export interface ParsedPage {
@@ -24,7 +32,8 @@ export interface ParsedPage {
 
 /**
  * Fetch pages newest-first via `parsePage` until there is no next page, a page is empty, MAX_PAGES
- * is reached or MAX_LISTINGS are collected (the result is trimmed to it). Fetches are pinned to
+ * is reached, MAX_LISTINGS are collected (the result is trimmed to it) or WALK_BUDGET_MS has
+ * passed. Fetches are pinned to
  * `host` (redirects must not leave it). De-duplicates by externalId across pages (a listing can
  * shift between page fetches); seen-dedup happens in WatchService.
  *
@@ -56,7 +65,18 @@ export async function paginate({
   let complete = true;
   let capped = false;
   let url: string | null = firstUrl;
+  const deadline = Date.now() + WALK_BUDGET_MS;
   for (let page = 1; url !== null && page <= MAX_PAGES && byId.size < MAX_LISTINGS; page++) {
+    if (page > 1) {
+      if (Date.now() >= deadline) {
+        capped = true;
+        logger.warn(
+          `Walk budget spent before page ${page} of ${firstUrl} — returning ${byId.size}`,
+        );
+        break;
+      }
+      await wait(PAGE_PAUSE_MS);
+    }
     let parsed: ParsedPage;
     try {
       const body = load ? await load(url) : await fetchHtml({ url, host, useProxy, pinPath });
