@@ -5,7 +5,7 @@ import { SourceUnavailableError } from '../../source-adapter';
 import { extractPage } from '../gsz.parser';
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
-const NOW = new Date('2026-10-06T12:00:00Z');
+const NOW = new Date('2026-10-19T12:00:00Z');
 
 describe('extractPage', () => {
   const { listings, next } = extractPage(fixture('gsz-search.html'), 1, NOW);
@@ -15,9 +15,9 @@ describe('extractPage', () => {
     expect(next).toBe(true);
   });
 
-  // «Обновлено 5 часов назад» on the card, against the fixed NOW.
+  // «Обновлено 1 дней назад» (the site's own wording) on the card, against the fixed NOW.
   it('dates a vacancy by its relative «updated» text', () => {
-    expect(listings[0].listTime).toBe('2026-10-06T07:00:00.000Z');
+    expect(listings[0].listTime).toBe('2026-10-18T12:00:00.000Z');
   });
 
   it('leaves the time empty when the card has no readable «… назад»', () => {
@@ -28,25 +28,22 @@ describe('extractPage', () => {
 
   it('maps a vacancy: the title uuid as id, salary as price text, employer as seller', () => {
     expect(listings[0]).toMatchObject({
-      externalId: 'c4842bdc-e9ed-4ff1-b91a-afd02d105363',
-      title: 'Продавец',
-      priceText: '1200 – 1500 руб.',
-      seller: 'Гродненское облпотребобщество',
-      address: 'обл. Гродненская, р-н Мостовский, г. Мосты, 30 Лет ВЛКСМ, 1',
+      externalId: '18176cc3-809d-40b6-88b3-fae880de98ed',
+      link: 'https://gsz.gov.by/registration/vacancy/18176cc3-809d-40b6-88b3-fae880de98ed/',
+      title: 'Агроном (заместитель)',
+      priceText: '1600 – 1800 руб.',
+      seller: 'Филиал "Дубно" открытого акционерного общества "Агрокомбинат"Скидельский"',
+      address: 'р-н Мостовский, с/с Дубненский, д. Дубно, Октябрьская, 8',
       images: [],
-      details: [{ label: 'Ставка', value: '1,0' }],
+      details: [{ label: 'Ставка', value: '1' }],
     });
   });
 
-  // Measured: the detail URL without `?source=search` answers 500.
-  it('keeps the query on the link', () => {
-    expect(listings[0].link).toBe(
-      'https://gsz.gov.by/registration/employer/vacancy/c4842bdc-e9ed-4ff1-b91a-afd02d105363/detail-public/?source=search',
-    );
-  });
-
   it('skips a block that links to no vacancy', () => {
-    const html = fixture('gsz-search.html').replace('/detail-public/', '/elsewhere/');
+    const html = fixture('gsz-search.html').replace(
+      '/registration/vacancy/',
+      '/registration/elsewhere/',
+    );
 
     expect(extractPage(html, 1, NOW).listings).toHaveLength(2);
   });

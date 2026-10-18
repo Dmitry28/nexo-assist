@@ -14,12 +14,13 @@ export const HOST = 'gsz.gov.by';
 /** Where a vacancy search lives — the only gsz page there is something to watch on. */
 export const SEARCH_PATH = '/registration/vacancy-search/';
 
-// The card's own detail link. Two things learned in the prototype: the site moved its ids from
-// numbers to UUIDs and appended `?source=search` — so the id is matched loosely. The query is
-// kept in the link: measured 2026-10-06, the same URL without it answers 500. The card's
-// «Контакты» button matches this path too (with a numeric id) — reading only the title anchor
-// (`.job-title a`) is what keeps it out.
-const DETAIL_PATH = /^\/registration\/employer\/vacancy\/([\w-]+)\/detail-public\//;
+// The card's own detail link. The site has moved it before (numeric ids → UUIDs), so the id is
+// matched loosely. Measured 2026-10-19: the link moved from
+// `/registration/employer/vacancy/<uuid>/detail-public/?source=search` to
+// `/registration/vacancy/<uuid>/`; the old URL 307s to the new one with the same uuid, so ids
+// already seen stay seen. The card's «Контакты» button links this same path (plus an anchor) —
+// reading only the title anchor (`.job-title a`) is what keeps it out.
+const DETAIL_PATH = /^\/registration\/vacancy\/([\w-]+)\//;
 
 // What the site prints for a search with no vacancies (measured) — the one case where zero
 // cards is an answer rather than a layout change.

@@ -59,6 +59,21 @@ type ProcessResult =
   | { state: 'unpaid' };
 
 /**
+ * What a run did, for its closing log line: without it a failure in the log names no total.
+ * Counted per subscription, not per search — N users on one failing search are N failures.
+ */
+interface RunSummary {
+  /** Active subscriptions the run loaded. */
+  subscriptions: number;
+  /** Ended in an error — the poll or the bookkeeping after it; each has its own error line. */
+  failed: number;
+  /** Had something new to send. */
+  fresh: number;
+  /** Never asked: no paid service for a protected source, or the user blocked the bot this run. */
+  unchecked: number;
+}
+
+/**
  * The failure streak as of this run. Subscription rows are loaded before the bump, so the row in
  * hand is always one behind the database — every threshold in this file is compared against this,
  * never against `sub.consecutiveFailures` itself.
@@ -130,12 +145,17 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       void this.notifyAdmin('🚨 Предыдущий прогон завис и не завершился. Слот отобран, проверяю.');
     }
     const startedAt = Date.now();
+    // Filled as the run goes, so a run that throws midway still logs how far it got.
+    const summary: RunSummary = { subscriptions: 0, failed: 0, fresh: 0, unchecked: 0 };
     try {
-      await this.pollAll();
+      await this.pollAll(summary);
     } finally {
       // Logged so the margin under POLL_STUCK_AFTER_MS stays observable as subscriptions grow —
-      // the ceiling is sized by arithmetic, and arithmetic drifts.
-      this.logger.log(`Watch run finished in ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      // the ceiling is sized by arithmetic, and arithmetic drifts. The counts say what the run did.
+      this.logger.log(
+        summary,
+        `Watch run finished in ${Math.round((Date.now() - startedAt) / 1000)}s`,
+      );
       this.status.finishPolling(slot.key);
     }
     // NOTE: outside the try/finally on purpose — this records the last *successful* run, which
@@ -144,8 +164,9 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     this.status.markRun(new Date());
   }
 
-  private async pollAll(): Promise<void> {
+  private async pollAll(summary: RunSummary): Promise<void> {
     const subs = await this.subscriptions.listActive();
+    summary.subscriptions = subs.length;
     // Users who blocked us this run — skip their remaining subs to avoid re-hitting 403.
     const blockedUsers = new Set<string>();
     // Per-source poll tally — used to alert the admin if a whole source is failing.
@@ -172,7 +193,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       tally.record({ source: sub.source, failed });
     };
     for (const [i, sub] of subs.entries()) {
-      if (blockedUsers.has(sub.userId)) continue;
+      if (blockedUsers.has(sub.userId)) {
+        summary.unchecked++;
+        continue;
+      }
       // Pace between polls (not before the first) so sources aren't hit back-to-back.
       if (i > 0) await pace(this.appConfig);
       let result: ProcessResult;
@@ -181,23 +205,29 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       } catch (err) {
         // Isolation boundary — a subscription's bookkeeping write must not break the run.
         // NOTE: swallowed on purpose, so it must be reported — otherwise it is invisible.
-        this.logger.error({ err }, `Subscription ${sub.id} processing failed`);
+        this.logger.error({ err }, `Processing failed for ${sub.source} subscription ${sub.id}`);
         this.report({ err, sub, op: 'process' });
         // Still count the attempt, or a throw here could push the source below
         // SOURCE_FAILURE_MIN_POLLS and suppress its outage alert. Not a poll failure: everything
         // that throws past processSubscription does so after the fetch already succeeded.
         recordOnce(sub, false);
+        summary.failed++;
         continue;
       }
       // Not tallied: the site was never asked, so it is neither down nor up.
       if (result.state === 'unpaid') {
         unpaid.add(sub.source);
+        summary.unchecked++;
         continue;
       }
       recordOnce(sub, result.state === 'poll-failed');
+      if (result.state === 'poll-failed') summary.failed++;
       if (result.state === 'poll-failed' && result.dead) dead.push(sub);
       if (result.state === 'ok' && result.poll === 'nothing') quiet.push(sub);
-      if (result.state === 'ok' && result.poll === 'fresh') heard.add(sub.userId);
+      if (result.state === 'ok' && result.poll === 'fresh') {
+        heard.add(sub.userId);
+        summary.fresh++;
+      }
       if (result.state === 'blocked') {
         blockedUsers.add(sub.userId); // record first, so a failed pause still skips the rest
         await this.pauseUser(sub.userId);
@@ -288,7 +318,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       // No streak, no per-subscription report: every protected subscription fails alike, and
       // the owner gets one line for the run (alertUnpaid).
       if (err instanceof PaidRungsUnavailableError) return { state: 'unpaid' };
-      this.logger.error({ err }, `Watch failed for subscription ${sub.id}`);
+      this.logger.error({ err }, `Watch failed for ${sub.source} subscription ${sub.id}`);
       // The scheduled run — not /check — is where site outages actually land, so this is the
       // path that has to carry `kind: source`; otherwise that split never shows up in practice.
       this.report({ err, sub, op: 'poll' });

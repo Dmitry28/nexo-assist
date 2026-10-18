@@ -60,6 +60,12 @@
    Then merge and delete the branch (`gh pr merge <n> --merge --delete-branch`).
 4. **Release** (separate approval): test the change locally against `dev`, then promote —
    `gh pr create --base main --head dev` → merge. That push to `main` is what deploys.
+   **Local live run first — mandatory** (owner, 2026-10-16): green tests are not enough. Run what
+   the release changes against the real sites from your machine — the changed sources' real
+   `fetch` on a big search, the watch path it touches — and put the numbers (listings, `complete`,
+   `capped`, time) in the release PR's «Pre-release checks». Why: the 500-listing window passed
+   every test, and only a live kufar walk showed HTTP 429 on page 5 (fixed in #168 before it
+   shipped). Paid rungs stay off in that run (unset their keys).
 
 ## Approval
 
