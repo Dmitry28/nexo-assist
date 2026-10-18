@@ -14,7 +14,7 @@ describe('gsz source', () => {
 
   it.each([
     ['https://gsz.gov.by/registration/vacancy-search/?district=14712', true],
-    ['https://gsz.gov.by/registration/employer/vacancy/x/detail-public/', false],
+    ['https://gsz.gov.by/registration/vacancy/x/', false],
     ['https://gsz.gov.by/', false],
   ])('matches(%s) → %s', (url, expected) => {
     expect(sourceAdapter('gsz').matches(url)).toBe(expected);
