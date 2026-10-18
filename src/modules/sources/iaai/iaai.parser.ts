@@ -24,11 +24,6 @@ export const USE_PROXY = false;
 /** One page of lots for the pasted Keyword, latest auction first (the site's own sort). */
 export function load(url: string): Promise<string> {
   const keyword = asText(new URL(url).searchParams.get('Keyword')) ?? '';
-  return fetchSearch(keyword);
-}
-
-/** The POST the iaai.com pager sends — also what bid.cars uses for the IAAI half. */
-export function fetchSearch(keyword: string): Promise<string> {
   return fetchJson({
     url: SEARCH_API,
     host: HOST,
