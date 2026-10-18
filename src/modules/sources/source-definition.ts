@@ -70,6 +70,11 @@ interface CommonDefinition<Id extends string> {
   /** Route through SCRAPE_PROXY_URL — only for a site measured to block datacenter IPs. */
   useProxy?: boolean;
   /**
+   * The body to parse, when the pasted page is only the way to it — a JSON POST (Copart), a
+   * separate grid request (gcn). `get` fetches on this source's host, through its proxy if any.
+   */
+  load?: (url: string, get: Get) => Promise<string>;
+  /**
    * Behind anti-bot protection: every request climbs the fetch ladder (scraping/ladder.ts), paid
    * rungs included — so its polls draw on its pool's DAILY_CREDIT_BUDGET. One request per poll: a
    * single page, no `load`, no `enrich` (each would be another paid page); no `pinPath` (the paid
@@ -101,11 +106,6 @@ interface CursorDefinition<Id extends string> extends CommonDefinition<Id> {
 interface SinglePageDefinition<Id extends string> extends CommonDefinition<Id> {
   /** Said out loud: a paged source that forgot `page` must not compile as a single page. */
   singlePage: true;
-  /**
-   * The body to parse, when the pasted page is only the way to it (gcn: the page carries the key to
-   * a separate grid request). `get` fetches on this source's host, through its proxy if any.
-   */
-  load?: (url: string, get: Get) => Promise<string>;
   /**
    * An item-page visit for a field the list lacks (gcn's price). A listing whose visit fails is
    * held back this run — delivered, it would be marked seen and never come back with the field —

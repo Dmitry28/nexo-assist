@@ -1,11 +1,13 @@
 import { avBy } from './av-by/av-by.source';
 import { bamper } from './bamper/bamper.source';
 import { bidCars } from './bid-cars/bid-cars.source';
+import { copart } from './copart/copart.source';
 import { gcn } from './gcn/gcn.source';
 import { ghb } from './ghb/ghb.source';
 import { gridom } from './gridom/gridom.source';
 import { grodnorik } from './grodnorik/grodnorik.source';
 import { gsz } from './gsz/gsz.source';
+import { iaai } from './iaai/iaai.source';
 import { idriver } from './idriver/idriver.source';
 import { kufar } from './kufar/kufar.source';
 import { kufarTravel } from './kufar-travel/kufar-travel.source';
@@ -30,6 +32,8 @@ export const SOURCES = [
   avBy,
   bamper,
   bidCars,
+  copart,
+  iaai,
 ] as const;
 
 /**
