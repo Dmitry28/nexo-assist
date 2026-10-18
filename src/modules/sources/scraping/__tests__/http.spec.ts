@@ -175,6 +175,8 @@ describe('fetchHtml', () => {
 });
 
 describe('fetchJson', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('POSTs the body and returns the response', async () => {
     fetchMock.mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
 
@@ -189,5 +191,20 @@ describe('fetchJson', () => {
     expect(fetchMock.mock.calls[0][1]).toEqual(
       expect.objectContaining({ method: 'POST', body: '{"q":1}' }),
     );
+  });
+
+  it('follows a 3xx after POST as GET without the body', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: 'https://x.by/next' } }),
+      )
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+
+    await expect(
+      fetchJson({ url: 'https://x.by/search', host: 'x.by', body: '{"q":1}' }),
+    ).resolves.toBe('ok');
+    const hop = fetchMock.mock.calls[1]?.[1] as { method?: string; body?: string } | undefined;
+    expect(hop?.method).toBe('GET');
+    expect(hop?.body).toBeUndefined();
   });
 });

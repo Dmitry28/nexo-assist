@@ -23,18 +23,10 @@ export const USE_PROXY = false;
 
 /** One page of lots for the pasted Keyword, latest auction first (the site's own sort). */
 export function load(url: string): Promise<string> {
-  const keyword = asText(new URL(url).searchParams.get('Keyword')) ?? '';
   return fetchJson({
     url: SEARCH_API,
     host: HOST,
-    body: JSON.stringify({
-      Searches: [{ FullSearch: keyword }],
-      PageSize: PAGE_SIZE,
-      CurrentPage: 1,
-      IsSearchTimedAuction: true,
-      ReturnFacets: false,
-      Sort: [{ SortField: 'AuctionDateTime', IsDescending: true, IsGeoSort: false }],
-    }),
+    body: JSON.stringify(searchBody(url)),
     useProxy: USE_PROXY,
     headers: {
       Accept: 'text/html',
@@ -43,6 +35,18 @@ export function load(url: string): Promise<string> {
       Referer: 'https://www.iaai.com/Search',
     },
   });
+}
+
+/** The POST the iaai.com pager sends — Keyword from the link, nothing the link did not ask for. */
+export function searchBody(url: string): Record<string, unknown> {
+  const keyword = asText(new URL(url).searchParams.get('Keyword')) ?? '';
+  return {
+    Searches: [{ FullSearch: keyword }],
+    PageSize: PAGE_SIZE,
+    CurrentPage: 1,
+    ReturnFacets: false,
+    Sort: [{ SortField: 'AuctionDateTime', IsDescending: true, IsGeoSort: false }],
+  };
 }
 
 /**
@@ -68,8 +72,7 @@ export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
 const isSearchPage = (html: string): boolean =>
   html.includes('data-list--search') ||
   html.includes('TotalVehicleAmount') ||
-  html.includes('data-resultcount') ||
-  html.includes('/VehicleDetail/');
+  html.includes('data-resultcount');
 
 function toListing(titleLink: HTMLElement): Listing | undefined {
   const title = elementText(titleLink);
@@ -77,16 +80,16 @@ function toListing(titleLink: HTMLElement): Listing | undefined {
   if (title === undefined || !/^\d{4}\s/.test(title)) return undefined;
   const path = linkPath(titleLink.getAttribute('href'), HOST);
   if (path === undefined) return undefined;
+  const id = inventoryId(path);
+  if (id === undefined) return undefined;
   const card = cardOf(titleLink);
   const fact = facts(card);
-  const stock = fact.get('Stock #') ?? fact.get('Stock #:') ?? inventoryId(path);
-  if (stock === undefined) return undefined;
   const image = card
     .querySelectorAll('img')
     .map((img) => asText(img.getAttribute('data-src')) ?? asText(img.getAttribute('src')))
     .find((src) => src?.startsWith('https://'));
   return {
-    externalId: stock,
+    externalId: id,
     link: `https://${HOST}${path}`,
     title,
     priceText: buyNow(card) ?? estimate(fact.get('ACV')),
@@ -94,8 +97,9 @@ function toListing(titleLink: HTMLElement): Listing | undefined {
     listTime: '',
     images: image === undefined ? [] : [image],
     details: listingDetails(
-      detail('VIN', fact.get('VIN')),
+      detail('VIN', maskedVin(fact.get('VIN'))),
       detail('Аукцион', 'IAAI'),
+      detail('Stock', fact.get('Stock #') ?? fact.get('Stock #:')),
       detail('Пробег', fact.get('Odometer')),
       detail('Повреждение', fact.get('Primary Damage')),
       detail('Документ', fact.get('Title/Sale Doc')),
@@ -145,3 +149,6 @@ const estimate = (acv: string | undefined): string | undefined =>
   acv === undefined ? undefined : `Оценка: ${acv.replace(/\s+USD$/i, '')}`;
 
 const inventoryId = (path: string): string | undefined => path.match(/\/VehicleDetail\/(\d+)/)?.[1];
+
+const maskedVin = (vin: string | undefined): string | undefined =>
+  vin !== undefined && !vin.includes('*') ? vin : undefined;

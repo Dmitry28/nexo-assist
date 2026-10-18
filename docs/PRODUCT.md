@@ -19,7 +19,8 @@ start; more frequent once throttling/dedupe land).
   used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
   `/filter` links ignore their filters), US auction lots from bid.cars (the pasted search,
   first 50, via a paid render — Cloudflare blocks every plain request), and the auctions
-  themselves — copart.com (up to the 500-listing window) and iaai.com (first 100)** — via the adapter
+  themselves — copart.com (up to the 500-listing window; the link’s `searchCriteria`, or else
+  `query` / make / model) and iaai.com (first 100; the link’s `Keyword`)** — via the adapter
   registry. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its

@@ -7,6 +7,7 @@ import {
   asText,
   parseJson,
   requireArray,
+  withIds,
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
@@ -29,7 +30,7 @@ export function usdText(value: number | undefined): string | undefined {
   return `$${Math.round(value).toLocaleString('en-US')}`;
 }
 
-/** One page of the site's search JSON for the pasted (or bid.cars-derived) URL. */
+/** One page of the site's search JSON for the pasted URL. */
 export function load(url: string): Promise<string> {
   return fetchJson({
     url: SEARCH_API,
@@ -45,10 +46,21 @@ export function load(url: string): Promise<string> {
   });
 }
 
-/** The POST the copart.com frontend sends — make/model when the link names them, else `query`. */
+/**
+ * The POST the copart.com frontend sends. A filtered link carries `searchCriteria`; a simple
+ * `query` / `make` / `model` link does not. Page and sort are ours (the walk, latest auction).
+ */
 export function searchBody(url: string): Record<string, unknown> {
   const params = new URL(url).searchParams;
   const page = Math.max(0, asNumber(params.get('page')) ?? 0);
+  const paging = {
+    page,
+    size: PAGE_SIZE,
+    start: page * PAGE_SIZE,
+    sort: ['auction_date_type desc', 'auction_date_utc desc'],
+  };
+  const criteria = criteriaOf(params.get('searchCriteria'));
+  if (criteria !== undefined) return { ...criteria, ...paging };
   const make = asText(params.get('make'))?.toUpperCase();
   const model = asText(params.get('model'))?.toUpperCase();
   const query = asText(params.get('query')) ?? '*';
@@ -58,13 +70,19 @@ export function searchBody(url: string): Record<string, unknown> {
   return {
     query: [query],
     filter,
-    sort: ['auction_date_type desc', 'auction_date_utc desc'],
-    page,
-    size: PAGE_SIZE,
-    start: page * PAGE_SIZE,
     watchListOnly: false,
     freeFormSearch: make === undefined && model === undefined,
+    ...paging,
   };
+}
+
+function criteriaOf(raw: string | null): Record<string, unknown> | undefined {
+  if (raw === null || raw.trim() === '') return undefined;
+  const parsed = asRecord(parseJson(raw));
+  if (parsed === undefined) {
+    throw new SourceUnavailableError('copart: searchCriteria is not the site JSON');
+  }
+  return parsed;
 }
 
 /**
@@ -72,10 +90,9 @@ export function searchBody(url: string): Record<string, unknown> {
  * source not answering, never an empty search.
  */
 export function listingsFrom(body: string): Listing[] {
-  return lotsOf(body).flatMap((lot) => {
-    const listing = toListing(lot);
-    return listing === undefined ? [] : [listing];
-  });
+  return withIds(lotsOf(body), (lot) => asText(lot.lotNumberStr) ?? asNumber(lot.ln), 'copart').map(
+    toListing,
+  );
 }
 
 export function parsePage(body: string, ctx: PageContext): SearchPage<boolean> {
@@ -100,10 +117,8 @@ function lotsOf(body: string): Record<string, unknown>[] {
     .filter((lot) => lot !== undefined);
 }
 
-function toListing(lot: Record<string, unknown>): Listing | undefined {
-  const id =
-    asText(lot.lotNumberStr) ?? (asNumber(lot.ln) !== undefined ? String(lot.ln) : undefined);
-  if (id === undefined) return undefined;
+function toListing(lot: Record<string, unknown>): Listing {
+  const id = asText(lot.lotNumberStr) ?? String(asNumber(lot.ln));
   const slug = asText(lot.ldu);
   const bids = asRecord(lot.dynamicLotDetails);
   const current = usdText(asNumber(bids?.currentBid));
@@ -117,18 +132,19 @@ function toListing(lot: Record<string, unknown>): Listing | undefined {
     current === undefined ? undefined : `Текущая ставка: ${current}`,
     buyNow === undefined ? undefined : `Купить сейчас: ${buyNow}`,
   ].filter((line) => line !== undefined);
+  const when = auctionMs === undefined ? undefined : new Date(auctionMs).toISOString().slice(0, 10);
   return {
     externalId: id,
     link: `https://${HOST}/lot/${id}${slug === undefined ? '' : `/${slug}`}`,
     title: asText(lot.ld) ?? UNTITLED_LISTING,
     priceText: priceLines.length > 0 ? priceLines.join(' · ') : undefined,
     address: asText(lot.yn),
-    listTime: auctionMs === undefined ? '' : new Date(auctionMs).toISOString(),
+    listTime: '',
     images: thumb?.startsWith('https://') === true ? [thumb] : [],
     coordinates: lat === undefined || lon === undefined ? undefined : asCoordinates([lon, lat]),
     details: listingDetails(
       detail('VIN', maskedVin(asText(lot.fv))),
-      detail('Аукцион', 'COPART'),
+      detail('Аукцион', when === undefined ? 'COPART' : `COPART, ${when}`),
       detail('Пробег', miles !== undefined && miles > 0 ? `${Math.round(miles)} mi` : undefined),
       detail('Повреждение', asText(lot.dd)),
       detail('Документ', asText(lot.tgd) ?? asText(lot.td)),
