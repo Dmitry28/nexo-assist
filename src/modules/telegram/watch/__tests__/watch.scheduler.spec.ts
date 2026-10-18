@@ -114,6 +114,32 @@ describe('WatchScheduler.runDaily', () => {
     expect(status.markRun).toHaveBeenCalledTimes(1); // run stamped for /stats
   });
 
+  it('closes the run with what it did — failed, fresh and never-asked counts', async () => {
+    const { subscriptions, watch, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([sub(1, 1), sub(2, 2), sub(3, 3), sub(4, 4)]);
+    watch.poll.mockImplementation((s: Subscription) => {
+      if (s.id === '1') throw new Error('boom');
+      if (s.id === '2') throw new PaidRungsUnavailableError('no key');
+      if (s.id === '3') return Promise.resolve({ kind: 'nothing', priceChanges: [], removed: [] });
+      return Promise.resolve({
+        kind: 'fresh',
+        priceChanges: [],
+        removed: [],
+        listings: [listing(1)],
+      });
+    });
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(logSpy).toHaveBeenCalledWith(
+      { subscriptions: 4, failed: 1, fresh: 1, unchecked: 1 },
+      expect.stringContaining('Watch run finished'),
+    );
+  });
+
   it('does not notify for non-fresh outcomes (baselined / nothing)', async () => {
     const { subscriptions, watch, telegram, scheduler } = build();
     subscriptions.listActive.mockResolvedValue([sub(1)]);
@@ -244,7 +270,7 @@ describe('WatchScheduler.runDaily', () => {
       error_code: 403,
     });
     telegram.notifyCard.mockRejectedValue(blocked);
-    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
     await scheduler.runDaily();
@@ -252,6 +278,10 @@ describe('WatchScheduler.runDaily', () => {
     expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('1');
     expect(metrics.recordPause).toHaveBeenCalledWith('blocked', 2); // counted per subscription
     expect(telegram.notifyCard).toHaveBeenCalledTimes(1); // second sub skipped, not re-attempted
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ unchecked: 1 }),
+      expect.stringContaining('Watch run finished'),
+    );
     expect(watch.markDelivered).not.toHaveBeenCalled();
     // A blocked user is an expected state handled by the pause above, not a defect — reporting
     // it would flood Sentry with noise on every run.
