@@ -1,6 +1,8 @@
 import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
+import { matchesHost } from '@/common/url';
+
 import { detail, listingDetails } from '../listing-details';
 import { elementText } from '../scraping/html';
 import type { Protection } from '../scraping/ladder';
@@ -61,14 +63,25 @@ function toListing(card: HTMLElement): Listing | undefined {
     seller,
     // The publication day only — no time, so no listTime: the card would print it as a time.
     listTime: '',
-    // TODO [L]: Telegram cannot fetch img*.idriver.by by URL (the prototype measured «failed to
-    // get HTTP URL content» and uploaded the bytes itself) — photos need an upload path first.
-    images: [],
+    images: leadPhoto(card),
     details: listingDetails(
       detail('Авто', autoSpec(card)),
       detail('Опубликовано', date === undefined ? undefined : ruDate(date)),
     ),
   };
+}
+
+/**
+ * The card's first photo at full size — one, like the prototype: a part has up to 16, and a
+ * feed of 50 parts as albums would bury the text. Telegram cannot fetch img*.idriver.by by URL,
+ * so these go up as files (send-card.ts → photo-upload.ts). Measured 2026-10-19 from a home IP
+ * (not yet from Hetzner): img77 serves them to anyone; the newest offers' img55 answers 404 even
+ * from a Belarusian proxy — those cards arrive as text.
+ */
+function leadPhoto(card: HTMLElement): string[] {
+  const src = card.querySelector('img[itemprop="image"]')?.getAttribute('src');
+  const full = src?.replace(/_thumb(?=\.webp$)/, '');
+  return full !== undefined && matchesHost({ url: full, host: HOST }) ? [full] : [];
 }
 
 /** «Авто: 2.0, Бензин, АКПП, Джип» — the donor car's engine and body. */

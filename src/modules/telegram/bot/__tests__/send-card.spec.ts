@@ -1,12 +1,23 @@
 import { Logger } from '@nestjs/common';
-import { GrammyError } from 'grammy';
+import { GrammyError, InputFile } from 'grammy';
 
 import { makeListing } from '@/__tests__/helpers/listing';
+import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
 import type { CardSender } from '../send-card';
 import { MAX_PHOTOS_PER_CARD, SEND_DELAY_MS, listingMessage, sendCard } from '../send-card';
 
 const logger = new Logger('test');
+// The source's host: photos on another one (`https://cdn/…`) are never downloaded.
+const SITE = 'site.by';
+// Telegram refusing the photo itself — the one error the upload path answers.
+const refusedUrl = (): GrammyError =>
+  new GrammyError(
+    'Call to sendPhoto failed',
+    { ok: false, error_code: 400, description: 'Bad Request: failed to get HTTP URL content' },
+    'sendPhoto',
+    {},
+  );
 
 const stubSender = () => ({
   photo: jest.fn().mockResolvedValue(undefined),
@@ -18,7 +29,7 @@ const stubSender = () => ({
 const photos = (n: number): string[] => Array.from({ length: n }, (_, i) => `https://cdn/${i}.jpg`);
 
 const send = (sender: CardSender, images: string[], rest = {}): Promise<void> =>
-  sendCard(sender, { caption: 'card', images, ...rest }, logger);
+  sendCard(sender, { caption: 'card', images, site: SITE, ...rest }, logger);
 
 describe('sendCard', () => {
   beforeEach(() => {
@@ -87,10 +98,111 @@ describe('sendCard', () => {
     const onPhotoFallback = jest.fn();
 
     await settlePaced(
-      sendCard(sender, { caption: 'card', images: photos(1) }, logger, onPhotoFallback),
+      sendCard(sender, { caption: 'card', images: photos(1), site: SITE }, logger, onPhotoFallback),
     );
 
     expect(onPhotoFallback).toHaveBeenCalledTimes(1);
+  });
+
+  describe('a lone photo Telegram could not fetch', () => {
+    const fetchMock = undiciFetchMock();
+    const ownPhoto = 'https://img77.site.by/1.webp';
+    const image = (status = 200, type = 'image/webp') =>
+      new Response(new Uint8Array([1, 2, 3]), { status, headers: { 'content-type': type } });
+
+    it('goes up as a file from the source’s own site — no text fallback', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const sender = stubSender();
+      sender.photo.mockRejectedValueOnce(refusedUrl());
+      fetchMock.mockResolvedValueOnce(image());
+      const onPhotoFallback = jest.fn();
+
+      await settlePaced(
+        sendCard(
+          sender,
+          { caption: 'card', images: [ownPhoto], site: SITE },
+          logger,
+          onPhotoFallback,
+        ),
+      );
+
+      expect(sender.photo).toHaveBeenLastCalledWith(expect.any(InputFile), 'card');
+      expect(sender.html).not.toHaveBeenCalled();
+      expect(onPhotoFallback).not.toHaveBeenCalled();
+    });
+
+    // idriver's «фото по запросу» placeholder is a real JPEG behind a 404 (measured).
+    it('sends text when the download is an error page, even one that is an image', async () => {
+      jest.useFakeTimers();
+      const sender = stubSender();
+      sender.photo.mockRejectedValueOnce(refusedUrl());
+      fetchMock.mockResolvedValueOnce(image(404, 'image/jpeg'));
+
+      await settlePaced(send(sender, [ownPhoto]));
+
+      expect(sender.photo).toHaveBeenCalledTimes(1);
+      expect(sender.html).toHaveBeenCalledWith('card');
+    });
+
+    it('never downloads from another host — the URL is scraped', async () => {
+      jest.useFakeTimers();
+      const sender = stubSender();
+      sender.photo.mockRejectedValueOnce(refusedUrl());
+
+      await settlePaced(send(sender, ['https://evil.example/1.webp']));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(sender.html).toHaveBeenCalledWith('card');
+    });
+
+    it('is not tried when Telegram itself failed — an upload would fail the same way', async () => {
+      jest.useFakeTimers();
+      const sender = stubSender();
+      sender.photo.mockRejectedValueOnce(
+        new GrammyError(
+          'down',
+          { ok: false, error_code: 502, description: 'Bad Gateway' },
+          'sendPhoto',
+          {},
+        ),
+      );
+
+      await settlePaced(send(sender, [ownPhoto]));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(sender.html).toHaveBeenCalledWith('card');
+    });
+
+    it('is not tried without the source’s host — nothing to pin the download to', async () => {
+      jest.useFakeTimers();
+      const sender = stubSender();
+      sender.photo.mockRejectedValueOnce(refusedUrl());
+
+      await settlePaced(sendCard(sender, { caption: 'card', images: [ownPhoto] }, logger));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(sender.html).toHaveBeenCalledWith('card');
+    });
+
+    it('still gives up on a blocked chat during the upload', async () => {
+      jest.useFakeTimers();
+      const sender = stubSender();
+      const blocked = new GrammyError(
+        'Forbidden: bot was blocked by the user',
+        { ok: false, error_code: 403, description: 'blocked' },
+        'sendPhoto',
+        {},
+      );
+      sender.photo.mockRejectedValueOnce(refusedUrl()).mockRejectedValueOnce(blocked);
+      fetchMock.mockResolvedValueOnce(image());
+
+      const run = send(sender, [ownPhoto]);
+      const settled = expect(run).rejects.toBe(blocked);
+      await jest.advanceTimersByTimeAsync(SEND_DELAY_MS);
+      await settled;
+      expect(sender.html).not.toHaveBeenCalled();
+    });
   });
 
   it('gives up when the chat itself is blocked — the text would be refused too', async () => {

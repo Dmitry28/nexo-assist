@@ -18,7 +18,8 @@ describe('idriver parsePage', () => {
       address: 'Минск',
       seller: 'fixcar.by',
       listTime: '',
-      images: [],
+      // The first photo at full size: the site's own thumbnail minus `_thumb`.
+      images: ['https://img77.idriver.by/112/1116/1116196768.webp'],
     });
     expect(listings[0].description).toContain('Из США');
   });
@@ -30,6 +31,15 @@ describe('idriver parsePage', () => {
     ]);
     // The site writes single-digit days unpadded.
     expect(listings[3].details).toContainEqual({ label: 'Опубликовано', value: '03.11.2025' });
+  });
+
+  it('drops a photo hosted off the site — it would be downloaded by us', () => {
+    const html = fixture('idriver-search.html').replace(
+      'https://img77.idriver.by/112/1116/1116196768_thumb.webp',
+      'https://evil.example/1.webp',
+    );
+
+    expect(parsePage(html).listings[0].images).toEqual([]);
   });
 
   it('reads an empty catalogue as no offers — the page is real', () => {

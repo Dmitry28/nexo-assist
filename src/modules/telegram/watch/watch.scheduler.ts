@@ -69,7 +69,7 @@ interface RunSummary {
   failed: number;
   /** Had something new to send. */
   fresh: number;
-  /** Never asked: no paid service for a protected source, or the user blocked the bot this run. */
+  /** Never asked: no paid service for a protected source, or skipped after its user blocked us. */
   unchecked: number;
 }
 
@@ -348,6 +348,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
   private async deliverFresh(sub: Subscription, found: Findings): Promise<boolean> {
     const { delivered, error, failures, recordError } = await deliverAndRecord({
       search: searchLabel(sub),
+      site: siteName(sub.source),
       found,
       send: {
         card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),

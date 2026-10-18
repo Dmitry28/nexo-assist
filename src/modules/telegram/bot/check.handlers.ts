@@ -119,6 +119,7 @@ export class CheckHandlers {
       }
       const { delivered, error, recordError } = await deliverAndRecord({
         search: searchLabel(sub),
+        site: siteName(sub.source),
         found: outcome,
         send: {
           card: (message) =>
