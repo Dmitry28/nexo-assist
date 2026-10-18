@@ -71,8 +71,8 @@ function toListing(card: HTMLElement): Listing | undefined {
     seller: seller === '---' ? undefined : seller,
     // The card shows when the auction starts, not when the lot was listed.
     listTime: '',
-    // TODO [L]: the bid.cars CDN refuses Telegram (prototype) — photos need the upload path
-    // (PRODUCT_PLAN.md «Фото только по URL»).
+    // TODO [L]: the bid.cars CDN refuses Telegram (prototype). The upload path exists
+    // (photo-upload.ts) — measure whether the CDN serves our server, behind the site's Cloudflare.
     images: [],
     details: listingDetails(
       detail('VIN', elementText(card.querySelector('.vin_title'))),

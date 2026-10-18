@@ -237,11 +237,9 @@ describe('price changes', () => {
     const after = listing(9, { priceUsd: 90_000 });
     const change = { before: { link: after.link, title: after.title, priceUsd: 100_000 }, after };
 
-    const run = deliverFindings(
-      { listings: many(1), priceChanges: [change], removed: [] },
-      send,
-      'realt.by · x',
-    );
+    const run = deliverFindings({ listings: many(1), priceChanges: [change], removed: [] }, send, {
+      search: 'realt.by · x',
+    });
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * 2);
     const { delivered } = await run;
 
@@ -279,7 +277,7 @@ describe('the search label reaches the messages', () => {
     const send = stubTargets();
     const fresh = CARDS_PER_DELIVERY + 1;
 
-    const run = deliverFindings(found(fresh), send, 'kufar · grodno/kupit/dom');
+    const run = deliverFindings(found(fresh), send, { search: 'kufar · grodno/kupit/dom' });
     await jest.advanceTimersByTimeAsync(SEND_DELAY_MS * (fresh + 1));
     await run;
 

@@ -1,6 +1,6 @@
 import type { Logger } from '@nestjs/common';
 import { GrammyError } from 'grammy';
-import type { Api } from 'grammy';
+import type { Api, InputFile } from 'grammy';
 import type { InputMediaPhoto } from 'grammy/types';
 
 import { wait } from '@/common/wait';
@@ -8,6 +8,7 @@ import type { Coordinates, Listing } from '@/modules/sources/source-adapter';
 
 import type { CardPosition } from './listing-card';
 import { CAPTION_LIMIT_CHARS, MESSAGE_LIMIT_CHARS, listingCard } from './listing-card';
+import { downloadPhoto } from './photo-upload';
 import { NO_LINK_PREVIEW } from './telegram.format';
 
 /** Telegram's hard cap on one media group — an eleventh photo is a rejected request. */
@@ -32,6 +33,12 @@ export function isBotBlocked(err: unknown): boolean {
 export interface ListingMessage {
   caption: string;
   images: string[];
+  /**
+   * The source's host — the one site a photo Telegram refused may be downloaded from
+   * (photo-upload.ts). The source's, not the listing link's: a parser builds that link from the
+   * page. Absent, nothing is downloaded.
+   */
+  site?: string;
   coordinates?: Coordinates;
 }
 
@@ -42,7 +49,8 @@ export interface ListingMessage {
  * `src/__tests__/di-wiring.spec.ts`.
  */
 export interface CardSender {
-  photo(url: string, caption: string): Promise<unknown>;
+  /** By URL, or a file we downloaded when Telegram could not fetch the URL itself. */
+  photo(photo: string | InputFile, caption: string): Promise<unknown>;
   group(media: InputMediaPhoto[]): Promise<unknown>;
   /** The card as a message of its own — HTML, like every caption here. */
   html(text: string): Promise<unknown>;
@@ -58,7 +66,7 @@ export interface CardSender {
  */
 export function apiCardSender(api: Api, chatId: number): CardSender {
   return {
-    photo: (url, caption) => api.sendPhoto(chatId, url, { caption, parse_mode: 'HTML' }),
+    photo: (photo, caption) => api.sendPhoto(chatId, photo, { caption, parse_mode: 'HTML' }),
     group: (media) => api.sendMediaGroup(chatId, media),
     html: (text) =>
       api.sendMessage(chatId, text, { parse_mode: 'HTML', link_preview_options: NO_LINK_PREVIEW }),
@@ -71,22 +79,29 @@ export function apiCardSender(api: Api, chatId: number): CardSender {
  * listing without photos gets the full one.
  *
  * TODO [L]: when the photo send fails, the text fallback re-uses this caption, so it stays cut
- * to 1024 chars where a standalone message allows 4096. Fixing it means carrying the listing
- * (or both variants) through to `sendCard`.
+ * to 1024 chars where a standalone message allows 4096 — routine for idriver's newest offers,
+ * whose photos the site does not serve. Fixing it means carrying the listing (or both variants)
+ * through to `sendCard`.
  */
-export function listingMessage(listing: Listing, position?: CardPosition): ListingMessage {
+export function listingMessage(
+  listing: Listing,
+  position?: CardPosition,
+  site?: string,
+): ListingMessage {
   const limit = listing.images.length > 0 ? CAPTION_LIMIT_CHARS : MESSAGE_LIMIT_CHARS;
   return {
     caption: listingCard(listing, limit, position),
     images: listing.images,
+    site,
     coordinates: listing.coordinates,
   };
 }
 
 /**
- * Send one listing: its photos carry the card, and the card falls back to a plain message if
- * Telegram refuses the media. Resolves once the listing has reached the user in some form —
- * callers mark seen on that, so anything that leaves it undelivered throws instead.
+ * Send one listing: its photos carry the card. A lone photo Telegram refuses by URL is uploaded
+ * as a file instead (uploadInstead); otherwise refused media falls back to a plain message.
+ * Resolves once the listing has reached the user in some form — callers mark seen on that, so
+ * anything that leaves it undelivered throws instead.
  *
  * NOTE: kufar's image CDN does answer 302 (`rms.kufar.by` → a `rms8…` shard) — verified live on
  * an ad, so the prototype's warning about `WEBPAGE_MEDIA_EMPTY` in a media group is about a real
@@ -97,7 +112,7 @@ export function listingMessage(listing: Listing, position?: CardPosition): Listi
  */
 export async function sendCard(
   sender: CardSender,
-  { caption, images, coordinates }: ListingMessage,
+  { caption, images, site, coordinates }: ListingMessage,
   logger: Logger,
   onPhotoFallback?: () => void,
 ): Promise<void> {
@@ -108,6 +123,17 @@ export async function sendCard(
     // A blocked chat rejects the text too, and the run pauses the user on this error — a second
     // doomed request would only add another failure to report.
     if (photos.length === 0 || isBotBlocked(err)) throw err;
+    // A 400 is a refused request — here the photo, since captions are escaped and cut to the
+    // limit. Any other error (Telegram's own outage) would fail an upload too.
+    const refused = err instanceof GrammyError && err.error_code === 400;
+    if (
+      refused &&
+      photos.length === 1 &&
+      site !== undefined &&
+      (await uploadInstead({ sender, caption, url: photos[0], site, logger }))
+    ) {
+      return pin(sender, coordinates, logger);
+    }
     // TODO [L]: the fallback re-sends the same HTML with the same parse_mode, so it cannot save
     // a card Telegram refused for its markup — only one refused for its photos. No such markup
     // is reachable today (everything scraped is escaped, and the only source-controlled URL is
@@ -120,15 +146,61 @@ export async function sendCard(
     await wait(SEND_DELAY_MS);
     await sender.html(caption);
   }
-  // The listing is already delivered, so a missing pin is not worth failing the delivery for.
-  // Log-only, unlike the photo fallback above: a pin carries no information the card lacks (the
-  // address is in it), so a systematic pin failure changes nothing anyone would act on.
-  if (coordinates) {
+  await pin(sender, coordinates, logger);
+}
+
+/**
+ * A lone photo Telegram could not fetch by URL, sent again as a file we downloaded — some CDNs
+ * refuse Telegram's fetcher but serve us (photo-upload.ts). Whether it landed; a blocked chat
+ * still throws, like every send. Groups keep the text fallback: one photo per card is what the
+ * sources that need this publish.
+ * TODO [L]: a source that always refuses Telegram (idriver) pays a doomed URL send and a pace
+ * per card before the upload — a per-source «upload first» flag, if run time starts to matter.
+ * NOTE: a card saved this way is not a photo fallback — `onPhotoFallback` counts text cards only,
+ * so a CDN that starts refusing Telegram shows up here as log lines, not in that metric.
+ */
+async function uploadInstead({
+  sender,
+  caption,
+  url,
+  site,
+  logger,
+}: {
+  sender: CardSender;
+  caption: string;
+  url: string;
+  site: string;
+  logger: Logger;
+}): Promise<boolean> {
+  try {
+    const file = await downloadPhoto(url, site);
+    // Paced: the refused send counted against the per-chat limit.
     await wait(SEND_DELAY_MS);
-    await sender
-      .location(coordinates)
-      .catch((err: unknown) => logger.warn({ err }, 'Location pin failed'));
+    await sender.photo(file, caption);
+    logger.log(`Photo uploaded after Telegram refused its URL: ${url}`);
+    return true;
+  } catch (err) {
+    if (isBotBlocked(err)) throw err;
+    // Not a warn: a photo the site itself does not serve (a 404) is routine, and the
+    // text fallback that follows warns and counts already. This line says why the upload missed.
+    logger.log({ err }, `Photo not uploaded: ${url}`);
+    return false;
   }
+}
+
+// The listing is already delivered, so a missing pin is not worth failing the delivery for.
+// Log-only, unlike the photo fallback: a pin carries no information the card lacks (the address
+// is in it), so a systematic pin failure changes nothing anyone would act on.
+async function pin(
+  sender: CardSender,
+  coordinates: Coordinates | undefined,
+  logger: Logger,
+): Promise<void> {
+  if (!coordinates) return;
+  await wait(SEND_DELAY_MS);
+  await sender
+    .location(coordinates)
+    .catch((err: unknown) => logger.warn({ err }, 'Location pin failed'));
 }
 
 function withPhotos(sender: CardSender, caption: string, photos: string[]): Promise<unknown> {

@@ -42,6 +42,14 @@ export interface DeliveryTargets {
 
 const nothing = (): Findings => ({ listings: [], priceChanges: [], removed: [] });
 
+/** Where a delivery's listings came from. */
+interface Origin {
+  /** Which search, shown in every header (see `searchLabel`). */
+  search?: string;
+  /** The source's host — the only site a refused photo may be downloaded from (send-card.ts). */
+  site?: string;
+}
+
 /** One message to send, and what it accounts for once it lands. */
 interface DeliveryStep {
   carries: Partial<Findings>;
@@ -53,12 +61,14 @@ interface DeliveryStep {
  * listings, the rest of them as digest messages, then price changes and removals as digests.
  * Everything found goes out in the same run.
  */
-function plan(found: Findings, send: DeliveryTargets, search?: string): DeliveryStep[] {
+function plan(found: Findings, send: DeliveryTargets, origin: Origin = {}): DeliveryStep[] {
+  const { search, site } = origin;
   const cards = found.listings.slice(0, CARDS_PER_DELIVERY);
   return [
     ...cards.map((listing, i) => ({
       carries: { listings: [listing] },
-      send: () => send.card(listingMessage(listing, { index: i + 1, total: cards.length, search })),
+      send: () =>
+        send.card(listingMessage(listing, { index: i + 1, total: cards.length, search }, site)),
     })),
     ...tailBatches(found.listings.slice(CARDS_PER_DELIVERY), search).map((batch) => ({
       carries: { listings: batch.items },
@@ -95,14 +105,14 @@ function plan(found: Findings, send: DeliveryTargets, search?: string): Delivery
 export async function deliverFindings(
   found: Findings,
   send: DeliveryTargets,
-  search?: string,
+  origin?: Origin,
 ): Promise<DeliveryResult> {
   const delivered = nothing();
   let failure: unknown;
   let failures = 0;
   let streak = 0;
 
-  for (const [i, step] of plan(found, send, search).entries()) {
+  for (const [i, step] of plan(found, send, origin).entries()) {
     if (i > 0) await wait(SEND_DELAY_MS);
     try {
       await step.send();
@@ -136,14 +146,13 @@ export async function deliverAndRecord({
   send,
   record,
   search,
+  site,
 }: {
   found: Findings;
   send: DeliveryTargets;
   record: (delivered: Findings) => Promise<void>;
-  /** Which search these came from, shown in every header (see `searchLabel`). */
-  search?: string;
-}): Promise<DeliveryResult> {
-  const result = await deliverFindings(found, send, search);
+} & Origin): Promise<DeliveryResult> {
+  const result = await deliverFindings(found, send, { search, site });
 
   // Persist whatever reached the user, even if a later message failed — otherwise the whole
   // delivery would be re-sent next run.
