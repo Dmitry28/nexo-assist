@@ -124,7 +124,8 @@ function printer(): CardSender {
     return Promise.resolve();
   };
   return {
-    photo: (url, caption) => show(`sendPhoto ${url}`, caption),
+    photo: (photo, caption) =>
+      show(`sendPhoto ${typeof photo === 'string' ? photo : '(uploaded file)'}`, caption),
     group: (media) => show(`sendMediaGroup ×${media.length}`, media[0].caption),
     html: (text) => show('sendMessage', text),
     location: ({ lat, lon }) => show(`sendLocation ${lat},${lon}`),
