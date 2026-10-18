@@ -213,6 +213,28 @@ describe('createSourceAdapters — load and enrich', () => {
       },
     ])[0];
 
+  it('loads every page of a paged source through load, not fetchHtml', async () => {
+    const adapter = createSourceAdapters([
+      {
+        id: 'copart',
+        host: 'a.by',
+        sample: 'https://a.by/s',
+        about: 'test',
+        page: { param: 'page', first: 0 },
+        load: (url) => Promise.resolve(`loaded:${new URL(url).searchParams.get('page')}`),
+        parse: (html) => ({
+          listings: [listing(html)],
+          next: html === 'loaded:0',
+        }),
+      },
+    ])[0];
+
+    const { listings } = await adapter.fetch('https://a.by/s');
+
+    expect(listings.map((row) => row.externalId)).toEqual(['loaded:0', 'loaded:1']);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('fetches the body through load, then enriches every listing', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(new Response('x')));
 

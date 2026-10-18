@@ -1,0 +1,60 @@
+{
+  "returnCode": 1,
+  "returnCodeDesc": "Success",
+  "data": {
+    "results": {
+      "totalElements": 2,
+      "content": [
+        {
+          "ln": 46840646,
+          "lotNumberStr": "46840646",
+          "fv": "1V2CR2CA7JC123456",
+          "ld": "2018 VOLKSWAGEN ATLAS SE",
+          "ldu": "clean-title-2018-volkswagen-atlas-se-wa-spanaway",
+          "mkn": "VOLKSWAGEN",
+          "lm": "ATLAS",
+          "lcy": 2018,
+          "orr": 49183,
+          "ord": "ACTUAL",
+          "yn": "WA - SPANAWAY",
+          "dd": "FRONT END",
+          "tgd": "CLEAN TITLE",
+          "ad": 1792782000000,
+          "hk": "NO",
+          "tims": "https://cs.copart.com/v1/thumb.jpg",
+          "lat": 47.0864,
+          "long": -122.433,
+          "dynamicLotDetails": {
+            "currentBid": 0,
+            "buyTodayBid": 3475,
+            "buyTodayFlag": "Y"
+          }
+        },
+        {
+          "ln": 77707195,
+          "lotNumberStr": "77707195",
+          "fv": "1V2BR2CA8MC******",
+          "ld": "2021 VOLKSWAGEN ATLAS SEL",
+          "ldu": "clean-title-2021-volkswagen-atlas-sel-wa-spanaway",
+          "mkn": "VOLKSWAGEN",
+          "lm": "ATLAS",
+          "lcy": 2021,
+          "orr": 145905,
+          "ord": "ACTUAL",
+          "yn": "WA - SPANAWAY",
+          "dd": "UNDERCARRIAGE",
+          "tgd": "CLEAN TITLE",
+          "ad": 1792782000000,
+          "hk": "YES",
+          "tims": "https://cs.copart.com/v1/thumb2.jpg",
+          "lat": 47.0864,
+          "long": -122.433,
+          "dynamicLotDetails": {
+            "currentBid": 800,
+            "buyTodayBid": 5900
+          }
+        }
+      ]
+    }
+  }
+}
