@@ -1,7 +1,7 @@
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
 import { SearchRewrittenError, SourceUnavailableError } from '../../source-adapter';
-import { fetchHtml } from '../http';
+import { fetchHtml, fetchJson } from '../http';
 
 const fetchMock = undiciFetchMock();
 
@@ -171,5 +171,23 @@ describe('fetchHtml', () => {
 
       expect(dispatcherOf(fetchMock.mock.calls[0][1])).toBeUndefined();
     });
+  });
+});
+
+describe('fetchJson', () => {
+  it('POSTs the body and returns the response', async () => {
+    fetchMock.mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+
+    await expect(
+      fetchJson({
+        url: 'https://x.by/search',
+        host: 'x.by',
+        body: '{"q":1}',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ).resolves.toBe('{"ok":true}');
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ method: 'POST', body: '{"q":1}' }),
+    );
   });
 });

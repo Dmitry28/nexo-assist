@@ -58,6 +58,9 @@ async function fetchFollowingHost({
   dispatcher,
   httpsOnly,
   pinPath,
+  method = 'GET',
+  headers,
+  body,
 }: {
   url: string;
   host: string;
@@ -67,18 +70,25 @@ async function fetchFollowingHost({
   /** Refuse any hop that is not https — through a third-party proxy, cleartext could be altered. */
   httpsOnly: boolean;
   pinPath: boolean;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
 }): Promise<Response> {
-  const init: RequestInit & { dispatcher?: Dispatcher } = {
-    signal,
-    headers: HEADERS,
-    redirect: 'manual',
-    ...(dispatcher ? { dispatcher } : {}),
-  };
   let currentUrl = url;
+  let currentMethod = method;
+  let currentBody = body;
   for (let hop = 0; ; hop++) {
     if (httpsOnly && new URL(currentUrl).protocol !== 'https:') {
       throw new SourceUnavailableError(`not https through a public proxy: ${currentUrl}`);
     }
+    const init: RequestInit & { dispatcher?: Dispatcher } = {
+      signal,
+      method: currentMethod,
+      headers: { ...HEADERS, ...headers },
+      redirect: 'manual',
+      ...(currentBody !== undefined ? { body: currentBody } : {}),
+      ...(dispatcher ? { dispatcher } : {}),
+    };
     // Only the network call is wrapped: a timeout or a refused connection means the source is
     // unreachable, while the guards below (off-host redirect, redirect loop) point at us or at
     // something suspicious and must stay distinguishable.
@@ -102,6 +112,9 @@ async function fetchFollowingHost({
     // normalization is routine and would make a query check fire on healthy searches.
     if (pinPath && searchPath(next) !== searchPath(url)) throw new SearchRewrittenError(url, next);
     currentUrl = next;
+    // A 3xx after POST is followed as GET — the body belongs to the original verb.
+    currentMethod = 'GET';
+    currentBody = undefined;
   }
 }
 
@@ -139,6 +152,59 @@ export async function fetchHtml({
   /** Cancels the request from outside — a raced attempt that lost. */
   signal?: AbortSignal;
 }): Promise<string> {
+  return fetchPinned({ url, host, useProxy, proxyUrl, pinPath, timeoutMs, signal });
+}
+
+/**
+ * POST JSON to a host-pinned URL — Copart's search and IAAI's pager take a body, not a query.
+ * Same timeout, size and proxy guards as fetchHtml.
+ */
+export async function fetchJson({
+  url,
+  host,
+  body,
+  useProxy = false,
+  headers,
+}: {
+  url: string;
+  host: string;
+  body: string;
+  useProxy?: boolean;
+  headers?: Record<string, string>;
+}): Promise<string> {
+  return fetchPinned({
+    url,
+    host,
+    useProxy,
+    method: 'POST',
+    headers,
+    body,
+  });
+}
+
+async function fetchPinned({
+  url,
+  host,
+  useProxy = false,
+  proxyUrl,
+  pinPath = false,
+  timeoutMs = FETCH_TIMEOUT_MS,
+  signal,
+  method,
+  headers,
+  body,
+}: {
+  url: string;
+  host: string;
+  useProxy?: boolean;
+  proxyUrl?: string;
+  pinPath?: boolean;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, FETCH_TIMEOUT_MS));
   const abort = (): void => controller.abort();
@@ -152,6 +218,9 @@ export async function fetchHtml({
       dispatcher: ownAgent ?? (useProxy ? proxyAgent() : undefined),
       httpsOnly: ownAgent !== undefined,
       pinPath,
+      method,
+      headers,
+      body,
     });
     if (!res.ok) {
       throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
