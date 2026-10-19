@@ -67,6 +67,32 @@ export class UnsupportedSearchError extends SourceUnavailableError {
 }
 
 /**
+ * The site answered 404 — kept as its own class so a caller that knows the page can tell the site
+ * saying «no such listing» from a broken URL (the body is the evidence). Everyone else sees an
+ * ordinary SourceUnavailableError.
+ */
+export class PageNotFoundError extends SourceUnavailableError {
+  override readonly name = 'PageNotFoundError';
+  // Private, behind a getter: the error serializer copies own fields into the log line, and this
+  // is a whole page (up to MAX_HTML_LENGTH) on every 404 of every source.
+  readonly #html: string;
+
+  constructor(url: string, html: string) {
+    super(`HTTP 404 for ${url}`);
+    this.#html = html;
+  }
+
+  get html(): string {
+    return this.#html;
+  }
+}
+
+/** The watched listing was already gone when the user subscribed — nothing to watch. */
+export class ListingGoneError extends SourceUnavailableError {
+  override readonly name = 'ListingGoneError';
+}
+
+/**
  * A protected source could not be read because none of the paid anti-bot services could be asked
  * — no key configured, or every one spent for the month. Our side, not the link and not the site:
  * the scheduler does not count it against the subscription (a dead-link pause would tell the
@@ -105,6 +131,12 @@ export interface FetchResult {
   listings: Listing[];
   complete: boolean;
   capped: boolean;
+  /**
+   * A watched single listing (an item link): the site said outright that it no longer exists.
+   * The one way a listing is ever called removed without a complete list to miss it from — an
+   * explicit answer, never a page that just came back empty.
+   */
+  gone?: true;
 }
 
 /** A map pin: latitude/longitude as the source published them. */

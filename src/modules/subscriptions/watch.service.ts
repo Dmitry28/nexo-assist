@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 
-import { MAX_LISTINGS } from '@/modules/sources/source-adapter';
+import { ListingGoneError, MAX_LISTINGS, UNTITLED_LISTING } from '@/modules/sources/source-adapter';
 import type { FetchResult, Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
+import { watchedItem } from '@/modules/sources/sources';
 
 import type { Subscription } from './entities/subscription.entity';
 import { isEmpty } from './findings';
@@ -25,6 +26,23 @@ const MASS_PRICE_CHANGE_MIN = 10;
 const MASS_REMOVAL_MIN = 3;
 
 const isMass = (hits: number, of: number, floor: number): boolean => hits >= floor && hits * 2 > of;
+
+/**
+ * A watched listing deleted before its first baseline (the subscribe-time one failed on an
+ * outage, or ▶️ revived a removed one): the site's word, not a failure — told as a removal, which
+ * then pauses it. Any other error is rethrown.
+ */
+function goneBeforeBaseline(sub: Subscription, err: unknown): PollOutcome {
+  const item = watchedItem(sub.source, sub.url);
+  if (!(err instanceof ListingGoneError) || !item) throw err;
+  const last = { link: item.url, title: UNTITLED_LISTING };
+  return {
+    kind: 'fresh',
+    listings: [],
+    priceChanges: [],
+    removed: [{ externalId: item.id, last }],
+  };
+}
 
 /**
  * The fetches of one watch run, by search (searchKey): a search several users watch is fetched once
@@ -63,10 +81,11 @@ export class WatchService {
     // subscription while it is in flight; a gone sub gets no report and no delivery
     // (its seen set is wiped, so everything would otherwise look fresh).
     if (!sub.baselinedAt) {
-      const count = await this.baseline(sub, shared);
-      return (await this.subscriptions.has(sub.id))
-        ? { kind: 'baselined', count }
-        : { kind: 'nothing' };
+      const outcome = await this.baseline(sub, shared).then(
+        (listings): PollOutcome => ({ kind: 'baselined', count: listings.length }),
+        (err: unknown) => goneBeforeBaseline(sub, err),
+      );
+      return (await this.subscriptions.has(sub.id)) ? outcome : { kind: 'nothing' };
     }
     const found = await this.check(sub, shared);
     if (isEmpty(found) || !(await this.subscriptions.has(sub.id))) return { kind: 'nothing' };
@@ -75,12 +94,13 @@ export class WatchService {
 
   /**
    * Seed the seen set with current listings without notifying. Throws when the
-   * fetch fails. Resolves to the number of listings seeded.
+   * fetch fails — ListingGoneError for a watched listing already gone. Resolves to the listings seeded.
    */
-  async baseline(sub: Subscription, shared?: SharedFetches): Promise<number> {
+  async baseline(sub: Subscription, shared?: SharedFetches): Promise<Listing[]> {
     // Ids are all a baseline needs — a source's item-page visits (gcn's prices) are skipped,
     // unless the run shares the fetch (a full one: see SharedFetches).
-    const { listings } = await this.fetchListings(sub, { idsOnly: true, shared });
+    const { listings, gone } = await this.fetchListings(sub, { idsOnly: true, shared });
+    if (gone) throw new ListingGoneError(`Listing already gone: ${sub.url}`);
     // NOTE: seed + mark-baselined in one transaction (seedBaseline). A partial fetch is still
     // marked done, deliberately: leaving it pending would re-baseline every run, and a source
     // that always fails on page 2 would then never notify at all — silence is the worse of the
@@ -90,7 +110,11 @@ export class WatchService {
       sub.id,
       listings.map((l) => l.externalId),
     );
-    return listings.length;
+    // A watched listing is a full page read, so its price is whole: store it now, or a change
+    // before the first poll would only become the snapshot that poll fills silently.
+    if (watchedItem(sub.source, sub.url))
+      await this.subscriptions.updateSnapshots(sub.id, listings);
+    return listings;
   }
 
   /**
@@ -173,9 +197,17 @@ export class WatchService {
    */
   private async findRemoved(
     sub: Subscription,
-    { listings, complete, capped }: FetchResult,
+    { listings, complete, capped, gone: confirmed }: FetchResult,
     stillThere: number,
   ): Promise<Removal[]> {
+    // The site's own word that a watched listing is gone: no list to miss it from, no mass to
+    // guard against — one listing, and an outage throws instead of answering `gone`.
+    if (confirmed) {
+      const rows = await this.subscriptions.findGone(sub.id, []);
+      // Nothing left to tell — its removal was delivered, and ▶️ revived it: paused again, quietly.
+      if (rows.length === 0) await this.subscriptions.pause(sub.id);
+      return this.toRemovals(sub, rows);
+    }
     if (!this.adapter(sub).reportsRemoved || !complete || capped || listings.length === 0) {
       return [];
     }
@@ -192,7 +224,15 @@ export class WatchService {
       );
       return [];
     }
-    // No snapshot (a baseline row the first poll never filled): nothing to show — forgotten.
+    return this.toRemovals(sub, gone);
+  }
+
+  /** Gone rows as removals to deliver. A row without a snapshot (a baseline row the first poll
+   *  never filled) has nothing to show — forgotten now. */
+  private async toRemovals(
+    sub: Subscription,
+    gone: { externalId: string; snapshot: Removal['last'] | undefined }[],
+  ): Promise<Removal[]> {
     await this.subscriptions.deleteSeen(
       sub.id,
       gone.filter((row) => !row.snapshot).map((row) => row.externalId),
@@ -231,6 +271,11 @@ export class WatchService {
       sub.id,
       delivered.removed.map((removal) => removal.externalId),
     );
+    // A watched listing told as gone is the end of it: paused, not removed — it stays in /list.
+    // Here, not in a caller: the daily run and /check both deliver through this.
+    if (delivered.removed.length > 0 && watchedItem(sub.source, sub.url)) {
+      await this.subscriptions.pause(sub.id);
+    }
     await this.subscriptions.markNotified(sub.userId);
   }
 

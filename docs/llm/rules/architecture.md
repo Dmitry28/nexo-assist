@@ -126,14 +126,16 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
   (one fixed page), noise params, `requestUrl` (when the data sits behind a widget's API),
   `load` (the list body when that is not the pasted GET — a POST or a widget, any paging kind),
   `enrich` (an item-page visit, single-page only), `parse`,
-  `reportsRemoved` when leaving the page means sold (see its doc);
+  `reportsRemoved` when leaving the page means sold (see its doc), `item` when a link to one
+  listing is watched for its price and removal (`id`/`url`/`parse`/`isGone`; see its doc);
   `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)),
   `protection` for a site behind anti-bot protection (the fetch ladder, paid; see its doc).
   Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its
   `pins` NOTE: changing them later needs a re-normalizing migration).
 - `__tests__/` — parser specs on a trimmed live fixture `fixtures/<id>-search.<html|json>` (or `.1.*`, `.2.*`
   for a page that takes two requests, plus `<id>-item.*` for item-page visits; that name
-  is what the contract spec loads; redacted — the repo is public).
+  is what the contract spec loads, so a watched listing's page takes another, like kufar's
+  `kufar-vi.html`; redacted — the repo is public).
 - Register: one line in `SOURCES` (`sources.ts`) — `SourceId`, /help's list of sites and the
   contract spec follow from it. The contract spec checks every source for registration, host
   overlap, outages, a data-less page and its fixture's listings.

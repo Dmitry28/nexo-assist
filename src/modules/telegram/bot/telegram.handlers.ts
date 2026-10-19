@@ -5,9 +5,13 @@ import type { Bot, Context } from 'grammy';
 import { extractUrl } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import { SearchRewrittenError, UnsupportedSearchError } from '@/modules/sources/source-adapter';
+import {
+  ListingGoneError,
+  SearchRewrittenError,
+  UnsupportedSearchError,
+} from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { siteName } from '@/modules/sources/sources';
+import { siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
@@ -22,6 +26,7 @@ import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { isAdmin } from './admin';
 import { CheckHandlers } from './check.handlers';
+import { formatPrice } from './listing-card';
 import type { PendingLink } from './pending-links';
 import { PendingLinks } from './pending-links';
 import {
@@ -105,11 +110,14 @@ export class TelegramHandlers {
       return;
     }
 
-    const nonce = this.pending.add({ userId, source: adapter.id, url });
+    // A link to one listing is stored in its canonical form, so two forms of it are one duplicate.
+    const item = watchedItem(adapter.id, url);
+    const nonce = this.pending.add({ userId, source: adapter.id, url: item?.url ?? url });
     const keyboard = new InlineKeyboard()
       .text('Следить', `subscribe:${nonce}`)
       .text('Отмена', `cancel:${nonce}`);
-    await ctx.reply(`Следить за этим поиском на ${adapter.id}?\n${url}`, {
+    const what = item ? 'ценой этого объявления' : 'этим поиском';
+    await ctx.reply(`Следить за ${what} на ${adapter.id}?\n${url}`, {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });
@@ -142,7 +150,10 @@ export class TelegramHandlers {
       });
     } catch (err) {
       if (err instanceof DuplicateSubscriptionError) {
-        await ctx.editMessageText(`Вы уже следите за этим поиском.\n${candidate.url}`, {
+        const what = watchedItem(candidate.source, candidate.url)
+          ? 'этим объявлением'
+          : 'этим поиском';
+        await ctx.editMessageText(`Вы уже следите за ${what}.\n${candidate.url}`, {
           link_preview_options: NO_LINK_PREVIEW,
         });
         return;
@@ -164,7 +175,13 @@ export class TelegramHandlers {
     // On failure the subscription is kept (except a rewritten search, below); the daily run
     // baselines it silently.
     const baseline = await this.watch.baseline(sub).catch((err: unknown) => {
-      if (err instanceof SearchRewrittenError || err instanceof UnsupportedSearchError) return err;
+      if (
+        err instanceof SearchRewrittenError ||
+        err instanceof UnsupportedSearchError ||
+        err instanceof ListingGoneError
+      ) {
+        return err;
+      }
       this.logger.warn({ err }, `Baseline failed for ${sub.url}`);
       reportUserFacing(err, { userId: candidate.userId, action: 'subscribe', url: sub.url });
       return null;
@@ -192,6 +209,14 @@ export class TelegramHandlers {
       });
       return;
     }
+    if (baseline instanceof ListingGoneError) {
+      // Not kept, like a rewritten search: every poll would answer the same.
+      await this.subscriptions.remove(sub.id, candidate.userId);
+      await ctx.editMessageText(`Это объявление уже снято — следить не за чем.\n${candidate.url}`, {
+        link_preview_options: NO_LINK_PREVIEW,
+      });
+      return;
+    }
     if (baseline === null) {
       await ctx.editMessageText(
         `Готово ✅ Сайт сейчас не отвечает — загружу текущие объявления при следующей проверке.\n${sub.url}`,
@@ -199,8 +224,17 @@ export class TelegramHandlers {
       );
       return;
     }
+    const [watched] = baseline;
+    if (watchedItem(sub.source, sub.url) && watched) {
+      await ctx.editMessageText(
+        `Готово ✅ Слежу за объявлением «${watched.title}» — сейчас ${formatPrice(watched)}. ` +
+          `Напишу, если цена изменится или его снимут.\n${sub.url}`,
+        { link_preview_options: NO_LINK_PREVIEW },
+      );
+      return;
+    }
     // Offer the current listings on demand — baseline already counted them.
-    const count = baseline;
+    const count = baseline.length;
     const showCurrent =
       count > 0
         ? new InlineKeyboard().text(`Показать текущие (${count})`, `show:${sub.id}`)

@@ -294,13 +294,16 @@ export class SubscriptionsService {
 
   /**
    * The subscription's stored rows missing from this run — the removal candidates. Read-only: the
-   * caller decides whether a fetch was complete enough to call them gone.
+   * caller decides whether a fetch was complete enough to call them gone. Nothing present → every
+   * row (a watched listing the site called gone), without leaning on how `In([])` renders.
    */
   async findGone(
     subscriptionId: string,
     present: string[],
   ): Promise<{ externalId: string; snapshot: ListingSnapshot | undefined }[]> {
-    const rows = await this.seen.findBy({ subscriptionId, externalId: Not(In(present)) });
+    const rows = await this.seen.findBy(
+      present.length === 0 ? { subscriptionId } : { subscriptionId, externalId: Not(In(present)) },
+    );
     return rows.map((r) => ({ externalId: r.externalId, snapshot: asSnapshot(r.snapshot) }));
   }
 

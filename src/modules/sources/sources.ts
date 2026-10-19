@@ -42,5 +42,17 @@ export const SOURCES = [
  */
 export const siteName = (id: string): string => SOURCES.find((s) => s.id === id)?.host ?? id;
 
+/**
+ * The single listing a link points at, on a source that watches items — its id and canonical
+ * address; undefined for a search (or a source without items). Pure, like `siteName`: the bot's
+ * texts and labels need it without the registry.
+ */
+export function watchedItem(source: string, url: string): { id: string; url: string } | undefined {
+  const item = SOURCES.find((s) => s.id === source)?.item;
+  // A stored URL that no longer parses is no item — and must not throw into a delivery.
+  const id = URL.canParse(url) ? item?.id(url) : undefined;
+  return item && id ? { id, url: item.url(id) } : undefined;
+}
+
 /** The adapters the app runs — one per source, built from SOURCES. */
 export const ADAPTERS = createSourceAdapters(SOURCES);
