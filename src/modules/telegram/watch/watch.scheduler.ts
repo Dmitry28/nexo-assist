@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { CronJob } from 'cron';
 
+import { TIMEZONE } from '@/common/locale';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
@@ -107,15 +108,21 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     // and skips the run — an unhandled rejection would trip the fatal handler in main.ts
     // and kill the whole bot.
     // NOTE: bare captureException on purpose — a whole run failing belongs to no single user.
-    const job = new CronJob(this.appConfig.watchCron, () => {
-      void this.runDaily().catch((err: unknown) => {
-        this.logger.error({ err }, 'Daily watch run failed');
-        Sentry.captureException(err);
-      });
+    // NOTE: WATCH_CRON is read in the audience's time zone, not the pod's UTC — «09:00» means
+    // a Minsk morning, the same clock the cards' dates are pinned to.
+    const job = CronJob.from({
+      cronTime: this.appConfig.watchCron,
+      timeZone: TIMEZONE,
+      onTick: () => {
+        void this.runDaily().catch((err: unknown) => {
+          this.logger.error({ err }, 'Daily watch run failed');
+          Sentry.captureException(err);
+        });
+      },
     });
     this.scheduler.addCronJob(JOB_NAME, job);
     job.start();
-    this.logger.log(`Daily watch scheduled: ${this.appConfig.watchCron}`);
+    this.logger.log(`Daily watch scheduled: ${this.appConfig.watchCron} (${TIMEZONE})`);
   }
 
   onModuleDestroy(): void {

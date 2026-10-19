@@ -134,7 +134,8 @@ export class EnvironmentVariables {
   ADMIN_TELEGRAM_ID?: number;
 
   /**
-   * Cron for the daily subscription check. 5 fields only (min hour dom mon dow);
+   * Cron for the daily subscription check, in Europe/Minsk time (watch.scheduler.ts).
+   * 5 fields only (min hour dom mon dow);
    * a 6th field would be seconds in the cron lib — avoided, we need daily granularity.
    */
   @IsString()

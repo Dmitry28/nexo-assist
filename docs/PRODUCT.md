@@ -100,7 +100,8 @@ design; «Volume and limits» describes what is **already shipped** (limits, pau
 
 ## How it works inside
 
-1. The scheduler runs the scrape on its cron (daily to start).
+1. The scheduler runs the scrape on its cron (daily to start), read in Minsk time: `WATCH_CRON`
+   `0 9 * * *` is 09:00 Europe/Minsk, whatever the server's clock.
 2. Collect the unique normalized URLs of active subscriptions (dedupe).
 3. For each URL the adapter fetches listings **page by page** (newest-first, capped
    at a few pages) and normalizes them. (Early stop-on-already-seen is a later
