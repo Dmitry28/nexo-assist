@@ -46,7 +46,7 @@ start; more frequent once throttling/dedupe land).
   on fixed sale lists (ghb, prometr, gridom), and only when the page was read whole. Elsewhere a
   listing leaving the page is no sale (a search window, an auction archive). One that comes back
   arrives as new.
-- **Одно объявление** — a link to a single ad (kufar `re.kufar.by/vi/…`, realt `…/object/<code>/`) watches that
+- **Одно объявление** — a link to a single ad (kufar `re.kufar.by/vi/…`, kufar per-night `travel.kufar.by/vi/…` (not a hotel — refused, its price depends on the dates), realt `…/object/<code>/`) watches that
   ad: «Слежу за объявлением «…» — сейчас <price>», then «💸» on a price change (its price is
   stored at subscribe) and «🚫 Объявление снято — больше не слежу» when the site itself says the
   ad no longer exists (kufar's 404 «Ad is not found», realt's own 404 page) — the watch is then paused (▶️ resumes it;

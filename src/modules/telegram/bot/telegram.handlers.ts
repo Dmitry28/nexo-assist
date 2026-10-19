@@ -8,6 +8,7 @@ import configuration from '@/config/configuration';
 import {
   ListingGoneError,
   SearchRewrittenError,
+  UnwatchableItemError,
   UnsupportedSearchError,
 } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
@@ -178,7 +179,8 @@ export class TelegramHandlers {
       if (
         err instanceof SearchRewrittenError ||
         err instanceof UnsupportedSearchError ||
-        err instanceof ListingGoneError
+        err instanceof ListingGoneError ||
+        err instanceof UnwatchableItemError
       ) {
         return err;
       }
@@ -209,10 +211,14 @@ export class TelegramHandlers {
       });
       return;
     }
-    if (baseline instanceof ListingGoneError) {
+    if (baseline instanceof ListingGoneError || baseline instanceof UnwatchableItemError) {
       // Not kept, like a rewritten search: every poll would answer the same.
       await this.subscriptions.remove(sub.id, candidate.userId);
-      await ctx.editMessageText(`Это объявление уже снято — следить не за чем.\n${candidate.url}`, {
+      const why =
+        baseline instanceof ListingGoneError
+          ? 'Это объявление уже снято — следить не за чем.'
+          : `За таким объявлением на ${siteName(sub.source)} пока не слежу — пришлите ссылку на поиск.`;
+      await ctx.editMessageText(`${why}\n${candidate.url}`, {
         link_preview_options: NO_LINK_PREVIEW,
       });
       return;
