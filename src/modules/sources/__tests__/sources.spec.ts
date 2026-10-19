@@ -14,7 +14,7 @@ describe('watchedItem', () => {
       url: 'https://re.kufar.by/vi/7',
     });
     expect(watchedItem('kufar', 'https://re.kufar.by/l/grodno')).toBeUndefined();
-    expect(watchedItem('realt', 'https://realt.by/sale-plots/object/7/')).toBeUndefined();
+    expect(watchedItem('gsz', 'https://gsz.gov.by/registration/vacancy-search/')).toBeUndefined();
     // A stored URL that no longer parses must not throw into a delivery.
     expect(watchedItem('kufar', 'not a url')).toBeUndefined();
   });

@@ -39,8 +39,7 @@ describe('createSourceAdapters', () => {
   it('refuses a watched item on a protected source', () => {
     const { page: _page, parse: _parse, ...common } = define();
     const item = {
-      id: () => null,
-      url: (id: string) => id,
+      match: () => null,
       parse: () => listing('1'),
       isGone: () => false,
     };

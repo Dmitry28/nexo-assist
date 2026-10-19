@@ -7,12 +7,21 @@ import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import type { SourceAdapter } from '@/modules/sources/source-adapter';
 
-import { MAX_LISTINGS, SearchRewrittenError } from '../../source-adapter';
+import {
+  MAX_LISTINGS,
+  PageNotFoundError,
+  SearchRewrittenError,
+  SourceUnavailableError,
+} from '../../source-adapter';
+import { watchedItem } from '../../sources';
 
 // The pause between pages is real time (paginate.ts); these specs test what is fetched, not when.
 jest.mock('@/common/wait', () => ({ wait: () => Promise.resolve() }));
 
 const fixture = readFileSync(join(__dirname, 'fixtures/realt-search.html'), 'utf8');
+// Live pages of 2026-10-19 cut down to the object (seller name dropped), and realt's 404.
+const object = readFileSync(join(__dirname, 'fixtures/realt-object.html'), 'utf8');
+const gone = readFileSync(join(__dirname, 'fixtures/realt-object-gone.html'), 'utf8');
 
 // Minimal realt page for pagination tests: given object codes and a totalCount.
 const realtPage = (codes: number[], totalCount: number): string =>
@@ -191,6 +200,52 @@ describe('realt source', () => {
       const firstUrl = String(fetchMock.mock.calls[0][0]);
       expect(firstUrl).toContain('page=1');
       expect(firstUrl).toContain('sortType=createdAt');
+    });
+  });
+
+  describe('a single object (item link)', () => {
+    const ITEM = 'https://realt.by/sale-plots/object/4215595/';
+
+    it.each([
+      ['https://realt.by/sale-plots/object/4215595/', ITEM],
+      // The region prefix realt redirects to, and visit noise, name the same object.
+      ['https://realt.by/grodno-region/sale-plots/object/4215595/?utm_source=x', ITEM],
+      ['https://realt.by/grodno-region/sale/plots/', undefined],
+    ])('reads %s as the item %s', (url, canonical) => {
+      expect(adapter.matches(url)).toBe(true);
+      expect(watchedItem('realt', url)?.url).toBe(canonical);
+    });
+
+    it('reads the object from its own page, photos from its slides', async () => {
+      fetchMock.mockResolvedValue(new Response(object, { status: 200 }));
+
+      const result = await adapter.fetch(ITEM);
+
+      expect(result).toEqual({ listings: [expect.any(Object)], complete: true, capped: false });
+      expect(result.listings[0]).toMatchObject({
+        externalId: '4215595',
+        link: ITEM,
+        priceByn: 135441,
+        priceUsd: 45000,
+        images: [expect.stringContaining('cdn.realt.by'), expect.stringContaining('cdn.realt.by')],
+      });
+    });
+
+    it("calls the object gone on realt's own 404 page", async () => {
+      fetchMock.mockResolvedValue(new Response(gone, { status: 404 }));
+
+      await expect(adapter.fetch(ITEM)).resolves.toMatchObject({ listings: [], gone: true });
+    });
+
+    it.each([
+      ['another 404 page', 404, '<html>not found</html>', PageNotFoundError],
+      ['an outage', 503, gone, SourceUnavailableError],
+      // A page that is no item page (a layout change) is a loud parse failure.
+      ['a page without the listing', 200, fixture, SourceUnavailableError],
+    ])('treats %s as a failure, never as removed', async (_, status, body, error) => {
+      fetchMock.mockResolvedValue(new Response(body, { status }));
+
+      await expect(adapter.fetch(ITEM)).rejects.toThrow(error);
     });
   });
 });

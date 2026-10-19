@@ -7,6 +7,12 @@ import { HOST, isGoneItem, parseItem, parsePage } from './kufar.parser';
 const ITEM_PATH = /^\/vi\/(?:[^/]+\/)*(\d+)\/?$/;
 const ITEM_HOST = `re.${HOST}`;
 
+function matchItem(url: string): { id: string; url: string } | null {
+  const { hostname, pathname } = new URL(url);
+  const id = hostname === ITEM_HOST ? ITEM_PATH.exec(pathname)?.[1] : undefined;
+  return id ? { id, url: `https://${ITEM_HOST}/vi/${id}` } : null;
+}
+
 /** kufar.by — sale and long-term rent (re.kufar.by); its per-night rentals are kufar-travel. */
 export const kufar = defineSource({
   id: 'kufar',
@@ -21,11 +27,7 @@ export const kufar = defineSource({
   useProxy: true,
   parse: parsePage,
   item: {
-    id: (url) => {
-      const { hostname, pathname } = new URL(url);
-      return hostname === ITEM_HOST ? (ITEM_PATH.exec(pathname)?.[1] ?? null) : null;
-    },
-    url: (id) => `https://${ITEM_HOST}/vi/${id}`,
+    match: matchItem,
     parse: parseItem,
     isGone: isGoneItem,
   },
