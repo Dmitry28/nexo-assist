@@ -17,16 +17,18 @@ start; more frequent once throttling/dedupe land).
   grodnorik.gov.by's auction notices, prometr.by new-build complexes, gridom.by developers'
   units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
   used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
-  `/filter` links ignore their filters), US auction lots from bid.cars (the pasted search,
-  first 50, via a paid render — Cloudflare blocks every plain request), and the auctions
-  themselves — copart.com (up to the 500-listing window; the link’s `searchCriteria`, or else
-  `query` / make / model) and iaai.com (first 100; the link’s `Keyword`)** — via the adapter
+  `/filter` links ignore their filters). US auction lots from bid.cars (the pasted search:
+  the free page when it opens, otherwise Copart and IAAI with the same filters — leftover
+  filters the auctions cannot honour, and `status=All`, are refused; fallback cards link to
+  the auction page), and the auctions themselves — copart.com (up
+  to the 500-listing window; the link’s `searchCriteria`, or else `query` / make / model) and
+  iaai.com (first 100; the link’s `Keyword`)** — via the adapter
   registry. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
   first page only (a page with nothing seen before tells the owner the same way; each page may be paid; a run fetches a search once, however many users watch
   it, and a new search past its site group's daily paid-credit budget is refused — one already watched
-  never is): av.by's 25 «актуальные», bid.cars's 50 latest-auction lots.
+  never is): av.by's 25 «актуальные».
 - Events: **new listings, price changes and removals**. New ones arrive as **one card per listing**: photos (up to 10, as an album),
   title, description, price in both currencies (or as the site words it — a salary range), address, the source's own facts (area, plot,
   rooms, year, amenities…), seller, when it was bumped, the link, and **which of the reader's

@@ -51,6 +51,22 @@ export class SearchRewrittenError extends SourceUnavailableError {
 }
 
 /**
+ * The pasted search names filters we cannot honour on the path we would take (bid.cars closed →
+ * Copart/IAAI). Not an outage: following through would watch a wider search than the link.
+ * TODO [M]: subscribe refuses this; the daily poll still counts it as an outage.
+ */
+export class UnsupportedSearchError extends SourceUnavailableError {
+  override readonly name = 'UnsupportedSearchError';
+
+  constructor(
+    readonly url: string,
+    readonly params: readonly string[],
+  ) {
+    super(`Unsupported search params: ${params.join(', ')}`);
+  }
+}
+
+/**
  * A protected source could not be read because none of the paid anti-bot services could be asked
  * — no key configured, or every one spent for the month. Our side, not the link and not the site:
  * the scheduler does not count it against the subscription (a dead-link pause would tell the
