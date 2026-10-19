@@ -1,3 +1,5 @@
+<img src="docs/assets/logo.svg" alt="nexo-assist logo" width="96" align="right">
+
 # nexo-assist
 
 Telegram listing-watch bot: paste a kufar.by / realt.by / gsz.gov.by / rabota.by search link and get new
@@ -26,6 +28,9 @@ beta audience does. Fixed pages (a price list, a notice board) work too — the 
 
 It stores your Telegram id, name, @username, interface language and the links it watches — only
 to deliver notifications; ask the owner to have them deleted.
+
+The bot's avatar is [docs/assets/logo.png](docs/assets/logo.png) (640×640; `logo.svg` is the
+source) — Telegram takes it only by hand, through @BotFather's `/setuserpic`.
 
 ## Stack
 
