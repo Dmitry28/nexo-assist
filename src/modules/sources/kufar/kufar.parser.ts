@@ -95,6 +95,18 @@ export function extractPage(html: string): KufarPage {
   return { ads, nextCursor };
 }
 
+// An ad's page on a kufar app: `/vi/<id>`, or with the path the site adds (`/vi/<city>/…/<id>`).
+const AD_PATH = /^\/vi\/(?:[^/]+\/)*(\d+)\/?$/;
+
+/** Item links of one kufar app (re., travel.): its `/vi/` pages, stored as `https://<host>/vi/<id>`. */
+export const matchAdOn =
+  (host: string) =>
+  (url: string): { id: string; url: string } | null => {
+    const { hostname, pathname } = new URL(url);
+    const id = hostname === host ? AD_PATH.exec(pathname)?.[1] : undefined;
+    return id ? { id, url: `https://${host}/vi/${id}` } : null;
+  };
+
 /** The ad view of an item page (`re.kufar.by/vi/…`) — a live ad's data, or the site's error. */
 const adView = (data: Record<string, unknown> | null): Record<string, unknown> | undefined =>
   asRecord(asRecord(asRecord(data?.props)?.initialState)?.adView);
@@ -103,13 +115,13 @@ const adView = (data: Record<string, unknown> | null): Record<string, unknown> |
  * One ad from its own page. Measured 2026-10-19: `adView.data.initial` is the ad in the very shape
  * a search page lists (`mapAd` reads it as is); only the full text lives in `body`.
  */
-export function parseItem(html: string): Listing {
-  const initial = asRecord(asRecord(adView(requireNextData(html, 'kufar'))?.data)?.initial);
+export function parseItem(html: string, source: 'kufar' | 'kufar-travel' = 'kufar'): Listing {
+  const initial = asRecord(asRecord(adView(requireNextData(html, source))?.data)?.initial);
   // The search page's checks, on a list of one: a missing ad or id is a layout change, loudly.
   const [ad] = withIds(
-    requireArray<RawKufarAd>(initial && [initial], 'kufar', 'adView.data.initial'),
+    requireArray<RawKufarAd>(initial && [initial], source, 'adView.data.initial'),
     (one) => one.ad_id,
-    'kufar',
+    source,
   );
   return { ...mapAd(ad), description: asText(ad.body) };
 }

@@ -1,17 +1,9 @@
 import { defineSource } from '../source-definition';
 
-import { HOST, isGoneItem, parseItem, parsePage } from './kufar.parser';
+import { HOST, isGoneItem, matchAdOn, parseItem, parsePage } from './kufar.parser';
 
-// An ad's page: `/vi/<id>`, or its full form `/vi/<city>/<deal>/<type>/<id>` (the short one 301s
-// there). Only re.kufar.by is measured — another kufar subdomain's ad stays a «search» link.
-const ITEM_PATH = /^\/vi\/(?:[^/]+\/)*(\d+)\/?$/;
-const ITEM_HOST = `re.${HOST}`;
-
-function matchItem(url: string): { id: string; url: string } | null {
-  const { hostname, pathname } = new URL(url);
-  const id = hostname === ITEM_HOST ? ITEM_PATH.exec(pathname)?.[1] : undefined;
-  return id ? { id, url: `https://${ITEM_HOST}/vi/${id}` } : null;
-}
+// Only re.kufar.by's ads are measured — another kufar subdomain's ad stays a «search» link.
+const matchItem = matchAdOn(`re.${HOST}`);
 
 /** kufar.by — sale and long-term rent (re.kufar.by); its per-night rentals are kufar-travel. */
 export const kufar = defineSource({
@@ -28,7 +20,7 @@ export const kufar = defineSource({
   parse: parsePage,
   item: {
     match: matchItem,
-    parse: parseItem,
+    parse: (html) => parseItem(html),
     isGone: isGoneItem,
   },
 });
