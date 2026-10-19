@@ -54,6 +54,8 @@ runuser -u deploy -- git -C "$REPO_DIR" checkout --quiet --force "origin/$REPO_R
 #    the old fallback then installed a different version than the one just fetched, silently.
 #    Consequence: a local edit reaches the host only after it is pushed to $REPO_REF.
 install -m 755 -o root -g root "$REPO_DIR/deploy/deploy.sh" /usr/local/bin/deploy.sh
+# Where deploy.sh keeps the log of each pod it replaces (see there why).
+install -d -m 750 -o deploy -g deploy /var/log/nexo-assist
 
 # 5. CD key, allowed to run exactly one command — no shell, no forwarding. Even if the key
 #    leaks, it can only trigger a deploy.
