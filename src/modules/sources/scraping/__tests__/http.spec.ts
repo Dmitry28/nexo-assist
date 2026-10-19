@@ -1,6 +1,10 @@
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
-import { SearchRewrittenError, SourceUnavailableError } from '../../source-adapter';
+import {
+  PageNotFoundError,
+  SearchRewrittenError,
+  SourceUnavailableError,
+} from '../../source-adapter';
 import { fetchHtml, fetchJson } from '../http';
 
 const fetchMock = undiciFetchMock();
@@ -11,6 +15,21 @@ describe('fetchHtml', () => {
   /** A 3xx redirect response pointing at `location`. */
   const redirectTo = (location: string): Response =>
     new Response(null, { status: 301, headers: { location } });
+
+  it("hands back a 404's body for the caller to read, out of the logged fields", async () => {
+    fetchMock.mockResolvedValue(new Response('<html>no such ad</html>', { status: 404 }));
+
+    const err: unknown = await fetchHtml({ url: 'https://x.by/vi/1', host: 'x.by' }).catch(
+      (e: unknown) => e,
+    );
+
+    if (!(err instanceof PageNotFoundError))
+      throw new Error(`expected a 404 error, got ${String(err)}`);
+    expect(err).toBeInstanceOf(SourceUnavailableError); // every other caller sees a plain outage
+    expect(err.html).toBe('<html>no such ad</html>');
+    // The log serializer copies own fields; a whole page must not ride along.
+    expect(Object.keys(err)).not.toContain('html');
+  });
 
   it('returns the body on success', async () => {
     fetchMock.mockResolvedValue(new Response('<html>ok</html>', { status: 200 }));

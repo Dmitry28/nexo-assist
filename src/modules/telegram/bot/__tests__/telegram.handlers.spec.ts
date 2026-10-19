@@ -2,10 +2,15 @@ import { Logger } from '@nestjs/common';
 import type { Bot, Context } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
+import { makeListing } from '@/__tests__/helpers/listing';
 import { sentryCapture } from '@/__tests__/helpers/sentry';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
-import { SearchRewrittenError, UnsupportedSearchError } from '@/modules/sources/source-adapter';
+import {
+  ListingGoneError,
+  SearchRewrittenError,
+  UnsupportedSearchError,
+} from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
@@ -90,7 +95,7 @@ describe('TelegramHandlers', () => {
       countActive: jest.fn().mockResolvedValue(0),
       countPaused: jest.fn().mockResolvedValue(0),
     };
-    watch = { baseline: jest.fn().mockResolvedValue(1) };
+    watch = { baseline: jest.fn().mockResolvedValue([makeListing(1)]) };
     check = {
       onCheck: jest.fn().mockResolvedValue(undefined),
       onShowCurrent: jest.fn().mockResolvedValue(undefined),
@@ -211,6 +216,52 @@ describe('TelegramHandlers', () => {
       expect.stringContaining('Сайт сейчас не отвечает'),
       expect.anything(),
     );
+  });
+
+  it('watches a pasted ad by its canonical link and names its title and price', async () => {
+    watch.baseline.mockResolvedValue([makeListing(7, { title: 'Дом', priceByn: 202000 })]);
+    const { ctx: prompt, nonce } = await pasteLink(
+      'https://re.kufar.by/vi/grodno/kupit/dom/7?rank=3',
+    );
+    expect(prompt.reply).toHaveBeenCalledWith(
+      expect.stringContaining('ценой этого объявления'),
+      expect.anything(),
+    );
+
+    const ctx = await pressButton(`subscribe:${nonce}`);
+
+    expect(subscriptions.add).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://re.kufar.by/vi/7' }),
+    );
+    const [text] = ctx.editMessageText.mock.calls[0] as [string];
+    expect(text).toContain('Слежу за объявлением «Дом»');
+    expect(text).toContain('202');
+  });
+
+  it('calls a duplicate ad link a duplicate ad, not a search', async () => {
+    subscriptions.add.mockRejectedValue(new DuplicateSubscriptionError());
+    const { nonce } = await pasteLink('https://re.kufar.by/vi/7');
+
+    const ctx = await pressButton(`subscribe:${nonce}`);
+
+    expect(ctx.editMessageText).toHaveBeenCalledWith(
+      expect.stringContaining('Вы уже следите за этим объявлением'),
+      expect.anything(),
+    );
+  });
+
+  it('drops a watch on an ad that is already gone and says so', async () => {
+    watch.baseline.mockRejectedValue(new ListingGoneError('gone'));
+    const { nonce } = await pasteLink('https://re.kufar.by/vi/7', 5);
+
+    const ctx = await pressButton(`subscribe:${nonce}`, 5);
+
+    expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(
+      expect.stringContaining('уже снято'),
+      expect.anything(),
+    );
+    expect(sentryCapture()).not.toHaveBeenCalled();
   });
 
   // The search behind the redirect is not the one the user chose, and every poll would hit it.

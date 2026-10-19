@@ -80,6 +80,19 @@ describe('CheckHandlers', () => {
     expect(watch.markDelivered).not.toHaveBeenCalled();
   });
 
+  it('/check says a pending watched listing is now watched — there is no count to give', async () => {
+    subscriptions.listByUser.mockResolvedValue([sub({ url: 'https://re.kufar.by/vi/7' })]);
+    watch.poll.mockResolvedValue({ kind: 'baselined', count: 1 });
+
+    const ctx = makeCtx({ userId: 1 });
+    await handlers.onCheck(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('слежу за ценой объявления'),
+      expect.anything(),
+    );
+  });
+
   it('/check replies with a card per listing and marks the delivered items seen', async () => {
     jest.useFakeTimers();
     const s = sub({ url: 'u1' });

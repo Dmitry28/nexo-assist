@@ -157,6 +157,12 @@ describe('HELP_MESSAGE', () => {
 });
 
 describe('searchLabel', () => {
+  it('names a watched single listing by its id — it has no search path', () => {
+    expect(searchLabel({ source: 'kufar', url: 'https://re.kufar.by/vi/7' })).toBe(
+      'kufar.by · объявление 7',
+    );
+  });
+
   // A reader can be watching dozens of searches; until now a card said what was found and never
   // which search found it.
   it('names the search by the part of the URL the reader chose', () => {
@@ -260,5 +266,11 @@ describe('removalBatches', () => {
     expect(text).toContain('🚫 Снято с продажи: 1');
     expect(text).toContain('ghb.by · price_apartments');
     expect(text).toContain('Дом 5\n3 500 руб./м²\nhttps://ghb.by/x');
+  });
+
+  it('ends the watch in words when the removed one is a watched listing', () => {
+    const removed = [{ externalId: '7', last: { link: 'https://re.kufar.by/vi/7', title: 'Дом' } }];
+    const [{ text }] = removalBatches(removed, undefined, true);
+    expect(text).toContain('🚫 Объявление снято — больше не слежу');
   });
 });

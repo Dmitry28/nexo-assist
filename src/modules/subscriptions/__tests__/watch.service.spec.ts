@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryMessage } from '@/__tests__/helpers/sentry';
 import { makeSubscription as sub } from '@/__tests__/helpers/subscription';
-import { MAX_LISTINGS } from '@/modules/sources/source-adapter';
+import { ListingGoneError, MAX_LISTINGS } from '@/modules/sources/source-adapter';
 import type { Listing, SourceAdapter } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 
@@ -43,6 +43,7 @@ const build = (
     findGone: jest.fn().mockResolvedValue([]),
     deleteSeen: jest.fn().mockResolvedValue(undefined),
     markNotified: jest.fn().mockResolvedValue(undefined),
+    pause: jest.fn().mockResolvedValue(undefined),
   };
   // A real registry over a stub adapter — resolving the adapter is part of what is tested.
   const registry = new SourceRegistry([adapter]);
@@ -371,6 +372,88 @@ describe('WatchService.poll — removals', () => {
       expect.stringContaining('Mass removal'),
       'warning',
     );
+  });
+});
+
+describe('WatchService — a watched single listing (item link)', () => {
+  // kufar's item form — watchedItem reads it from the real source definitions.
+  const itemSub = (over: Partial<Subscription> = {}) =>
+    sub({ url: 'https://re.kufar.by/vi/7', ...over });
+  const last: ListingSnapshot = { link: 'https://re.kufar.by/vi/7', title: 't7', priceByn: 100 };
+  const goneSite = () => {
+    const built = build();
+    jest.mocked(built.adapter.fetch).mockResolvedValue({
+      listings: [],
+      complete: true,
+      capped: false,
+      gone: true,
+    });
+    return built;
+  };
+
+  it('stores the price at subscribe, so a change before the first poll is not swallowed', async () => {
+    const { subscriptions, watch } = build([listing(7, { priceByn: 100 })]);
+
+    await watch.baseline(itemSub());
+
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', [
+      listing(7, { priceByn: 100 }),
+    ]);
+  });
+
+  it('refuses a listing already gone at subscribe', async () => {
+    await expect(goneSite().watch.baseline(itemSub())).rejects.toThrow(ListingGoneError);
+  });
+
+  it("reports the listing removed on the site's word, though the page lists nothing", async () => {
+    const { subscriptions, watch } = goneSite();
+    subscriptions.findGone.mockResolvedValue([{ externalId: '7', snapshot: last }]);
+
+    await expect(watch.poll(baselined({ url: 'https://re.kufar.by/vi/7' }))).resolves.toEqual({
+      kind: 'fresh',
+      listings: [],
+      priceChanges: [],
+      removed: [{ externalId: '7', last }],
+    });
+    expect(subscriptions.findGone).toHaveBeenCalledWith('sub-1', []);
+  });
+
+  it('tells a removal, not a failure, when the listing went before its first baseline', async () => {
+    await expect(goneSite().watch.poll(itemSub())).resolves.toEqual({
+      kind: 'fresh',
+      listings: [],
+      priceChanges: [],
+      removed: [
+        { externalId: '7', last: { link: 'https://re.kufar.by/vi/7', title: 'Объявление' } },
+      ],
+    });
+  });
+
+  it('tells nothing for a watch removed while its fetch was in flight', async () => {
+    const { subscriptions, watch } = goneSite();
+    subscriptions.has.mockResolvedValue(false);
+
+    await expect(watch.poll(itemSub())).resolves.toEqual({ kind: 'nothing' });
+  });
+
+  it('pauses again, quietly, a watch revived after its removal was told', async () => {
+    const { subscriptions, watch } = goneSite(); // findGone: no rows left
+
+    await expect(watch.poll(baselined({ url: 'https://re.kufar.by/vi/7' }))).resolves.toEqual({
+      kind: 'nothing',
+    });
+    expect(subscriptions.pause).toHaveBeenCalledWith('sub-1');
+  });
+
+  it('pauses the watch once its removal is delivered — a search is never paused for one', async () => {
+    const { subscriptions, watch } = build();
+    const delivered = { listings: [], priceChanges: [], removed: [{ externalId: '7', last }] };
+
+    await watch.markDelivered(sub(), delivered);
+    expect(subscriptions.pause).not.toHaveBeenCalled();
+
+    await watch.markDelivered(itemSub(), delivered);
+    expect(subscriptions.pause).toHaveBeenCalledWith('sub-1');
   });
 });
 

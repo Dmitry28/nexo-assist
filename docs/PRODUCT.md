@@ -46,6 +46,13 @@ start; more frequent once throttling/dedupe land).
   on fixed sale lists (ghb, prometr, gridom), and only when the page was read whole. Elsewhere a
   listing leaving the page is no sale (a search window, an auction archive). One that comes back
   arrives as new.
+- **Одно объявление** — a link to a single ad (kufar `re.kufar.by/vi/…` for now) watches that
+  ad: «Слежу за объявлением «…» — сейчас <price>», then «💸» on a price change (its price is
+  stored at subscribe) and «🚫 Объявление снято — больше не слежу» when the site itself says the
+  ad no longer exists (kufar's 404 «Ad is not found») — the watch is then paused (▶️ resumes it;
+  if the ad is still gone, it is paused again). An outage or
+  any other broken page is a failure, never «removed». An ad already gone is refused on
+  subscribe. Two forms of the same ad link are one duplicate (stored as `re.kufar.by/vi/<id>`).
 - A realt link the site **rewrites with a redirect** (any `addressV2` address filter is sent to a
   much wider search) is refused on subscribe, with the reason and how to fix the link —
   following it would hand the user someone else's search as theirs.
