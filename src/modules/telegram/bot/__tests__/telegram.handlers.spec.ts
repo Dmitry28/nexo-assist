@@ -5,7 +5,7 @@ import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { sentryCapture } from '@/__tests__/helpers/sentry';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
-import { SearchRewrittenError } from '@/modules/sources/source-adapter';
+import { SearchRewrittenError, UnsupportedSearchError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
@@ -229,6 +229,22 @@ describe('TelegramHandlers', () => {
     expect(text).toContain('https://re.kufar.by/l/minsk'); // what they sent
     expect(text).toContain('https://re.kufar.by/l/belarus'); // where the site took it
     // The link is user input, not our defect — nothing for Sentry.
+    expect(sentryCapture()).not.toHaveBeenCalled();
+  });
+
+  it('drops the subscription and says why when leftover bid.cars filters cannot be mapped', async () => {
+    watch.baseline.mockRejectedValue(
+      new UnsupportedSearchError('https://re.kufar.by/l/minsk', ['damage']),
+    );
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const { nonce } = await pasteLink('https://re.kufar.by/l/minsk', 5);
+
+    const ctx = await pressButton(`subscribe:${nonce}`, 5);
+
+    expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
+    const [text] = ctx.editMessageText.mock.calls[0] as [string];
+    expect(text).toContain('damage');
+    expect(text).toContain('https://re.kufar.by/l/minsk');
     expect(sentryCapture()).not.toHaveBeenCalled();
   });
 

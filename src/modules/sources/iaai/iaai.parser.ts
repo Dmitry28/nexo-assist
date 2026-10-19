@@ -21,12 +21,12 @@ const CARD_WALK_DEPTH = 8;
 /** Flip with the source's `useProxy` — POST bypasses `get`, so the flag must live here too. */
 export const USE_PROXY = false;
 
-/** One page of lots for the pasted Keyword, latest auction first (the site's own sort). */
-export function load(url: string): Promise<string> {
+/** The site's search POST — Keyword from a pasted IAAI link, or a body another source built. */
+export function loadSearch(body: Record<string, unknown>): Promise<string> {
   return fetchJson({
     url: SEARCH_API,
     host: HOST,
-    body: JSON.stringify(searchBody(url)),
+    body: JSON.stringify(body),
     useProxy: USE_PROXY,
     headers: {
       Accept: 'text/html',
@@ -36,6 +36,9 @@ export function load(url: string): Promise<string> {
     },
   });
 }
+
+/** One page of lots for the pasted Keyword, latest auction first (the site's own sort). */
+export const load = (url: string): Promise<string> => loadSearch(searchBody(url));
 
 /** The POST the iaai.com pager sends — Keyword from the link, nothing the link did not ask for. */
 export function searchBody(url: string): Record<string, unknown> {

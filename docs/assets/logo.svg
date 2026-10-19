@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3EC6FF"/><stop offset=".55" stop-color="#1E7BF0"/><stop offset="1" stop-color="#4338CA"/></linearGradient>
+    <radialGradient id="bgGlow" cx=".25" cy=".15" r=".7"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".6" stop-color="#DCEBFF"/><stop offset="1" stop-color="#9DB8F5"/></linearGradient>
+    <radialGradient id="glass" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".5" stop-color="#BFE6FF" stop-opacity=".22"/><stop offset="1" stop-color="#1E3A8A" stop-opacity=".25"/></radialGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="1" y2="-1"><stop offset="0" stop-color="#E9F1FF"/><stop offset=".5" stop-color="#FFFFFF"/><stop offset="1" stop-color="#93AEEA"/></linearGradient>
+    <linearGradient id="n" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#D6E6FF"/></linearGradient>
+    <radialGradient id="dot" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#FFE08A"/><stop offset=".55" stop-color="#FFA41B"/><stop offset="1" stop-color="#F06A00"/></radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#0B1E5B" flood-opacity=".45"/></filter>
+    <filter id="shs" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#7A2E00" flood-opacity=".45"/></filter>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="116" fill="url(#bgGlow)"/>
+  <g filter="url(#sh)">
+    <path d="M318 316 L394 392" stroke="url(#handle)" stroke-width="50" stroke-linecap="round"/>
+    <circle cx="232" cy="228" r="112" fill="url(#glass)"/>
+    <circle cx="232" cy="228" r="112" fill="none" stroke="url(#ring)" stroke-width="34"/>
+    <path d="M190 280 V176 L274 280 V176" fill="none" stroke="url(#n)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M160 168 A92 92 0 0 1 222 132" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" opacity=".7"/>
+  <g filter="url(#shs)"><circle cx="374" cy="128" r="44" fill="url(#dot)"/></g>
+  <ellipse cx="360" cy="112" rx="16" ry="10" fill="#fff" opacity=".7" transform="rotate(-30 360 112)"/>
+</svg>

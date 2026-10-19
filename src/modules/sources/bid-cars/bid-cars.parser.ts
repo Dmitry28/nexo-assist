@@ -3,10 +3,13 @@ import type { HTMLElement } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
 import { elementText, linkPath } from '../scraping/html';
-import type { Protection } from '../scraping/ladder';
-import { UNTITLED_LISTING } from '../source-adapter';
+import { fetchHtml, hasProxy } from '../scraping/http';
+import { asNumber, asRecord, asText, parseJson, requireArray } from '../scraping/next-data';
+import { SearchRewrittenError, SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
-import type { SearchPage } from '../source-definition';
+import type { Get, SearchPage } from '../source-definition';
+
+import { fromAuctions } from './bid-cars.auctions';
 
 /** bid.cars — US salvage-car auctions (Copart, IAAI). */
 export const HOST = 'bid.cars';
@@ -22,28 +25,48 @@ export function requestUrl(url: string): string {
 }
 
 /**
- * Cloudflare answers every plain request with a 403 challenge, Belarusian proxies included; only a
- * rendering anti-bot service gets through (ScrapingAnt, ScraperAPI — measured 2026-10-15). The
- * cards are drawn by a script after load: without the wait the page comes back with none
- * (prototype). A real page has cards, or the «nothing found» block an empty search draws instead —
- * both drawn by the script: the unrendered page has neither (measured 2026-10-15).
+ * A rendered search: cards, or the «nothing found» block. A Cloudflare challenge and the
+ * unrendered shell have neither (measured 2026-10-15).
  */
-export const PROTECTION: Protection = {
-  usable: (html) =>
-    html.includes('class="item-horizontal lots-search') || html.includes('class="nothing-found'),
-  // The prototype's measured settle time for the cards.
-  renderWaitMs: 10_000,
-};
+export const isUsable = (html: string): boolean =>
+  html.includes('class="item-horizontal lots-search') || html.includes('class="nothing-found');
 
 /**
- * A search page: one card per lot — the first 50 by the pinned order, latest auction first; the
- * rest load by a script a fetched page cannot run.
- * TODO [M]: a lot auctioned before the 50th card's date is never seen — on a Camry search
- * (2026-10-15) the 50 ended at auctions a week out, so the nearest week went unseen; a broader
- * search leaves more. The page links the next 50 (`/app/search/request?…&page=2`), another paid
- * page; check the depth on real company searches.
+ * The pasted page when it opens, else Copart+IAAI for the same filters. A challenge or HTTP
+ * error is not a verdict on the search — an empty bid.cars page is, and does not fall through.
+ */
+export async function load(url: string, get: Get): Promise<string> {
+  const page = await tryBidCars(url, get);
+  if (page !== undefined) return page;
+  return JSON.stringify({ listings: await fromAuctions(url) });
+}
+
+async function tryBidCars(url: string, get: Get): Promise<string | undefined> {
+  const attempts = [
+    () => get(url),
+    ...(hasProxy() ? [() => fetchHtml({ url, host: HOST, useProxy: true })] : []),
+  ];
+  for (const run of attempts) {
+    try {
+      const html = await run();
+      if (isUsable(html)) return html;
+    } catch (err) {
+      if (!(err instanceof SourceUnavailableError) || err instanceof SearchRewrittenError) {
+        throw err;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A search page: bid.cars HTML (first 50, latest auction first) or the auction fallback JSON.
+ * TODO [M]: a lot auctioned before the 50th card's date is never seen on the HTML path — on a
+ * Camry search (2026-10-15) the 50 ended at auctions a week out; the fallback walks Copart's
+ * 500-listing window instead.
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
+  if (!isUsable(html)) return { listings: fallbackListings(html) };
   const byId = new Map<string, Listing>();
   for (const card of parse(html).querySelectorAll('div.item-horizontal.lots-search')) {
     const listing = toListing(card);
@@ -126,3 +149,44 @@ const engine = (card: HTMLElement): string | undefined =>
     .map((span) => elementText(span))
     .filter(Boolean)
     .join(' ');
+
+function fallbackListings(body: string): Listing[] {
+  const root = asRecord(parseJson(body));
+  return requireArray<unknown>(root?.listings, 'bid-cars', 'listings').map(asFallbackListing);
+}
+
+function asFallbackListing(value: unknown): Listing {
+  const row = asRecord(value);
+  const externalId = asText(row?.externalId);
+  const link = asText(row?.link);
+  const title = asText(row?.title);
+  if (row === undefined || externalId === undefined || link === undefined || title === undefined) {
+    throw new SourceUnavailableError('bid-cars: fallback listing missing id/link/title');
+  }
+  const images = Array.isArray(row.images)
+    ? row.images.filter((image): image is string => typeof image === 'string')
+    : [];
+  const details = Array.isArray(row.details)
+    ? row.details.flatMap((item) => {
+        const line = asRecord(item);
+        const label = asText(line?.label);
+        const lineValue = asText(line?.value);
+        return label === undefined || lineValue === undefined ? [] : [{ label, value: lineValue }];
+      })
+    : [];
+  const pin = asRecord(row.coordinates);
+  const lat = asNumber(pin?.lat);
+  const lon = asNumber(pin?.lon);
+  return {
+    externalId,
+    link,
+    title,
+    priceText: asText(row.priceText),
+    address: asText(row.address),
+    seller: asText(row.seller),
+    listTime: asText(row.listTime) ?? '',
+    images,
+    details,
+    coordinates: lat === undefined || lon === undefined ? undefined : { lat, lon },
+  };
+}

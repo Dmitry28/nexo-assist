@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { PROTECTION, SEARCH_PATH, parsePage, requestUrl } from '../bid-cars.parser';
+import { SEARCH_PATH, isUsable, parsePage, requestUrl } from '../bid-cars.parser';
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
 
@@ -40,12 +40,43 @@ describe('bid.cars parsePage', () => {
   });
 });
 
-describe('bid.cars PROTECTION.usable', () => {
+describe('bid.cars isUsable', () => {
   it('takes a page with lots or the drawn «nothing found», not the unrendered shell', () => {
-    expect(PROTECTION.usable(fixture('bid-cars-search.html'))).toBe(true);
-    expect(PROTECTION.usable(fixture('bid-cars-empty.html'))).toBe(true);
+    expect(isUsable(fixture('bid-cars-search.html'))).toBe(true);
+    expect(isUsable(fixture('bid-cars-empty.html'))).toBe(true);
     expect(parsePage(fixture('bid-cars-empty.html')).listings).toEqual([]);
-    expect(PROTECTION.usable('<div class="items-row" id="search_area"> </div>')).toBe(false);
+    expect(isUsable('<div class="items-row" id="search_area"> </div>')).toBe(false);
+  });
+});
+
+describe('bid.cars parsePage fallback JSON', () => {
+  it('reads auction lots when the body is the fallback envelope', () => {
+    const { listings } = parsePage(
+      JSON.stringify({
+        listings: [
+          {
+            externalId: '1-46840646',
+            link: 'https://bid.cars/ru/lot/1-46840646',
+            title: '2018 VOLKSWAGEN ATLAS SE',
+            listTime: '',
+            images: [],
+            details: [],
+            coordinates: { lat: 47.0864, lon: -122.433 },
+          },
+        ],
+      }),
+    );
+    expect(listings).toEqual([
+      {
+        externalId: '1-46840646',
+        link: 'https://bid.cars/ru/lot/1-46840646',
+        title: '2018 VOLKSWAGEN ATLAS SE',
+        listTime: '',
+        images: [],
+        details: [],
+        coordinates: { lat: 47.0864, lon: -122.433 },
+      },
+    ]);
   });
 });
 

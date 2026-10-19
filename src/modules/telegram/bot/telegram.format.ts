@@ -250,6 +250,18 @@ export const searchRewrittenNotice = ({ from, to }: { from: string; to: string }
   'Обычно так делает фильтр адреса. Выберите город или район в самом разделе сайта (не в ' +
   'фильтре), откройте поиск и пришлите ссылку снова.';
 
+/** bid.cars is closed and the leftover filters have no Copart/IAAI equivalent. */
+export const unsupportedSearchNotice = ({
+  url,
+  params,
+}: {
+  url: string;
+  params: readonly string[];
+}): string =>
+  `Не могу следить за этой ссылкой:\n${url}\n\n` +
+  `Фильтры (${params.join(', ')}) с bid.cars на аукционы не переводятся. ` +
+  'Уберите их в поиске или пришлите ссылку copart.com / iaai.com.';
+
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
   `⚠️ Поиск на ${siteName(source)} перестал отвечать — я поставил его на паузу.\n` +
