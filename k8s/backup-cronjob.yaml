@@ -21,7 +21,7 @@ kind: CronJob
 metadata:
   name: nexo-assist-backup
 spec:
-  # 03:00 UTC — off the 09:00 watch run, so a dump never competes with delivery.
+  # 03:00 UTC — off the watch run (09:00 Minsk = 06:00 UTC), so a dump never competes with delivery.
   schedule: '0 3 * * *'
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
