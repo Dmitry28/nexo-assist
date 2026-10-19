@@ -10,6 +10,7 @@ import {
   ListingGoneError,
   SearchRewrittenError,
   UnsupportedSearchError,
+  UnwatchableItemError,
 } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -236,6 +237,20 @@ describe('TelegramHandlers', () => {
     const [text] = ctx.editMessageText.mock.calls[0] as [string];
     expect(text).toContain('Слежу за объявлением «Дом»');
     expect(text).toContain('202');
+  });
+
+  it('refuses, honestly, an item link the site cannot be watched by yet', async () => {
+    watch.baseline.mockRejectedValue(new UnwatchableItemError('hotel'));
+    const { nonce } = await pasteLink('https://re.kufar.by/vi/7', 5);
+
+    const ctx = await pressButton(`subscribe:${nonce}`, 5);
+
+    expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(
+      expect.stringContaining('пока не слежу — пришлите ссылку на поиск'),
+      expect.anything(),
+    );
+    expect(sentryCapture()).not.toHaveBeenCalled();
   });
 
   it('calls a duplicate ad link a duplicate ad, not a search', async () => {

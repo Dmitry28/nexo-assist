@@ -32,6 +32,8 @@ const isMass = (hits: number, of: number, floor: number): boolean => hits >= flo
  * outage, or ▶️ revived a removed one): the site's word, not a failure — told as a removal, which
  * then pauses it. Any other error is rethrown.
  */
+// TODO [L]: an UnwatchableItemError here (a hotel kept by an outage on subscribe) is rethrown —
+// counted as a failure until the dead-link pause, instead of one honest «не слежу».
 function goneBeforeBaseline(sub: Subscription, err: unknown): PollOutcome {
   const item = watchedItem(sub.source, sub.url);
   if (!(err instanceof ListingGoneError) || !item) throw err;

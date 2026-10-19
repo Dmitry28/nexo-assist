@@ -87,6 +87,15 @@ export class PageNotFoundError extends SourceUnavailableError {
   }
 }
 
+/**
+ * An item link this source cannot watch yet — the element exists, but its page is not one we read
+ * (kufar-travel's hotels). Refused on subscribe with an honest answer. One kept by an outage on
+ * subscribe fails its polls until the dead-link pause (WatchService, goneBeforeBaseline).
+ */
+export class UnwatchableItemError extends SourceUnavailableError {
+  override readonly name = 'UnwatchableItemError';
+}
+
 /** The watched listing was already gone when the user subscribed — nothing to watch. */
 export class ListingGoneError extends SourceUnavailableError {
   override readonly name = 'ListingGoneError';

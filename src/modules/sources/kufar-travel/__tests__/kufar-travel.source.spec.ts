@@ -5,12 +5,22 @@ import { Logger } from '@nestjs/common';
 
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
+import { PageNotFoundError, UnwatchableItemError } from '@/modules/sources/source-adapter';
 import type { SourceAdapter } from '@/modules/sources/source-adapter';
+import { watchedItem } from '@/modules/sources/sources';
 
 // The pause between pages is real time (paginate.ts); these specs test what is fetched, not when.
 jest.mock('@/common/wait', () => ({ wait: () => Promise.resolve() }));
 
 const fixture = readFileSync(join(__dirname, 'fixtures/kufar-travel-search.html'), 'utf8');
+// Live pages of 2026-10-19, cut down: a flat's ad, and where a hotel's /vi/ link lands.
+const item = readFileSync(join(__dirname, 'fixtures/kufar-travel-vi.html'), 'utf8');
+const hotel = readFileSync(join(__dirname, 'fixtures/kufar-travel-hotel.html'), 'utf8');
+// kufar's own «Ad is not found» 404 — travel answers an unknown ad with the same page.
+const gone = readFileSync(
+  join(__dirname, '../../kufar/__tests__/fixtures/kufar-vi-gone.html'),
+  'utf8',
+);
 
 const lastPage = (adId: number): string =>
   `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
@@ -62,5 +72,47 @@ describe('kufar-travel source', () => {
     expect(second.searchParams.get('page')).toBe('2');
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listings.map((l) => l.externalId)).toEqual(['1079283982', '1054122264', '7']);
+  });
+
+  describe('a single object (item link)', () => {
+    const ITEM = 'https://travel.kufar.by/vi/1089976321';
+
+    it.each([
+      ['https://travel.kufar.by/vi/1089976321', ITEM],
+      ['https://travel.kufar.by/vi/grodno/1089976321?arrivalDate=1', ITEM],
+      ['https://travel.kufar.by/l/grodno/arendovat', undefined],
+    ])('reads %s as the item %s', (url, canonical) => {
+      expect(adapter.matches(url)).toBe(true);
+      expect(watchedItem('kufar-travel', url)?.url).toBe(canonical);
+    });
+
+    it('reads the object from its page (kufar ad view), linked by its stored address', async () => {
+      fetchMock.mockResolvedValue(new Response(item, { status: 200 }));
+
+      const { listings } = await adapter.fetch(ITEM);
+
+      expect(listings).toEqual([
+        expect.objectContaining({
+          externalId: '1089976321',
+          priceByn: 350,
+          priceUsd: 116,
+          link: ITEM,
+        }),
+      ]);
+    });
+
+    it('refuses a hotel — its link lands on a page without an ad', async () => {
+      fetchMock.mockResolvedValue(new Response(hotel, { status: 200 }));
+
+      await expect(adapter.fetch(ITEM)).rejects.toThrow(UnwatchableItemError);
+    });
+
+    it("calls the object gone only on kufar's «Ad is not found» 404", async () => {
+      fetchMock.mockResolvedValueOnce(new Response(gone, { status: 404 }));
+      await expect(adapter.fetch(ITEM)).resolves.toMatchObject({ listings: [], gone: true });
+
+      fetchMock.mockResolvedValueOnce(new Response('<html>not found</html>', { status: 404 }));
+      await expect(adapter.fetch(ITEM)).rejects.toThrow(PageNotFoundError);
+    });
   });
 });
