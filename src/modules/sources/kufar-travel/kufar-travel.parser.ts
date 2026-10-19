@@ -97,8 +97,11 @@ export function mapRentalObject(raw: RawRentalObject): Listing {
   const unit = raw.isHotel === true ? undefined : raw;
   return {
     externalId: String(raw.adId),
-    // `selfUrl` is empty or carries the search's dates; the id link is stable (measured: 200).
-    link: `https://${HOST}/hotel/${raw.adId}`,
+    // `selfUrl` is empty or carries the search's dates. `/vi/<id>` opens any object — a flat's ad,
+    // and a hotel by redirect to its `/hotel/` page. NOTE: not `/hotel/<id>` for all: a non-hotel
+    // answers it 200 with an empty «property not found» page (measured 2026-10-19), so every flat
+    // link we sent until then was dead.
+    link: `https://${HOST}/vi/${raw.adId}`,
     title: asText(raw.subject) ?? UNTITLED_LISTING,
     description: preview(asText(raw.body)),
     priceByn: asPrice(raw.price, { minorUnits: true }),

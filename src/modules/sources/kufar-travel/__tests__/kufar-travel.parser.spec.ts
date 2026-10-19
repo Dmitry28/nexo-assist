@@ -80,7 +80,7 @@ describe('mapRentalObject', () => {
   it('maps a flat — per-night price in both currencies, a stable link, the area from `size`', () => {
     expect(flat).toMatchObject({
       externalId: '1079283982',
-      link: 'https://travel.kufar.by/hotel/1079283982',
+      link: 'https://travel.kufar.by/vi/1079283982',
       priceByn: 250,
       priceUsd: 82,
       coordinates: { lat: 53.682351, lon: 23.836931 },
