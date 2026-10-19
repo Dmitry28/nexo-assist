@@ -35,6 +35,26 @@ const define = (over: Partial<Paged> = {}): Paged => ({
 describe('createSourceAdapters', () => {
   const fetchMock = undiciFetchMock();
 
+  // fetchItem takes the plain fetch — a protected item page would skip the paid ladder silently.
+  it('refuses a watched item on a protected source', () => {
+    const { page: _page, parse: _parse, ...common } = define();
+    const item = {
+      id: () => null,
+      url: (id: string) => id,
+      parse: () => listing('1'),
+      isGone: () => false,
+    };
+    const protectedPage = {
+      ...common,
+      singlePage: true as const,
+      parse: () => ({ listings: [listing('1')] }),
+      protection: { usable: () => true },
+    };
+
+    expect(() => createSourceAdapters([protectedPage])).not.toThrow();
+    expect(() => createSourceAdapters([{ ...protectedPage, item }])).toThrow(/item/);
+  });
+
   it('derives the duplicate-check params from pins, paging and noise', () => {
     const [adapter] = createSourceAdapters([
       define({ pins: { sort: 'new', size: '50' }, noise: ['utm'] }),

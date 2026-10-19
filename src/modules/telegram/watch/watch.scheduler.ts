@@ -9,7 +9,7 @@ import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
 import { PaidRungsUnavailableError } from '@/modules/sources/source-adapter';
 import type { SourceId } from '@/modules/sources/source-adapter';
-import { siteName } from '@/modules/sources/sources';
+import { siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { countOf } from '@/modules/subscriptions/findings';
 import type { Findings } from '@/modules/subscriptions/findings';
@@ -356,6 +356,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     const { delivered, error, failures, recordError } = await deliverAndRecord({
       search: searchLabel(sub),
       site: siteName(sub.source),
+      isItem: watchedItem(sub.source, sub.url) !== undefined,
       found,
       send: {
         card: (message) => this.telegram.notifyCard(sub.user.telegramId, message),

@@ -48,6 +48,8 @@ interface Origin {
   search?: string;
   /** The source's host — the only site a refused photo may be downloaded from (send-card.ts). */
   site?: string;
+  /** A watched single listing — its removal reads as the end of the watch. */
+  isItem?: boolean;
 }
 
 /** One message to send, and what it accounts for once it lands. */
@@ -62,7 +64,7 @@ interface DeliveryStep {
  * Everything found goes out in the same run.
  */
 function plan(found: Findings, send: DeliveryTargets, origin: Origin = {}): DeliveryStep[] {
-  const { search, site } = origin;
+  const { search, site, isItem } = origin;
   const cards = found.listings.slice(0, CARDS_PER_DELIVERY);
   return [
     ...cards.map((listing, i) => ({
@@ -78,7 +80,7 @@ function plan(found: Findings, send: DeliveryTargets, origin: Origin = {}): Deli
       carries: { priceChanges: batch.items },
       send: () => send.digest(batch.text),
     })),
-    ...removalBatches(found.removed, search).map((batch) => ({
+    ...removalBatches(found.removed, search, isItem).map((batch) => ({
       carries: { removed: batch.items },
       send: () => send.digest(batch.text),
     })),
@@ -147,12 +149,13 @@ export async function deliverAndRecord({
   record,
   search,
   site,
+  isItem,
 }: {
   found: Findings;
   send: DeliveryTargets;
   record: (delivered: Findings) => Promise<void>;
 } & Origin): Promise<DeliveryResult> {
-  const result = await deliverFindings(found, send, { search, site });
+  const result = await deliverFindings(found, send, { search, site, isItem });
 
   // Persist whatever reached the user, even if a later message failed — otherwise the whole
   // delivery would be re-sent next run.

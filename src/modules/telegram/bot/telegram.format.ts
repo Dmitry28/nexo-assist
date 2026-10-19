@@ -2,7 +2,7 @@ import type { BotCommand } from 'grammy/types';
 
 import { LOCALE } from '@/common/locale';
 import type { Listing } from '@/modules/sources/source-adapter';
-import { SOURCES, siteName } from '@/modules/sources/sources';
+import { SOURCES, siteName, watchedItem } from '@/modules/sources/sources';
 import type { Removal } from '@/modules/subscriptions/findings';
 import type { PriceChange } from '@/modules/subscriptions/price-change';
 
@@ -201,9 +201,17 @@ export const priceChangeBatches = (
 ): DigestBatch<PriceChange>[] =>
   batches(changes, { title: '💸 Цена изменилась', format: formatPriceChange, search });
 
-/** Delivered listings gone from their sale list: title, last price, link. */
-export const removalBatches = (removed: Removal[], search?: string): DigestBatch<Removal>[] =>
-  batches(removed, { title: '🚫 Снято с продажи', format: formatRemoval, search });
+/** Delivered listings gone from their sale list — or a watched listing gone: title, last price, link. */
+export const removalBatches = (
+  removed: Removal[],
+  search?: string,
+  isItem?: boolean,
+): DigestBatch<Removal>[] =>
+  batches(removed, {
+    title: isItem ? '🚫 Объявление снято — больше не слежу' : '🚫 Снято с продажи',
+    format: formatRemoval,
+    search,
+  });
 
 /** Longest path a label will show. In a card the header shares the caption budget with the
  *  listing itself; in a digest it is a line of its own. */
@@ -221,6 +229,9 @@ export const MAX_LABEL_CHARS = 40;
  */
 export function searchLabel({ source, url }: { source: string; url: string }): string {
   const site = siteName(source);
+  // A watched listing has no search path to show — its id names it.
+  const item = watchedItem(source, url);
+  if (item) return `${site} · объявление ${item.id}`;
   let path: string;
   try {
     path = new URL(url).pathname

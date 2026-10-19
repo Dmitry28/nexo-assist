@@ -8,7 +8,7 @@ import type { Protection } from './scraping/ladder';
 import { paginate } from './scraping/paginate';
 import { mapPool } from './scraping/pool';
 import { pageCredits, poolOf } from './scraping/providers';
-import { SourceUnavailableError } from './source-adapter';
+import { PageNotFoundError, SourceUnavailableError } from './source-adapter';
 import type { FetchResult, Listing, SourceAdapter, SourceId } from './source-adapter';
 
 /** A fetch pinned to the source's host and proxy — what `load` and `enrich` get to work with. */
@@ -88,6 +88,20 @@ interface CommonDefinition<Id extends string> {
    * for an archive (auction notices) nor a search, where listings fall out of the window by age.
    */
   reportsRemoved?: true;
+  /** A link to one listing is watched for its price and removal (PRODUCT.md § Одно объявление). */
+  item?: ItemDefinition;
+}
+
+/** How a source reads a link to a single listing instead of a search. */
+interface ItemDefinition {
+  /** The listing id an item link names; null when the link is no item page (a search). */
+  id(url: string): string | null;
+  /** The listing's one canonical address — what is stored, so two forms of a link dedup. */
+  url(id: string): string;
+  /** The listing on its live page. Throws SourceUnavailableError on a page it cannot read. */
+  parse(html: string): Listing;
+  /** Whether a 404 page is the site saying the listing is gone — not a broken or moved URL. */
+  isGone(notFoundHtml: string): boolean;
 }
 
 /** A site that numbers its pages, counting from `first`; `next` says whether another follows. */
@@ -144,10 +158,11 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
     // second request for the list, no item visits.
     if (
       def.protection &&
-      (!('singlePage' in def) || 'load' in def || 'enrich' in def || def.pinPath)
+      (!('singlePage' in def) || 'load' in def || 'enrich' in def || def.pinPath || def.item)
     ) {
+      // `item` too: fetchItem takes the plain fetch, so a protected item page would skip the ladder.
       throw new Error(
-        `${def.id}: protection takes one plain page — no paging, load, enrich, pinPath`,
+        `${def.id}: protection takes one plain page — no paging, load, enrich, pinPath, item`,
       );
     }
     const subHosts = definitions
@@ -174,16 +189,43 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
       matches: (url) =>
         matchesHost({ url, host: def.host }) &&
         !subHosts.some((host) => matchesHost({ url, host })) &&
-        onSearchPath(url),
+        (onSearchPath(url) || isItem(def, url)),
       reportsRemoved: def.reportsRemoved === true,
       // The worst case — the free rungs only make the real spend lower.
       paidPoll: def.protection && {
         credits: pageCredits(def.protection),
         pool: poolOf(def.protection),
       },
-      fetch: (url, options) => fetchSearch(def, url, pagingParam, logger, options),
+      fetch: (url, options) =>
+        def.item && isItem(def, url)
+          ? fetchItem(def, def.item, url)
+          : fetchSearch(def, url, pagingParam, logger, options),
     };
   });
+}
+
+const isItem = (def: SourceDefinition, url: string): boolean =>
+  (def.item?.id(url) ?? null) !== null;
+
+/**
+ * One listing's page: the listing, or — only when the site's own 404 says so — `gone`. Any other
+ * failure stays a SourceUnavailableError: an outage must never read as «removed». No `pinPath`:
+ * item pages redirect to their full address by design (kufar /vi/<id> → /vi/<city>/…/<id>).
+ */
+async function fetchItem(
+  def: SourceDefinition,
+  item: ItemDefinition,
+  url: string,
+): Promise<FetchResult> {
+  try {
+    const html = await fetchHtml({ url, host: def.host, useProxy: def.useProxy });
+    return { listings: [item.parse(html)], complete: true, capped: false };
+  } catch (err) {
+    if (err instanceof PageNotFoundError && item.isGone(err.html)) {
+      return { listings: [], complete: true, capped: false, gone: true };
+    }
+    throw err;
+  }
 }
 
 const requested = (def: SourceDefinition, url: string): string => def.requestUrl?.(url) ?? url;

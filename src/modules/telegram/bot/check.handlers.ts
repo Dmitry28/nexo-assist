@@ -5,7 +5,7 @@ import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
 import type { Listing } from '@/modules/sources/source-adapter';
-import { siteName } from '@/modules/sources/sources';
+import { siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { countOf } from '@/modules/subscriptions/findings';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -111,15 +111,18 @@ export class CheckHandlers {
       const outcome = await this.watch.poll(sub);
       if (outcome.kind === 'nothing') return false;
       if (outcome.kind === 'baselined') {
-        await ctx.reply(
-          `${siteName(sub.source)} — объявлений сейчас: ${outcome.count}, дальше только новые.\n${sub.url}`,
-          { link_preview_options: NO_LINK_PREVIEW },
-        );
+        const what = watchedItem(sub.source, sub.url)
+          ? 'слежу за ценой объявления'
+          : `объявлений сейчас: ${outcome.count}, дальше только новые`;
+        await ctx.reply(`${siteName(sub.source)} — ${what}.\n${sub.url}`, {
+          link_preview_options: NO_LINK_PREVIEW,
+        });
         return true;
       }
       const { delivered, error, recordError } = await deliverAndRecord({
         search: searchLabel(sub),
         site: siteName(sub.source),
+        isItem: watchedItem(sub.source, sub.url) !== undefined,
         found: outcome,
         send: {
           card: (message) =>
@@ -169,6 +172,8 @@ export class CheckHandlers {
     } catch (err) {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);
       this.reportCheck({ err, ctx, sub });
+      // TODO [L]: says «поиск» for a watched single listing too — here, the send failure above and
+      // the subscribe-time outage reply (telegram.handlers.ts).
       await ctx
         .reply(
           `Не получилось проверить поиск на ${siteName(sub.source)} — попробуйте позже.\n${sub.url}`,

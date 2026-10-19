@@ -10,6 +10,7 @@ import {
   asRecord,
   asText,
   asTexts,
+  parseNextData,
   requireArray,
   requireNextData,
   withIds,
@@ -29,6 +30,8 @@ interface RawKufarAd {
   ad_link?: string;
   subject?: string;
   body_short?: string;
+  /** The full text — a search card shows `body_short`, an item page has room for this. */
+  body?: string;
   price_byn?: string;
   price_usd?: string;
   list_time: string;
@@ -91,6 +94,31 @@ export function extractPage(html: string): KufarPage {
   const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
   return { ads, nextCursor };
 }
+
+/** The ad view of an item page (`re.kufar.by/vi/…`) — a live ad's data, or the site's error. */
+const adView = (data: Record<string, unknown> | null): Record<string, unknown> | undefined =>
+  asRecord(asRecord(asRecord(data?.props)?.initialState)?.adView);
+
+/**
+ * One ad from its own page. Measured 2026-10-19: `adView.data.initial` is the ad in the very shape
+ * a search page lists (`mapAd` reads it as is); only the full text lives in `body`.
+ */
+export function parseItem(html: string): Listing {
+  const initial = asRecord(asRecord(adView(requireNextData(html, 'kufar'))?.data)?.initial);
+  // The search page's checks, on a list of one: a missing ad or id is a layout change, loudly.
+  const [ad] = withIds(
+    requireArray<RawKufarAd>(initial && [initial], 'kufar', 'adView.data.initial'),
+    (one) => one.ad_id,
+    'kufar',
+  );
+  return { ...mapAd(ad), description: asText(ad.body) };
+}
+
+/** kufar's 404 for a deleted ad names it (measured 2026-10-19: «Ad is not found»). */
+// Never throws: a 404 without kufar's page (a proxy's, a CDN's) is simply not that answer, and the
+// caller's «HTTP 404» must survive as the error, not turn into a fake parser break.
+export const isGoneItem = (notFoundHtml: string): boolean =>
+  adView(parseNextData(notFoundHtml))?.error === 'Ad is not found';
 
 /** A search page as the shared walk reads it: listings and the next page's cursor token. */
 export function parsePage(html: string): SearchPage<string | null> {

@@ -3,7 +3,7 @@ import type { Dispatcher, RequestInit, Response } from 'undici';
 
 import { matchesHost } from '@/common/url';
 
-import { SearchRewrittenError, SourceUnavailableError } from '../source-adapter';
+import { PageNotFoundError, SearchRewrittenError, SourceUnavailableError } from '../source-adapter';
 
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
@@ -222,7 +222,8 @@ async function fetchPinned({
       headers,
       body,
     });
-    if (!res.ok) {
+    // A 404 body is read too: for a watched listing it is the site's own «no such ad» page.
+    if (!res.ok && res.status !== 404) {
       throw new SourceUnavailableError(`HTTP ${res.status} for ${url}`);
     }
     // Bail before buffering the body when the server declares an oversized response.
@@ -240,6 +241,7 @@ async function fetchPinned({
     if (html.length > MAX_HTML_LENGTH) {
       throw new SourceUnavailableError(`Response too large (${html.length} chars) for ${url}`);
     }
+    if (res.status === 404) throw new PageNotFoundError(url, html);
     return html;
   } finally {
     clearTimeout(timer);
