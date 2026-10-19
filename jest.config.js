@@ -1,3 +1,7 @@
+// The pod's clock, on every machine: a spec must not pass only because the laptop happens to
+// sit in Minsk. Set here, before workers spawn (they inherit it) and before anything caches it.
+process.env.TZ = 'UTC';
+
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],

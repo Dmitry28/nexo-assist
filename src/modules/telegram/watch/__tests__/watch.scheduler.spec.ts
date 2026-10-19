@@ -956,6 +956,20 @@ describe('WatchScheduler.runDaily — quiet report', () => {
 describe('WatchScheduler daily job', () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it('reads WATCH_CRON in Minsk time, not the pod clock (UTC)', async () => {
+    const { registry, scheduler } = build({ telegramBotToken: 'token' });
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    scheduler.onModuleInit();
+    const job = registry.getCronJob(JOB_NAME);
+    const next = job.nextDate(); // the process runs on UTC, as the pod does (jest.config.js)
+    await job.stop();
+
+    // '0 9 * * *' = 09:00 Minsk = 06:00 UTC (Minsk is UTC+3 year-round).
+    expect(next.setZone('Europe/Minsk').hour).toBe(9);
+    expect(next.toUTC().hour).toBe(6);
+  });
+
   it('logs and swallows a run-wide failure instead of crashing the process', async () => {
     const { subscriptions, registry, scheduler } = build({ telegramBotToken: 'token' });
     // The initial listActive() sits outside the per-subscription try/catch; a DB blip here

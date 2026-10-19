@@ -12,7 +12,7 @@ data:
   # Secret — the dev bot's stays on the developer's machine.
   APP_ENV: 'production'
   PORT: '3000'
-  # Cron for the daily subscription check (09:00 UTC).
+  # Cron for the daily subscription check, in Europe/Minsk time (09:00 Minsk = 06:00 UTC).
   WATCH_CRON: '0 9 * * *'
   # Pacing between subscription polls: base delay + random 0..jitter (ms).
   WATCH_MIN_DELAY_MS: '2000'
