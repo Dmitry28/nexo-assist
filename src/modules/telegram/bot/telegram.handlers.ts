@@ -5,7 +5,7 @@ import type { Bot, Context } from 'grammy';
 import { extractUrl } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
-import { SearchRewrittenError } from '@/modules/sources/source-adapter';
+import { SearchRewrittenError, UnsupportedSearchError } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
 import { siteName } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -31,6 +31,7 @@ import {
   PROMPT,
   formatStats,
   searchRewrittenNotice,
+  unsupportedSearchNotice,
 } from './telegram.format';
 
 // The site is read through a paid anti-bot service, and the bot as a whole has a daily budget.
@@ -163,11 +164,21 @@ export class TelegramHandlers {
     // On failure the subscription is kept (except a rewritten search, below); the daily run
     // baselines it silently.
     const baseline = await this.watch.baseline(sub).catch((err: unknown) => {
-      if (err instanceof SearchRewrittenError) return err;
+      if (err instanceof SearchRewrittenError || err instanceof UnsupportedSearchError) return err;
       this.logger.warn({ err }, `Baseline failed for ${sub.url}`);
       reportUserFacing(err, { userId: candidate.userId, action: 'subscribe', url: sub.url });
       return null;
     });
+
+    if (baseline instanceof UnsupportedSearchError) {
+      this.logger.log(`Rejected an unmapped search: ${baseline.params.join(', ')}`);
+      await this.subscriptions.remove(sub.id, candidate.userId);
+      await ctx.editMessageText(
+        unsupportedSearchNotice({ url: candidate.url, params: baseline.params }),
+        { link_preview_options: NO_LINK_PREVIEW },
+      );
+      return;
+    }
 
     if (baseline instanceof SearchRewrittenError) {
       // Not kept: every poll would hit the same redirect, and the search behind it is not the
