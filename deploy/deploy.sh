@@ -65,6 +65,27 @@ fi
 REV_BEFORE=$(k3s kubectl get deployment/nexo-assist \
   -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' 2>/dev/null || true)
 
+# Keep the log of the pod we are about to replace: a container's log lives only as long as its
+# pod, and it is the one full record of the daily runs (Sentry sees errors only). Named by the
+# time it was cut off; the newest 14 are kept. `|| true` — an archive must never block a deploy,
+# but a missed one says so: a silent miss is the loss this exists to prevent.
+# `--previous` first: a container restarted inside the pod (crash, OOM) left its log there.
+# NOTE: `kubectl logs` reads only the kubelet's current file (k3s rotates it at 10Mi).
+LOG_DIR=/var/log/nexo-assist
+if [[ -n "$REV_BEFORE" ]]; then
+  LOG_FILE="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ).log"
+  if {
+    k3s kubectl logs deployment/nexo-assist -c app --previous 2>/dev/null || true
+    k3s kubectl logs deployment/nexo-assist -c app 2>/dev/null
+  } >"$LOG_FILE.tmp" && [[ -s "$LOG_FILE.tmp" ]] && mv "$LOG_FILE.tmp" "$LOG_FILE"; then
+    echo "deploy: outgoing pod log kept in ${LOG_FILE}"
+    ls -1t "$LOG_DIR"/*.log | tail -n +15 | xargs -r rm -f -- || true
+  else
+    rm -f -- "$LOG_FILE.tmp" 2>/dev/null || true
+    echo "deploy: outgoing pod log NOT kept — no ${LOG_DIR} (setup-server.sh creates it) or kubectl logs failed or was empty" >&2
+  fi
+fi
+
 echo "deploy: applying manifests"
 k3s kubectl apply -k "$REPO_DIR/k8s/"
 
