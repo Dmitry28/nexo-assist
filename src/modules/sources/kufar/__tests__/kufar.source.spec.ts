@@ -105,6 +105,8 @@ describe('kufar source', () => {
     it.each([
       ['another 404 page', 404, '<html>not found</html>', PageNotFoundError],
       ['an outage', 503, gone, SourceUnavailableError],
+      // A page that is no item page (a layout change) is a loud parse failure.
+      ['a page without the listing', 200, fixture, SourceUnavailableError],
     ])('treats %s as a failure, never as removed', async (_, status, body, error) => {
       fetchMock.mockResolvedValue(new Response(body, { status }));
 

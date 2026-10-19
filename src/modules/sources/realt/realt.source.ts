@@ -1,6 +1,6 @@
 import { defineSource } from '../source-definition';
 
-import { HOST, parsePage } from './realt.parser';
+import { HOST, isGoneItem, matchItem, parseItem, parsePage } from './realt.parser';
 
 /** realt.by — real estate. */
 export const realt = defineSource({
@@ -15,4 +15,5 @@ export const realt = defineSource({
   // realt redirects a search it rewrites (e.g. any `addressV2` filter) to a wider one.
   pinPath: true,
   parse: parsePage,
+  item: { match: matchItem, parse: parseItem, isGone: isGoneItem },
 });

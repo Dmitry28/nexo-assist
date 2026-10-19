@@ -94,12 +94,13 @@ interface CommonDefinition<Id extends string> {
 
 /** How a source reads a link to a single listing instead of a search. */
 interface ItemDefinition {
-  /** The listing id an item link names; null when the link is no item page (a search). */
-  id(url: string): string | null;
-  /** The listing's one canonical address — what is stored, so two forms of a link dedup. */
-  url(id: string): string;
-  /** The listing on its live page. Throws SourceUnavailableError on a page it cannot read. */
-  parse(html: string): Listing;
+  /**
+   * The listing an item link names — its id and its one canonical address (stored, so two forms
+   * of a link dedup); null when the link is no item page (a search).
+   */
+  match(url: string): { id: string; url: string } | null;
+  /** The listing on its live page (`url`: the stored item link). Throws SourceUnavailableError on a page it cannot read. */
+  parse(html: string, url: string): Listing;
   /** Whether a 404 page is the site saying the listing is gone — not a broken or moved URL. */
   isGone(notFoundHtml: string): boolean;
 }
@@ -204,8 +205,7 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
   });
 }
 
-const isItem = (def: SourceDefinition, url: string): boolean =>
-  (def.item?.id(url) ?? null) !== null;
+const isItem = (def: SourceDefinition, url: string): boolean => Boolean(def.item?.match(url));
 
 /**
  * One listing's page: the listing, or — only when the site's own 404 says so — `gone`. Any other
@@ -219,7 +219,7 @@ async function fetchItem(
 ): Promise<FetchResult> {
   try {
     const html = await fetchHtml({ url, host: def.host, useProxy: def.useProxy });
-    return { listings: [item.parse(html)], complete: true, capped: false };
+    return { listings: [item.parse(html, url)], complete: true, capped: false };
   } catch (err) {
     if (err instanceof PageNotFoundError && item.isGone(err.html)) {
       return { listings: [], complete: true, capped: false, gone: true };
