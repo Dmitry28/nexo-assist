@@ -127,7 +127,7 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
   `load` (the list body when that is not the pasted GET — a POST or a widget, any paging kind),
   `enrich` (an item-page visit, single-page only), `parse`,
   `reportsRemoved` when leaving the page means sold (see its doc), `item` when a link to one
-  listing is watched for its price and removal (`id`/`url`/`parse`/`isGone`; see its doc);
+  listing is watched for its price and removal (`match`/`parse`/`isGone`; see its doc);
   `useProxy`/`pinPath` only for a measured reason ([PRODUCT_TECH.md](../../PRODUCT_TECH.md)),
   `protection` for a site behind anti-bot protection (the fetch ladder, paid; see its doc).
   Matching, pinning, paging and the duplicate-check params come from `createSourceAdapters` (its

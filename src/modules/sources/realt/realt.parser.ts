@@ -8,6 +8,8 @@ import {
   asRecord,
   asText,
   asTexts,
+  parseNextData,
+  requireArray,
   requireNextData,
   withIds,
 } from '../scraping/next-data';
@@ -46,6 +48,8 @@ interface RawRealtObject {
   location?: number[] | null;
   /** Pre-built CDN URLs. */
   images?: unknown;
+  /** The same photos on an object's own page, where `images` is absent (measured 2026-10-19). */
+  slides?: unknown;
 }
 
 interface RawPagination {
@@ -98,6 +102,46 @@ export function extractPage(html: string): RealtPage {
     pagination: (pageProps.pagination as RawPagination | undefined) ?? null,
   };
 }
+
+// An object's page: `/<sale|rent>-<type>/object/<code>/`, region-prefixed once realt redirects it
+// (`/grodno-region/sale-plots/object/<code>/`). The category slug is part of the address — the same
+// code under another one is a 404 — so it is kept in the canonical link.
+const ITEM_PATH = /^\/(?:[a-z0-9-]+\/)?((?:sale|rent)-[a-z-]+)\/object\/(\d+)\/?$/;
+
+/** The object an item link names: its code, its canonical link and the category slug in it. */
+export function matchItem(url: string): { id: string; url: string; slug: string } | null {
+  const [, slug, code] = ITEM_PATH.exec(new URL(url).pathname) ?? [];
+  return slug && code ? { id: code, url: `https://${HOST}/${slug}/object/${code}/`, slug } : null;
+}
+
+/**
+ * One object from its own page. Measured 2026-10-19: `pageProps.object` is the shape a search
+ * lists (`mapObject` reads it), photos under `slides`.
+ */
+export function parseItem(html: string, url: string): Listing {
+  const item = matchItem(url);
+  if (item === null) throw new SourceUnavailableError(`realt: not an object link: ${url}`);
+  const object = asRecord(
+    asRecord(asRecord(requireNextData(html, 'realt').props)?.pageProps)?.object,
+  );
+  // The search page's checks, on a list of one: a missing object or code is a layout change.
+  const [obj] = withIds(
+    requireArray<RawRealtObject>(object && [object], 'realt', 'pageProps.object'),
+    (one) => one.code,
+    'realt',
+  );
+  return mapObject({ ...obj, images: obj.slides }, item.slug);
+}
+
+/**
+ * realt's own 404 page — what a removed object answers under every category (8 of 40 old objects
+ * measured 2026-10-19; none was ever served with `archive` set). Never throws: a 404 without
+ * realt's page (a proxy's) is not that answer.
+ * NOTE: a live object under a wrong category answers the same page, so a realt rename of its
+ * category slugs would read as every watched object gone at once.
+ */
+export const isGoneItem = (notFoundHtml: string): boolean =>
+  parseNextData(notFoundHtml)?.page === '/404';
 
 /** A search page as the shared walk reads it — the object-URL slug comes from the search URL. */
 export function parsePage(html: string, { url, sent }: PageContext): SearchPage<boolean> {
