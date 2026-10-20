@@ -1,8 +1,23 @@
+import { startCode } from '../auction-lot';
+import type { LotFilter, Range } from '../auction-lot';
 import { asNumber, asText } from '../scraping/next-data';
 import { UnsupportedSearchError } from '../source-adapter';
 
 /** Query keys that name the search. Anything else on a fallback would silently widen it. */
-const USED = new Set(['make', 'model', 'year-from', 'year-to', 'type', 'auction-type', 'status']);
+const USED = new Set([
+  'make',
+  'model',
+  'year-from',
+  'year-to',
+  'type',
+  'auction-type',
+  'status',
+  'odometer-from',
+  'odometer-to',
+  'engine-size-from',
+  'engine-size-to',
+  'start-code',
+]);
 /** Pins, pager and the site's own "this is a filter form" flag — they name no extra constraint. */
 const NOISE = new Set(['search-type', 'order-by', 'page']);
 
@@ -19,6 +34,8 @@ export interface AuctionFilters {
   /** Copart `VEHT` code, when the type is one we map. IAAI has no working type POST. */
   vehicle?: { copart: string };
   houses: AuctionHouse[];
+  /** What the auctions' search cannot filter — applied to the lots fetched (matchesLot). */
+  lot: LotFilter;
 }
 
 const VEHICLE_TYPES: Record<string, { copart: string }> = {
@@ -55,13 +72,26 @@ export function auctionFilters(url: string): AuctionFilters {
     throw new UnsupportedSearchError(url, [`status=${status}`]);
   }
 
+  const start = named(params.get('start-code'));
+  const code = start === undefined ? undefined : startCode(start);
+  if (start !== undefined && code === undefined) {
+    throw new UnsupportedSearchError(url, [`start-code=${start}`]);
+  }
+
   return {
     make: named(params.get('make'))?.toUpperCase(),
     model: named(params.get('model'))?.toUpperCase(),
-    yearFrom: yearBound(url, params, 'year-from'),
-    yearTo: yearBound(url, params, 'year-to'),
+    yearFrom: bound(url, params, 'year-from'),
+    yearTo: bound(url, params, 'year-to'),
     vehicle,
     houses,
+    // NOTE: bid.cars lists US lots, so its odometer bounds are taken as miles — the unit both
+    // auctions report — and engine size as litres (`engine-size-to=2`), as both write it.
+    lot: {
+      odometer: range(url, params, 'odometer'),
+      engine: range(url, params, 'engine-size'),
+      start: code,
+    },
   };
 }
 
@@ -70,10 +100,16 @@ const named = (raw: string | null): string | undefined => {
   return text !== undefined && !ANY.has(text.toLowerCase()) ? text : undefined;
 };
 
-function yearBound(url: string, params: URLSearchParams, key: string): number | undefined {
+function range(url: string, params: URLSearchParams, key: string): Range | undefined {
+  const from = bound(url, params, `${key}-from`);
+  const to = bound(url, params, `${key}-to`);
+  return from === undefined && to === undefined ? undefined : { from, to };
+}
+
+function bound(url: string, params: URLSearchParams, key: string): number | undefined {
   const raw = params.get(key);
   if (raw === null || raw.trim() === '') return undefined;
-  const year = asNumber(raw);
-  if (year === undefined) throw new UnsupportedSearchError(url, [key]);
-  return year;
+  const value = asNumber(raw);
+  if (value === undefined) throw new UnsupportedSearchError(url, [key]);
+  return value;
 }

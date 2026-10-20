@@ -10,8 +10,8 @@ export const iaai = defineSource({
   about: 'аукцион США (IAAI)',
   searchPath: SEARCH_PATH,
   singlePage: true,
-  // TODO [M]: measured from home 2026-10-18 (200 HTML); not from Hetzner. Imperva may refuse
-  // the datacenter — then flip USE_PROXY and re-measure through Oracle.
+  // Through the Oracle proxy: measured from the pod 2026-10-20 — direct from Hetzner, a 200 with no
+  // search page (Imperva); through the proxy, the search (244 lot links).
   // One page (100 lots): the next 100 is another POST (`TODO [M]` if a wide search misses new ones).
   useProxy: USE_PROXY,
   load,

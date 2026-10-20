@@ -1,18 +1,24 @@
+import { Logger } from '@nestjs/common';
+
 import { withParam } from '@/common/url';
 
+import { matchesLot, missingFact } from '../auction-lot';
 import {
   HOST as COPART_HOST,
   load as copartLoad,
   parsePage as copartPage,
 } from '../copart/copart.parser';
 import { listingsFrom as iaaiListings, loadSearch as iaaiLoad } from '../iaai/iaai.parser';
-import { MAX_LISTINGS, UnsupportedSearchError } from '../source-adapter';
+import { MAX_LISTINGS, SourceUnavailableError, UnsupportedSearchError } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
 import type { AuctionFilters } from './bid-cars.filters';
 import { auctionFilters } from './bid-cars.filters';
 
+const logger = new Logger('bid-cars:auctions');
+
 const COPART_PAGE_SIZE = 100;
+const FACT_CHECK_MIN_LOTS = 10;
 const IAAI_PAGE_SIZE = 100;
 
 /** Copart + IAAI lots for the pasted bid.cars filters, ids in bid.cars's `1-` / `0-` form. */
@@ -23,21 +29,60 @@ export async function fromAuctions(url: string): Promise<Listing[]> {
   // can still run; refuse when IAAI was the only house.
   const houses = filters.houses.filter((house) => house !== 'iaai' || keyword !== '');
   if (houses.length === 0) throw new UnsupportedSearchError(url, ['make']);
-  const fetched = await Promise.all(
-    houses.map((house) =>
-      house === 'copart' ? copartLots(filters, MAX_LISTINGS) : iaaiLots(filters, keyword),
-    ),
+  const settled = await Promise.allSettled(
+    houses.map(async (house) => {
+      const lots =
+        house === 'copart'
+          ? await copartLots(filters, MAX_LISTINGS)
+          : await iaaiLots(filters, keyword);
+      // Loud, not an empty result: a fact the filter needs that no lot of a house carries is the
+      // parser missing the field, and failing every lot on it would silence that house for good.
+      // Only past a floor — a handful of lots may all lack a start badge.
+      const missing =
+        lots.length >= FACT_CHECK_MIN_LOTS ? missingFact(lots, filters.lot) : undefined;
+      if (missing !== undefined) {
+        throw new SourceUnavailableError(`${house}: no lot carries «${missing}» — layout changed?`);
+      }
+      return lots;
+    }),
   );
-  const byHouse = new Map(houses.map((house, i) => [house, fetched[i] ?? []]));
+  // One house not answering is not the search down: the other's lots still go out (Copart refuses
+  // every datacenter IP we have, measured 2026-10-20). Our own bug or a refused filter is not
+  // «not answering» — rethrown. Every house down — the search did not answer.
+  const byHouse = new Map<string, Listing[]>();
+  const down: SourceUnavailableError[] = [];
+  for (const [i, result] of settled.entries()) {
+    const house = houses[i] as string;
+    if (result.status === 'fulfilled') {
+      byHouse.set(house, result.value);
+      continue;
+    }
+    const err: unknown = result.reason;
+    if (!(err instanceof SourceUnavailableError) || err instanceof UnsupportedSearchError)
+      throw err;
+    down.push(err);
+    logger.warn({ err }, `bid.cars fallback: ${house} did not answer — the other house only`);
+  }
+  if (byHouse.size === 0) throw down[0];
+  // TODO [M]: a lot of the house that was down reads as new once it answers again (no «partial»
+  // flag on a single-page source); bounded by the digest cap.
   // IAAI first: a full Copart window must not drop the other house.
   const listings = [...(byHouse.get('iaai') ?? []), ...(byHouse.get('copart') ?? [])];
   const byId = new Map<string, Listing>();
   for (const listing of listings) {
     if (!byId.has(listing.externalId)) byId.set(listing.externalId, listing);
   }
+  // TODO [M]: the lot filter sees only the fetched window — matching lots past its edge are lost.
+  // Copart's own odometer / condition filters (unmeasured) would move it before the window.
   const unique = [...byId.values()];
+  const kept = unique.filter((listing) => matchesLot(listing, filters.lot));
+  // The overflow is judged on what was fetched: once the filter narrows it under the window,
+  // the extra-listing marker (`capped`, below) can no longer carry it.
+  if (unique.length > MAX_LISTINGS && kept.length <= MAX_LISTINGS) {
+    logger.warn(`Auction window overflowed before the lot filter: ${url}`);
+  }
   // One extra listing tells paginate the window overflowed (`capped`).
-  return unique.slice(0, unique.length > MAX_LISTINGS ? MAX_LISTINGS + 1 : MAX_LISTINGS);
+  return kept.slice(0, kept.length > MAX_LISTINGS ? MAX_LISTINGS + 1 : MAX_LISTINGS);
 }
 
 async function copartLots(filters: AuctionFilters, limit: number): Promise<Listing[]> {
