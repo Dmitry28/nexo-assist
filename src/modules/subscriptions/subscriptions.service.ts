@@ -235,6 +235,13 @@ export class SubscriptionsService {
     await this.subs.update({ id }, { consecutiveFailures: 0 });
   }
 
+  /** Set (or with null, clear) the user's keyword filter on their subscription. False if not theirs. */
+  async setKeywords(id: string, telegramUserId: number, keywords: string | null): Promise<boolean> {
+    if (!(await this.findOwned(id, telegramUserId))) return false;
+    await this.subs.update({ id }, { keywords });
+    return true;
+  }
+
   /** Removes the subscription only if it belongs to the user; its seen rows cascade (FK). */
   async remove(id: string, telegramUserId: number): Promise<boolean> {
     if (!(await this.findOwned(id, telegramUserId))) return false;
