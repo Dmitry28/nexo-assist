@@ -15,6 +15,7 @@ import {
 } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
+import { GONE } from '../source-definition';
 import type { SearchPage } from '../source-definition';
 
 /** rabota.by — hh.ru's Belarusian site. */
@@ -39,6 +40,10 @@ interface RawVacancy {
     mode?: unknown;
   };
   publicationTime?: { $?: unknown };
+  /** On a vacancy's own page, in place of `publicationTime`. */
+  publicationTimeIso?: unknown;
+  /** On a vacancy's own page: a closed one stays up, `archived` (measured 2026-10-19). */
+  status?: { archived?: unknown };
   area?: { name?: unknown };
   address?: { displayName?: unknown; marker?: { '@lat'?: unknown; '@lng'?: unknown } };
 }
@@ -50,8 +55,7 @@ interface RawVacancy {
  * is a SourceUnavailableError, never an empty search; a real zero-result page carries `[]`.
  */
 export function parsePage(html: string): SearchPage<boolean> {
-  const template = parse(html).querySelector('template#HH-Lux-InitialState');
-  const result = asRecord(asRecord(parseJson(template?.textContent))?.vacancySearchResult);
+  const result = asRecord(initialState(html)?.vacancySearchResult);
   if (!result) {
     throw new SourceUnavailableError('rabota: no search state on the page — anti-bot or redesign?');
   }
@@ -71,6 +75,42 @@ export function parsePage(html: string): SearchPage<boolean> {
     next: pager !== undefined && pager.disabled !== true,
   };
 }
+
+/** hh's page state — the JSON in `<template id="HH-Lux-InitialState">`; never throws. */
+const initialState = (html: string): Record<string, unknown> | undefined =>
+  asRecord(parseJson(parse(html).querySelector('template#HH-Lux-InitialState')?.textContent));
+
+/**
+ * One vacancy from its own page (`/vacancy/<id>`): the search's vacancy shape (measured
+ * 2026-10-19), or GONE once closed — a closed vacancy stays up with `status.archived` (11 of 15
+ * old ones). The salary also goes in as a number, so a changed one reads as a price change; the
+ * card still shows it as text.
+ */
+export function parseItem(html: string): Listing | typeof GONE {
+  const view = asRecord(asRecord(initialState(html)?.vacancyView)?.vacancyFull);
+  const vacancy = asRecord(view?.vacancy);
+  // The search page's checks, on a list of one: a missing vacancy or id is a layout change.
+  const [raw] = withIds(
+    requireArray<RawVacancy>(vacancy && [vacancy], 'rabota', 'vacancyView.vacancyFull.vacancy'),
+    (v) => v.vacancyId,
+    'rabota',
+  );
+  // NOTE: only `archived` is read — `disabled` / `hiddenInArchive` were never seen set on their own.
+  if (raw.status?.archived === true) return GONE;
+  // NOTE: the number compared is the lower bound (else the upper), in BYN or USD only: a change of
+  // the other bound or of the period (`mode`) alone is no «💸», another currency never is.
+  const pay = asNumber(raw.compensation?.from) ?? asNumber(raw.compensation?.to);
+  const currency = asCurrency(raw.compensation?.currencyCode) ?? 'BYN';
+  return {
+    ...toListing({ ...raw, publicationTime: { $: raw.publicationTimeIso } }),
+    priceByn: currency === 'BYN' ? pay : undefined,
+    priceUsd: currency === 'USD' ? pay : undefined,
+  };
+}
+
+/** rabota's 404 for an unknown vacancy carries `errorCode: 404` in its state (measured). */
+export const isGoneItem = (notFoundHtml: string): boolean =>
+  initialState(notFoundHtml)?.errorCode === 404;
 
 function toListing(raw: RawVacancy): Listing {
   return {
