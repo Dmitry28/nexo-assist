@@ -11,7 +11,7 @@ export const USERS = 'nexo_users';
 export const ACTIVE_SUBSCRIPTIONS = 'nexo_active_subscriptions';
 
 /** Why a subscription was auto-paused — a label on SUBSCRIPTIONS_PAUSED_TOTAL. */
-export type PauseReason = 'blocked' | 'dead';
+export type PauseReason = 'blocked' | 'dead' | 'unwatchable';
 
 /** Thin facade over the product Prometheus metrics — semantic methods, one place for names. */
 @Injectable()

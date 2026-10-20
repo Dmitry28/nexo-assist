@@ -172,6 +172,8 @@ export class CheckHandlers {
     } catch (err) {
       this.logger.warn({ err }, `Check failed for ${sub.url}`);
       this.reportCheck({ err, ctx, sub });
+      // TODO [L]: an UnsupportedSearchError / UnwatchableItemError gets «попробуйте позже» and a
+      // Sentry event until the daily run pauses it — reply with unwatchableNotice instead.
       // TODO [L]: says «поиск» for a watched single listing too — here, the send failure above and
       // the subscribe-time outage reply (telegram.handlers.ts).
       await ctx

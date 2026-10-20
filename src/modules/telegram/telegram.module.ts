@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { MetricsModule } from '@/metrics/metrics.module';
+import { SourceRequestsModule } from '@/modules/source-requests/source-requests.module';
 import { SourcesModule } from '@/modules/sources/sources.module';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 
@@ -21,7 +22,7 @@ import { WatchStatus } from './watch/watch.status';
  * was resolved. The split into `modules/watch`: PRODUCT_PLAN.md § Технический бэклог.
  */
 @Module({
-  imports: [SubscriptionsModule, SourcesModule, MetricsModule],
+  imports: [SubscriptionsModule, SourcesModule, SourceRequestsModule, MetricsModule],
   providers: [
     TelegramService,
     TelegramHandlers,

@@ -17,3 +17,5 @@ delete process.env.SCRAPEOPS_API_KEY;
 delete process.env.SCRAPINGANT_API_KEY;
 delete process.env.SCRAPER_API_KEY;
 delete process.env.SCRAPFLY_API_KEY;
+// Files GitHub issues — a spec must never open one in the real repo.
+delete process.env.GITHUB_ISSUES_TOKEN;
