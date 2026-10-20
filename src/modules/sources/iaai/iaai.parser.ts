@@ -1,6 +1,7 @@
 import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
+import { LOT_LABELS, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
 import { elementText, linkPath } from '../scraping/html';
 import { fetchJson } from '../scraping/http';
@@ -19,7 +20,7 @@ const SEARCH_API = 'https://www.iaai.com/Search';
 const PAGE_SIZE = 100;
 const CARD_WALK_DEPTH = 8;
 /** Flip with the source's `useProxy` — POST bypasses `get`, so the flag must live here too. */
-export const USE_PROXY = false;
+export const USE_PROXY = true;
 
 /** The site's search POST — Keyword from a pasted IAAI link, or a body another source built. */
 export function loadSearch(body: Record<string, unknown>): Promise<string> {
@@ -103,13 +104,25 @@ function toListing(titleLink: HTMLElement): Listing | undefined {
       detail('VIN', maskedVin(fact.get('VIN'))),
       detail('Аукцион', 'IAAI'),
       detail('Stock', fact.get('Stock #') ?? fact.get('Stock #:')),
-      detail('Пробег', fact.get('Odometer')),
+      detail(LOT_LABELS.odometer, fact.get('Odometer')),
+      detail(LOT_LABELS.engine, fact.get('Engine')?.split(',')[0]),
+      detail(LOT_LABELS.start, startText(fact.get('Start Code')) ?? startBadge(card)),
       detail('Повреждение', fact.get('Primary Damage')),
       detail('Документ', fact.get('Title/Sale Doc')),
       detail('Ключи', fact.get('Key')),
     ),
   };
 }
+
+/**
+ * The card's start badge — «Run & Drive», «Starts», «Stationary».
+ * NOTE: the «Start Code» fact was empty on every card measured (2026-10-20); the badge carries it.
+ */
+const startBadge = (card: HTMLElement): string | undefined =>
+  card
+    .querySelectorAll('.badge')
+    .map((badge) => startText(elementText(badge)))
+    .find((text) => text !== undefined);
 
 /** Walk up until the parent holds more than one titled lot — the card, not the whole table. */
 function cardOf(link: HTMLElement): HTMLElement {

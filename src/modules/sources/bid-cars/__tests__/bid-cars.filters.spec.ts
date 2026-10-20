@@ -13,6 +13,16 @@ describe('bid.cars auctionFilters', () => {
       yearTo: 2024,
       vehicle: { copart: 'VEHTYPE_V' },
       houses: ['copart', 'iaai'],
+      lot: {},
+    });
+  });
+
+  it('keeps what the auctions cannot filter — odometer, engine size, start code — for the lots', () => {
+    const url = `${sample}&odometer-to=60000&start-code=Run+and+Drive&engine-size-to=2&order-by=dateDesc`;
+    expect(auctionFilters(url).lot).toEqual({
+      odometer: { to: 60000 },
+      engine: { to: 2 },
+      start: 'run-and-drive',
     });
   });
 
@@ -24,6 +34,7 @@ describe('bid.cars auctionFilters', () => {
   it('drops All / empty as «no filter»', () => {
     expect(auctionFilters('https://bid.cars/ru/search/results?make=All&model=&type=All')).toEqual({
       houses: ['copart', 'iaai'],
+      lot: {},
     });
   });
 
@@ -33,6 +44,8 @@ describe('bid.cars auctionFilters', () => {
       UnsupportedSearchError,
     );
     expect(() => auctionFilters(`${sample}&year-from=abc`)).toThrow(UnsupportedSearchError);
+    expect(() => auctionFilters(`${sample}&odometer-to=lots`)).toThrow(UnsupportedSearchError);
+    expect(() => auctionFilters(`${sample}&start-code=Unknown`)).toThrow(UnsupportedSearchError);
     expect(() => auctionFilters('https://bid.cars/ru/search/results?status=All')).toThrow(
       UnsupportedSearchError,
     );

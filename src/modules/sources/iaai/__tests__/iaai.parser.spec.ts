@@ -23,6 +23,9 @@ describe('iaai listingsFrom', () => {
         { label: 'Аукцион', value: 'IAAI' },
         { label: 'Stock', value: '46218713' },
         { label: 'Повреждение', value: 'Flood' },
+        { label: 'Пробег', value: '89,003 mi' },
+        { label: 'Двигатель', value: '3.6L V-6 DI' },
+        { label: 'Запуск', value: 'Run and Drive' },
       ]),
     );
     expect(listings[1]?.priceText).toBe('Купить сейчас: $1,950');

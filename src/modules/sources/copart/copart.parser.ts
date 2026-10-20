@@ -1,3 +1,4 @@
+import { LOT_LABELS, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
 import { fetchJson } from '../scraping/http';
 import {
@@ -145,7 +146,15 @@ function toListing(lot: Record<string, unknown>): Listing {
     details: listingDetails(
       detail('VIN', maskedVin(asText(lot.fv))),
       detail('Аукцион', when === undefined ? 'COPART' : `COPART, ${when}`),
-      detail('Пробег', miles !== undefined && miles > 0 ? `${Math.round(miles)} mi` : undefined),
+      detail(
+        LOT_LABELS.odometer,
+        miles !== undefined && miles > 0 ? `${Math.round(miles)} mi` : undefined,
+      ),
+      detail(LOT_LABELS.engine, asText(lot.egn)),
+      // `egn` / `lcd` (engine, the lot's condition — «RUN AND DRIVE», «ENGINE START PROGRAM»).
+      // TODO [M]: names not yet measured live (Imperva blocked the probe 2026-10-20). Wrong, they
+      // leave every Copart lot without the facts, so a bid.cars engine / start filter drops them all.
+      detail(LOT_LABELS.start, startText(asText(lot.lcd))),
       detail('Повреждение', asText(lot.dd)),
       detail('Документ', asText(lot.tgd) ?? asText(lot.td)),
       detail('Ключи', keys(asText(lot.hk))),

@@ -471,7 +471,7 @@ describe('WatchScheduler.runDaily', () => {
 
   // Every poll would answer the same — five runs of «failure» and then a false «Проверьте ссылку».
   it.each([
-    ['an unsupported search', new UnsupportedSearchError('u1', ['odometer-to']), 'odometer-to'],
+    ['an unsupported search', new UnsupportedSearchError('u1', ['damage']), 'damage'],
     ['an unwatchable item', new UnwatchableItemError('hotel'), 'пока не слежу'],
   ])('pauses %s at once with its reason, not as a failure', async (_, err, reason) => {
     const { subscriptions, watch, telegram, metrics, scheduler } = build({ adminTelegramId: 99 });

@@ -11,8 +11,10 @@ export const copart = defineSource({
   searchPath: SEARCH_PATH,
   // Latest auction first — same proxy for «new» as bid.cars (a new lot is scheduled weeks out).
   page: { param: 'page', first: 0 },
-  // TODO [M]: measured from home 2026-10-18 (200 JSON); not from Hetzner. Imperva may refuse
-  // the datacenter — then flip USE_PROXY and re-measure through Oracle.
+  // TODO [M]: Copart refuses every IP we have — measured from the pod 2026-10-20, a 200 with an
+  // Imperva page both direct from Hetzner and through the Oracle proxy; from home it answered
+  // until a burst of requests. Its polls fail in production until a paid rung or a residential
+  // exit is chosen (owner's decision — PRODUCT_PLAN «Сейчас в работе»).
   useProxy: USE_PROXY,
   load,
   parse: parsePage,

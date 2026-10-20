@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+import { Logger } from '@nestjs/common';
+
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
@@ -74,9 +76,14 @@ describe('bid.cars fetch', () => {
     });
   });
 
-  it('fails the fallback when a requested house does not answer', async () => {
+  it('keeps the house that answered when the other does not, and fails only when none does', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     fetchMock.mockImplementation(closedBidCars('Just a moment…'));
 
+    const { listings } = await adapter.fetch(sample);
+    expect(listings.map((row) => row.externalId)).toEqual(['1-46840646', '1-77707195']);
+
+    fetchMock.mockResolvedValue(new Response('Just a moment…', { status: 403 }));
     await expect(adapter.fetch(sample)).rejects.toBeInstanceOf(SourceUnavailableError);
   });
 
@@ -86,6 +93,41 @@ describe('bid.cars fetch', () => {
     const { listings } = await adapter.fetch(`${sample}&year-from=2018&year-to=2018`);
 
     expect(listings.filter((row) => row.externalId.startsWith('0-'))).toEqual([]);
+  });
+
+  it('applies odometer, engine size and start code to the lots — a lot that does not say fails', async () => {
+    fetchMock.mockImplementation(closedBidCars(fixture('iaai', 'iaai-search.html')));
+
+    const { listings } = await adapter.fetch(
+      `${sample}&odometer-to=60000&start-code=Run+and+Drive&engine-size-to=2`,
+    );
+
+    // IAAI's 3.6L at 89,003 mi fails; the other IAAI and Copart lots say nothing.
+    expect(listings.map((row) => row.externalId)).toEqual(['1-46840646']);
+  });
+
+  it('fails loudly when no lot of a house carries a fact the filter needs', async () => {
+    const lots = Array.from({ length: 10 }, (_, i) => ({
+      ln: 10000 + i,
+      lotNumberStr: String(10000 + i),
+      ld: `2024 VOLKSWAGEN ATLAS ${i}`,
+    }));
+    fetchMock.mockImplementation((url: unknown) =>
+      Promise.resolve(
+        new URL(String(url)).host.endsWith('copart.com')
+          ? new Response(
+              JSON.stringify({
+                returnCode: 1,
+                data: { results: { totalElements: 10, content: lots } },
+              }),
+            )
+          : new Response('Just a moment…', { status: 403 }),
+      ),
+    );
+
+    await expect(adapter.fetch(`${sample}&auction-type=Copart&engine-size-to=2`)).rejects.toThrow(
+      /no lot carries «Двигатель»/,
+    );
   });
 
   it('marks the window capped when the auctions hold more than 500', async () => {
