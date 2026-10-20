@@ -60,11 +60,14 @@ export function load(url: string): Promise<string> {
 export const isSearchJson = (body: string): boolean =>
   asNumber(asRecord(parseJson(body))?.returnCode) === 1;
 
-const PROTECTION: Protection = { usable: isSearchJson };
+const PROTECTION: Protection = { usable: isSearchJson, freeProxyCountry: 'us' };
 
-/** What a walk of `lots` costs at worst — every page paid (the free rungs fail from our IPs). */
+/**
+ * What a walk of `lots` costs at worst — every page paid (the free rungs mostly fail from our
+ * IPs), plus one page: lots repeat across pages (measured 2026-10-20: 6 pages for 500).
+ */
 export const pollCredits = (lots: number): PaidPoll => ({
-  credits: Math.ceil(lots / PAGE_SIZE) * pageCredits(PROTECTION),
+  credits: (Math.ceil(lots / PAGE_SIZE) + 1) * pageCredits(PROTECTION),
   pool: poolOf(PROTECTION),
 });
 

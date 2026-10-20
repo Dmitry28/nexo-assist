@@ -114,6 +114,26 @@ production token must never be used locally. Left unset, the app runs with the b
 | `npm run k8s:status`                                           | Pods in the cluster                                              |
 | `npm run k8s:logs`                                             | Follow the bot's logs                                            |
 
+## Testing the bot without Telegram
+
+`npm run sim:bot` runs the real bot — handlers, the local database, the live sites — but talks to a
+fake Telegram on localhost instead of the real one, and prints every reply. Each argument is one
+step:
+
+```bash
+npm run db:up                                   # the local Postgres it writes to
+npm run sim:bot -- /start /help                 # send commands
+npm run sim:bot -- "https://re.kufar.by/l/minsk" "tap:Следить"   # paste a link, tap a button
+npm run sim:bot -- /list "tap:#1" "tap:🔎" "reply:бампер задний"  # set a keyword filter
+npm run sim:bot -- run                          # the daily check, now: what users would get
+```
+
+- `<text>` — the user sends it; `tap:<label>` taps a button of the latest message that has it;
+  `reply:<text>` answers the bot's prompt; `run` runs the daily watch over every subscription.
+- You are `ADMIN_TELEGRAM_ID` from `.env` (so `/check` and `/stats` answer), or `SIM_USER_ID`.
+- Paid keys in `.env` are used like in a normal dev run; GitHub issues are not filed unless
+  `SIM_GITHUB=1`. It refuses a non-local database. `npm run test:e2e` empties that database.
+
 ## Project structure
 
 ```

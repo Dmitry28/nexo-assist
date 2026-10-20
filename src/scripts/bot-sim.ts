@@ -10,6 +10,9 @@
  *   reply:<text>    the user replies to the latest bot message (a ForceReply prompt: the filter)
  *   run             the daily watch run (WatchScheduler.runDaily) — every active subscription
  *
+ * Nothing leaves for GitHub: the issue token is dropped unless SIM_GITHUB=1. The local database is
+ * the one `npm run test:e2e` empties — a sim's subscriptions do not outlive an e2e run.
+ *
  * Everything else is the dev app as `npm run start:dev` runs it: `.env`, the local database, the
  * live sites, and the paid keys if `.env` has them (they spend the same free tiers as production).
  * Only the bot token and TELEGRAM_API_ROOT are replaced. The user is ADMIN_TELEGRAM_ID when set
@@ -256,6 +259,9 @@ void (async () => {
   const { AppModule } = await import('@/app.module');
   const { WatchScheduler } = await import('@/modules/telegram/watch/watch.scheduler');
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['warn', 'error'] });
+  // No real issue from a sim: dropped once the config has validated it (SourceRequestsService
+  // reads it per request). SIM_GITHUB=1 keeps it — to test the filing itself.
+  if (process.env.SIM_GITHUB !== '1') delete process.env.GITHUB_ISSUES_TOKEN;
   let failed = false;
   try {
     for (const step of process.argv.slice(2)) {

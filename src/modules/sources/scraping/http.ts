@@ -164,22 +164,30 @@ export async function fetchJson({
   host,
   body,
   useProxy = false,
+  proxyUrl,
   headers,
   timeoutMs,
+  signal,
 }: {
   url: string;
   host: string;
   body: string;
   useProxy?: boolean;
+  /** A third-party proxy instead (free-proxies.ts) — see fetchHtml. */
+  proxyUrl?: string;
   headers?: Record<string, string>;
   /** Less than the default when the caller has a budget to keep (the ladder). */
   timeoutMs?: number;
+  /** Cancels the request from outside — a raced attempt that lost. */
+  signal?: AbortSignal;
 }): Promise<string> {
   return fetchPinned({
     url,
     host,
     useProxy,
+    proxyUrl,
     timeoutMs,
+    signal,
     method: 'POST',
     headers,
     body,
