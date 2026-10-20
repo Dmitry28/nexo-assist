@@ -1,6 +1,13 @@
 import { defineSource } from '../source-definition';
 
-import { HOST, SEARCH_PATH, parsePage } from './rabota.parser';
+import { HOST, SEARCH_PATH, isGoneItem, parseItem, parsePage } from './rabota.parser';
+
+const ITEM_PATH = /^\/vacancy\/(\d+)\/?$/;
+
+function matchItem(url: string): { id: string; url: string } | null {
+  const id = ITEM_PATH.exec(new URL(url).pathname)?.[1];
+  return id ? { id, url: `https://${HOST}/vacancy/${id}` } : null;
+}
 
 /** rabota.by — hh.ru's Belarusian site, vacancies. */
 export const rabota = defineSource({
@@ -18,4 +25,6 @@ export const rabota = defineSource({
   // TODO [M]: no proxy — not measured from the Hetzner host; the prototype saw plain requests
   // fail there. curl rabota.by from it and set useProxy from the answer.
   parse: parsePage,
+  // A vacancy's page: `/vacancy/<id>` (rabota.by's own link form; the search builds it too).
+  item: { match: matchItem, parse: parseItem, isGone: isGoneItem },
 });

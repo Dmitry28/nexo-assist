@@ -4,3 +4,5 @@ node_modules
 package-lock.json
 # A live page kept malformed on purpose (the unclosed span the parser must survive).
 src/modules/sources/prometr/__tests__/fixtures/prometr-search.html
+# hh's page state is JSON inside <template>: Prettier wraps its text and breaks the JSON strings.
+src/modules/sources/rabota/__tests__/fixtures/rabota-vacancy*.html

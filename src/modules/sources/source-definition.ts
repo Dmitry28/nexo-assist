@@ -92,6 +92,9 @@ interface CommonDefinition<Id extends string> {
   item?: ItemDefinition;
 }
 
+/** What an item's `parse` returns when the live page itself says the listing is gone. */
+export const GONE = Symbol('gone');
+
 /** How a source reads a link to a single listing instead of a search. */
 interface ItemDefinition {
   /**
@@ -99,8 +102,11 @@ interface ItemDefinition {
    * of a link dedup); null when the link is no item page (a search).
    */
   match(url: string): { id: string; url: string } | null;
-  /** The listing on its live page (`url`: the stored item link). Throws SourceUnavailableError on a page it cannot read. */
-  parse(html: string, url: string): Listing;
+  /**
+   * The listing on its live page (`url`: the stored item link), or GONE when that page says it is
+   * closed (rabota's archived vacancy). Throws SourceUnavailableError on a page it cannot read.
+   */
+  parse(html: string, url: string): Listing | typeof GONE;
   /** Whether a 404 page is the site saying the listing is gone — not a broken or moved URL. */
   isGone(notFoundHtml: string): boolean;
 }
@@ -208,7 +214,8 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
 const isItem = (def: SourceDefinition, url: string): boolean => Boolean(def.item?.match(url));
 
 /**
- * One listing's page: the listing, or — only when the site's own 404 says so — `gone`. Any other
+ * One listing's page: the listing, or `gone` only when the site says so — its own 404 (`isGone`)
+ * or the live page itself (`parse` → GONE, rabota's archived vacancy). Any other
  * failure stays a SourceUnavailableError: an outage must never read as «removed». No `pinPath`:
  * item pages redirect to their full address by design (kufar /vi/<id> → /vi/<city>/…/<id>).
  */
@@ -219,7 +226,10 @@ async function fetchItem(
 ): Promise<FetchResult> {
   try {
     const html = await fetchHtml({ url, host: def.host, useProxy: def.useProxy });
-    return { listings: [item.parse(html, url)], complete: true, capped: false };
+    const listing = item.parse(html, url);
+    return listing === GONE
+      ? { listings: [], complete: true, capped: false, gone: true }
+      : { listings: [listing], complete: true, capped: false };
   } catch (err) {
     if (err instanceof PageNotFoundError && item.isGone(err.html)) {
       return { listings: [], complete: true, capped: false, gone: true };
