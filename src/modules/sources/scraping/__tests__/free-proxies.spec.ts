@@ -103,6 +103,20 @@ describe('freeProxyRung', () => {
     );
   });
 
+  // Copart's search is a POST: the body and headers go through the stranger's tunnel unchanged.
+  it('carries a POST through the proxy', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('githubusercontent') ? page('http://1.1.1.1:80') : page(REAL)),
+    );
+    const post = { body: '{"q":1}', headers: { Origin: 'https://x.by' } };
+
+    await expect(
+      freeProxyRung('https://x.by/a', 'x.by', usable, 'us', post).run(30_000),
+    ).resolves.toBe(REAL);
+    const [, init] = proxiedCalls()[0] as [string, { method?: string; body?: string }];
+    expect(init).toMatchObject({ method: 'POST', body: '{"q":1}' });
+  });
+
   it('fails without trying anything when no proxy is listed', async () => {
     fetchMock.mockResolvedValueOnce(page('', 500));
 

@@ -9,7 +9,8 @@ import { Injectable } from '@nestjs/common';
  * source reads one page through the ladder, capped at LADDER_BUDGET_MS (4 min), so ~5 min — and
  * DAILY_CREDIT_BUDGET admits at most twenty geo and thirty global searches of those. Copart walks
  * its pages up the ladder (a POST, outside that budget): 3 min of walk plus one last page of up to
- * 4 min, ~7 min — measured 40 s for its 500 through ScrapingAnt; another
+ * 4 min, ~7 min — measured 45 s for its 500 through ScrapingAnt, every page's free-proxy try
+ * included (2026-10-20); another
  * subscription to a search the run already fetched costs only its pacing and sends (~1 min). A
  * run is sequential, so the worst case is ~5 min × active subscriptions: today's ~45 leave a
  * margin of about a third, and the threshold starts touching a live run at about seventy. A

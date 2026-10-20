@@ -178,5 +178,6 @@ Update **all of these** in lockstep:
 
 1. `src/config/env.validation.ts` — declare on `EnvironmentVariables` with a validator + default (the single source of truth).
 2. `src/config/configuration.ts` — extend `AppConfig` and map it. Skip for credential-like values (see § Config Access) — they are read where used.
-3. `.env.example` — document it.
+3. `.env.example` — document it (every variable the code reads, script-only ones included —
+   `npm run lint` fails without it: `scripts/lint/check-env-example.js`).
 4. `k8s/configmap.yaml` — add it when the production value must differ from the default.

@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import { PAID_SCRAPER_ORIGIN } from '@/common/paid-scrapers';
 
@@ -37,8 +39,14 @@ const withSpareKeys = (): void => {
   process.env.SCRAPINGANT_API_KEY = 'sa-secret';
   process.env.SCRAPER_API_KEY = 'sapi-secret';
 };
+// A provider's balance, asked after a paid page for the log — not a rung.
+const BALANCE = /\/(v2\/usage|account|info|v1\/subscriptions\/self\/details)(\?|$)/;
 /** The provider each call went to, by host — the plain rung is the target itself. */
-const calledHosts = (): string[] => fetchMock.mock.calls.map(([url]) => new URL(String(url)).host);
+const calledHosts = (): string[] =>
+  fetchMock.mock.calls
+    .map(([url]) => new URL(String(url)))
+    .filter((url) => !BALANCE.test(url.pathname + url.search))
+    .map((url) => url.host);
 
 describe('fetchProtected', () => {
   beforeEach(() => {
@@ -83,7 +91,13 @@ describe('fetchProtected', () => {
     await expect(get({ ...protection, renderWaitMs: 8000 })).resolves.toBe(REAL);
 
     // Free proxies of the country first: the paid rung is reached only past them.
-    expect(freeProxyRung).toHaveBeenCalledWith('https://x.by/a', 'x.by', protection.usable, 'by');
+    expect(freeProxyRung).toHaveBeenCalledWith(
+      'https://x.by/a',
+      'x.by',
+      protection.usable,
+      'by',
+      undefined,
+    );
     expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com']);
     const zenrows = new URL(String(fetchMock.mock.calls[1][0])).searchParams;
     expect(zenrows.get('proxy_country')).toBe('by');
@@ -186,6 +200,53 @@ describe('fetchProtected', () => {
     expect(sapi[1].headers).toMatchObject({ Origin: 'https://x.by' });
   });
 
+  // Every free way first (owner): Copart has no country of its own, yet US proxies come before
+  // the paid rungs — and its paid pool stays the global one.
+  it('tries free proxies of `freeProxyCountry` before the paid rungs, keeping the global pool', async () => {
+    withSpareKeys();
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE)) // plain
+      .mockResolvedValueOnce(page(REAL)); // scrapingant
+    const post = { body: '{}', headers: {} };
+
+    await fetchProtected({
+      url: 'https://x.by/a',
+      host: 'x.by',
+      protection: { ...noCountry, freeProxyCountry: 'us' },
+      post,
+    });
+
+    expect(freeProxyRung).toHaveBeenCalledWith(
+      'https://x.by/a',
+      'x.by',
+      noCountry.usable,
+      'us',
+      post,
+    );
+    expect(calledHosts()).toEqual(['x.by', 'api.scrapingant.com']);
+  });
+
+  // The balance URL carries the key (ScraperAPI's `api_key`): its failure must never print it,
+  // nor cost the page.
+  it('logs what a paid page cost and what is left, and survives a failing balance', async () => {
+    const logs = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    withSpareKeys();
+    delete process.env.SCRAPINGANT_API_KEY;
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE)) // plain
+      .mockResolvedValueOnce(new Response(REAL, { headers: { 'sa-credit-cost': '1' } })) // scraperapi
+      .mockRejectedValueOnce(
+        new Error('connect failed https://api.scraperapi.com/account?api_key=sapi-secret'),
+      );
+
+    await expect(get(noCountry)).resolves.toBe(REAL);
+    await new Promise((resolve) => setImmediate(resolve)); // the balance line is not awaited
+
+    const lines = logs.mock.calls.map(([line]) => String(line));
+    expect(lines).toContain(`scraperapi: ${REAL.length} chars, cost 1, left ?`);
+    expect(lines.join('\n')).not.toMatch(/secret/);
+  });
+
   it('asks no provider that has not been measured carrying a POST', async () => {
     process.env.SCRAPEOPS_API_KEY = 'so-secret';
     fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
@@ -195,7 +256,7 @@ describe('fetchProtected', () => {
       () => undefined,
     );
 
-    // No free proxies (a GET rung) and no ScrapeOps — ZenRows and Scrape.do were measured.
+    // No ScrapeOps — ZenRows and Scrape.do were measured carrying it.
     expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com', 'api.scrape.do']);
     delete process.env.SCRAPEOPS_API_KEY;
   });

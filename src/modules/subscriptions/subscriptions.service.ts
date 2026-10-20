@@ -27,8 +27,8 @@ export const MAX_SUBSCRIPTIONS_PER_USER = 50;
 // once, whoever watches it (a run fetches it once: WatchService), at its worst
 // (SourceAdapter.paidPoll), assuming one run a day (WATCH_CRON's default). Each pool is its first
 // paying providers' free tiers a month: geo — ZenRows + Scrape.do, 6000 / 30; global — ScrapingAnt,
-// 10000 less ~1000 kept for baselines and /check, / 30 — Copart's window costs 5 a poll, bid.cars's
-// fallback 6 (1 a page, measured), so ~50 searches. One rule for everyone (owner, 2026-10-13);
+// 10000 less ~1000 kept for baselines and /check, / 30 — Copart's window and bid.cars's fallback cost
+// 6 a poll (1 a page, measured), so ~50 searches. One rule for everyone (owner, 2026-10-13);
 // the arithmetic — PRODUCT_PLAN.md § «Платная ступень».
 // TODO [M]: baselines and /check poll on top of the daily run and are not counted — the tiers
 // outside the sum (ScrapeOps and ScrapFly for geo, ScraperAPI and the ~1000 for global) are their

@@ -26,7 +26,7 @@ start; more frequent once throttling/dedupe land).
   iaai.com (up to the 500-listing window; the link’s `Keyword`; through our proxy)** — via the adapter
   registry. copart.com refuses every IP we have (Imperva), so its search goes up the fetch
   ladder as a POST and is read through a paid service (ScrapingAnt / ScraperAPI) when the free
-  rungs fail — so a Copart search (5 credits a poll) and a bid.cars one (6, its Copart walk) count
+  rungs fail — so a Copart search and a bid.cars one (its Copart walk) — 6 credits a poll each — count
   against the same daily paid-credit budget as the protected sites: about 50 such searches
   bot-wide, past which a new one is refused. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that

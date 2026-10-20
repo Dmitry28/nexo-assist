@@ -24,7 +24,7 @@ describe('watchedItem', () => {
 // fallback walk of it — what DAILY_CREDIT_BUDGET counts them at.
 describe('paid polls of the auction walks', () => {
   it.each([
-    ['copart', 5],
+    ['copart', 6],
     ['bid-cars', 6],
   ])('%s costs %p global credits a poll', (id, credits) => {
     expect(ADAPTERS.find((adapter) => adapter.id === id)?.paidPoll).toEqual({

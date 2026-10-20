@@ -20,7 +20,7 @@ export const bidCars = defineSource({
   singlePage: true,
   // Its fallback walks Copart's window plus the overflow marker (bid-cars.auctions.ts) — every
   // page paid, at worst; IAAI goes through our proxy, free.
-  paidPoll: pollCredits(MAX_LISTINGS + 1),
+  paidPoll: pollCredits(MAX_LISTINGS),
   load,
   parse: parsePage,
 });
