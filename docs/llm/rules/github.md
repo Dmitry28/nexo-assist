@@ -71,6 +71,9 @@
    (live, gone), so a shared change cannot break a source nobody touched; and (b) the release
    build started locally (`npm run dev:docker`, the dev bot) and seen to boot (`Bot @… started`,
    `Daily watch scheduled`). The Telegram tap-through stays the owner's — list what to tap.
+   **Items before searches:** kufar-travel answers 429 to the same IP for ~30 min after a few of
+   its 500-listing walks (measured 2026-10-20) — check the watched-item forms first, then the
+   searches, or the item check fails for a reason that is not the change.
 
 ## Approval
 
