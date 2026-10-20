@@ -145,11 +145,14 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   then nothing is paused, the owner gets the outage alert, and the streak keeps counting until the
   source answers for somebody (or hits the 15-failure ceiling, since a source whose every
   subscription is dead can never answer again).
+- **A link we cannot watch as sent** (bid.cars filters the auctions cannot honour, a kufar-travel
+  hotel) is refused on subscribe; one kept from before is paused by the next run at once, with the
+  same reason — not five «failures» and a false «Проверьте ссылку».
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
   when the pings stop, the watchdog alerts the owner (setup — DEPLOY.md §4.3b).
 - **Admin alerts:** the owner (`ADMIN_TELEGRAM_ID`, required in production — otherwise every alert
-  would go nowhere silently) is told about each auto-pause (403 / dead link), and about a source's
-  **health changing**: once when every poll of it fails, a reminder a week later if it is still
+  would go nowhere silently) is told about each auto-pause (403 / dead link / a link we cannot
+  watch), and about a source's **health changing**: once when every poll of it fails, a reminder a week later if it is still
   failing, and a line when it answers again, with how long it was silent. Repeating the same alert
   every run is how an alert channel stops being read; the recovery line is how the owner learns a
   fix worked. Recovery needs a successful poll, not merely the absence of a failure verdict — that

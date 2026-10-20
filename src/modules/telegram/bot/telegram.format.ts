@@ -1,7 +1,8 @@
 import type { BotCommand } from 'grammy/types';
 
 import { LOCALE } from '@/common/locale';
-import type { Listing } from '@/modules/sources/source-adapter';
+import { UnsupportedSearchError } from '@/modules/sources/source-adapter';
+import type { Listing, UnwatchableItemError } from '@/modules/sources/source-adapter';
 import { SOURCES, siteName, watchedItem } from '@/modules/sources/sources';
 import type { Removal } from '@/modules/subscriptions/findings';
 import type { PriceChange } from '@/modules/subscriptions/price-change';
@@ -262,7 +263,7 @@ export const searchRewrittenNotice = ({ from, to }: { from: string; to: string }
   'фильтре), откройте поиск и пришлите ссылку снова.';
 
 /** bid.cars is closed and the leftover filters have no Copart/IAAI equivalent. */
-export const unsupportedSearchNotice = ({
+const unsupportedSearchNotice = ({
   url,
   params,
 }: {
@@ -272,6 +273,16 @@ export const unsupportedSearchNotice = ({
   `Не могу следить за этой ссылкой:\n${url}\n\n` +
   `Фильтры (${params.join(', ')}) с bid.cars на аукционы не переводятся. ` +
   'Уберите их в поиске или пришлите ссылку copart.com / iaai.com.';
+
+/** Why a link cannot be watched as sent — the refusal on subscribe and the daily run's pause both
+ *  say it. */
+export const unwatchableNotice = (
+  err: UnsupportedSearchError | UnwatchableItemError,
+  { source, url }: { source: string; url: string },
+): string =>
+  err instanceof UnsupportedSearchError
+    ? unsupportedSearchNotice({ url, params: err.params })
+    : `За таким объявлением на ${siteName(source)} пока не слежу — пришлите ссылку на поиск.\n${url}`;
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>

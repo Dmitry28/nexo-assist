@@ -53,7 +53,7 @@ export class SearchRewrittenError extends SourceUnavailableError {
 /**
  * The pasted search names filters we cannot honour on the path we would take (bid.cars closed →
  * Copart/IAAI). Not an outage: following through would watch a wider search than the link.
- * TODO [M]: subscribe refuses this; the daily poll still counts it as an outage.
+ * Subscribe refuses it; the daily run pauses a subscription kept from before, with the reason.
  */
 export class UnsupportedSearchError extends SourceUnavailableError {
   override readonly name = 'UnsupportedSearchError';
@@ -89,8 +89,8 @@ export class PageNotFoundError extends SourceUnavailableError {
 
 /**
  * An item link this source cannot watch yet — the element exists, but its page is not one we read
- * (kufar-travel's hotels). Refused on subscribe with an honest answer. One kept by an outage on
- * subscribe fails its polls until the dead-link pause (WatchService, goneBeforeBaseline).
+ * (kufar-travel's hotels). Refused on subscribe with an honest answer; one kept by an outage on
+ * subscribe is paused by the daily run with the same answer.
  */
 export class UnwatchableItemError extends SourceUnavailableError {
   override readonly name = 'UnwatchableItemError';

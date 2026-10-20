@@ -36,10 +36,9 @@ const partition = <T>(items: T[], keep: (item: T) => boolean): [T[], T[]] => [
 /**
  * A watched listing deleted before its first baseline (the subscribe-time one failed on an
  * outage, or ▶️ revived a removed one): the site's word, not a failure — told as a removal, which
- * then pauses it. Any other error is rethrown.
+ * then pauses it. Any other error is rethrown — an UnwatchableItemError included, which the
+ * scheduler pauses with its reason (pauseUnwatchable).
  */
-// TODO [L]: an UnwatchableItemError here (a hotel kept by an outage on subscribe) is rethrown —
-// counted as a failure until the dead-link pause, instead of one honest «не слежу».
 function goneBeforeBaseline(sub: Subscription, err: unknown): PollOutcome {
   const item = watchedItem(sub.source, sub.url);
   if (!(err instanceof ListingGoneError) || !item) throw err;
