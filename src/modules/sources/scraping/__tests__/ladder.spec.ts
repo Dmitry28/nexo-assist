@@ -162,6 +162,44 @@ describe('fetchProtected', () => {
     expect(new URL(String(fetchMock.mock.calls[2][0])).searchParams.get('render')).toBe('true');
   });
 
+  it('carries a POST up the ladder — the body and the site headers, each provider its way', async () => {
+    withSpareKeys();
+    fetchMock
+      .mockResolvedValueOnce(page(CHALLENGE)) // plain
+      .mockResolvedValueOnce(page('', 500)) // scrapingant
+      .mockResolvedValueOnce(page(REAL)); // scraperapi
+    const post = { body: '{"q":1}', headers: { Origin: 'https://x.by' } };
+
+    await expect(
+      fetchProtected({ url: 'https://x.by/a', host: 'x.by', protection: noCountry, post }),
+    ).resolves.toBe(REAL);
+
+    type Init = { method?: string; body?: string; headers?: Record<string, string> };
+    const [plain, ant, sapi] = fetchMock.mock.calls as [string, Init][];
+    expect(plain[1]).toMatchObject({ method: 'POST', body: '{"q":1}' });
+    expect(ant[1]).toMatchObject({ method: 'POST', body: '{"q":1}' });
+    expect(ant[1].headers).toMatchObject({
+      'ant-Origin': 'https://x.by',
+      'x-api-key': 'sa-secret',
+    });
+    expect(new URL(String(sapi[0])).searchParams.get('keep_headers')).toBe('true');
+    expect(sapi[1].headers).toMatchObject({ Origin: 'https://x.by' });
+  });
+
+  it('asks no provider that has not been measured carrying a POST', async () => {
+    process.env.SCRAPEOPS_API_KEY = 'so-secret';
+    fetchMock.mockImplementation(() => Promise.resolve(page('', 500)));
+    const post = { body: '{}', headers: {} };
+
+    await fetchProtected({ url: 'https://x.by/a', host: 'x.by', protection, post }).catch(
+      () => undefined,
+    );
+
+    // No free proxies (a GET rung) and no ScrapeOps — ZenRows and Scrape.do were measured.
+    expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com', 'api.scrape.do']);
+    delete process.env.SCRAPEOPS_API_KEY;
+  });
+
   // Measured: a site's own block reaches us as ScraperAPI 500 / ScrapingAnt 423, a refused key as
   // 401 / 403 — only the latter benches the provider.
   it('benches ScrapingAnt for a refused key, not ScraperAPI for a blocked site', async () => {

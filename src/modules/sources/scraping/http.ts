@@ -165,17 +165,21 @@ export async function fetchJson({
   body,
   useProxy = false,
   headers,
+  timeoutMs,
 }: {
   url: string;
   host: string;
   body: string;
   useProxy?: boolean;
   headers?: Record<string, string>;
+  /** Less than the default when the caller has a budget to keep (the ladder). */
+  timeoutMs?: number;
 }): Promise<string> {
   return fetchPinned({
     url,
     host,
     useProxy,
+    timeoutMs,
     method: 'POST',
     headers,
     body,

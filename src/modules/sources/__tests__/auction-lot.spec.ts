@@ -16,7 +16,8 @@ describe('startCode', () => {
     ['Run & Drive', 'run-and-drive'],
     ['Run &amp; Drive', 'run-and-drive'],
     ['run-and-drive', 'run-and-drive'],
-    ['RUN AND DRIVE', 'run-and-drive'],
+    ['RUNS AND DRIVES', 'run-and-drive'],
+    ['ENHANCED VEHICLES', undefined],
     ['Starts', 'starts'],
     ['ENGINE START PROGRAM', 'starts'],
     ['Stationary', 'stationary'],
@@ -28,7 +29,7 @@ describe('startCode', () => {
   });
 
   it('spells every auction the same on a card', () => {
-    expect(startText('RUN AND DRIVE')).toBe(startText('Run & Drive'));
+    expect(startText('RUNS AND DRIVES')).toBe(startText('Run & Drive'));
   });
 });
 

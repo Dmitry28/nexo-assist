@@ -46,10 +46,11 @@ export const publicLink = (url: string): string => {
 const requestBody = (link: string): string =>
   'A user sent a link to a site the bot does not support yet.\n\n' +
   `Sample: ${link}\n\n` +
-  'To add it: write a source adapter for this site following docs/llm (mirror an existing one in ' +
-  '`src/modules/sources/`; the prototype `~/dp/my/land-scraper` may already have it), register it ' +
-  'in `sources.ts`, and check it on a live sample search. More samples, if users send them, come ' +
-  'as comments.';
+  'To add it, follow `docs/llm/rules/architecture.md` § Adding a Source: one folder in ' +
+  '`src/modules/sources/` mirroring an existing source (the prototype `~/dp/my/land-scraper` may ' +
+  'already have this site), one line in `sources.ts`. Measure the site from the production server, ' +
+  'not only from home — a site can answer one and refuse the other (§ Adding a Source says how). ' +
+  'More samples, if users send them, come as comments.';
 
 /**
  * Files a link to an unsupported site as a GitHub issue — one per site, later links as comments.

@@ -8,7 +8,12 @@ import {
   load as copartLoad,
   parsePage as copartPage,
 } from '../copart/copart.parser';
-import { listingsFrom as iaaiListings, loadSearch as iaaiLoad } from '../iaai/iaai.parser';
+import {
+  HOST as IAAI_HOST,
+  loadSearch as iaaiLoad,
+  parsePage as iaaiPage,
+  searchBody as iaaiBody,
+} from '../iaai/iaai.parser';
 import { MAX_LISTINGS, SourceUnavailableError, UnsupportedSearchError } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
@@ -19,7 +24,6 @@ const logger = new Logger('bid-cars:auctions');
 
 const COPART_PAGE_SIZE = 100;
 const FACT_CHECK_MIN_LOTS = 10;
-const IAAI_PAGE_SIZE = 100;
 
 /** Copart + IAAI lots for the pasted bid.cars filters, ids in bid.cars's `1-` / `0-` form. */
 export async function fromAuctions(url: string): Promise<Listing[]> {
@@ -66,8 +70,9 @@ export async function fromAuctions(url: string): Promise<Listing[]> {
   if (byHouse.size === 0) throw down[0];
   // TODO [M]: a lot of the house that was down reads as new once it answers again (no «partial»
   // flag on a single-page source); bounded by the digest cap.
-  // IAAI first: a full Copart window must not drop the other house.
-  const listings = [...(byHouse.get('iaai') ?? []), ...(byHouse.get('copart') ?? [])];
+  // Taken in turn, one lot of each house: either can fill the window alone (both walk to 500),
+  // and a wide search must not show one house only. A house that runs out leaves the rest to the other.
+  const listings = alternate([byHouse.get('iaai') ?? [], byHouse.get('copart') ?? []]);
   const byId = new Map<string, Listing>();
   for (const listing of listings) {
     if (!byId.has(listing.externalId)) byId.set(listing.externalId, listing);
@@ -104,9 +109,20 @@ async function copartLots(filters: AuctionFilters, limit: number): Promise<Listi
   return listings.slice(0, want).map((listing) => asBidCarsLot(listing, '1', listing.externalId));
 }
 
+/** IAAI's pager walked like Copart's, to the same window — then the pasted years, from titles. */
+// TODO [L]: both walks send their pages back to back, unpaced (paginate pauses between pages) — a
+// burst is what closed Copart to the home IP; watch IAAI on the shared proxy for the same.
 async function iaaiLots(filters: AuctionFilters, keyword: string): Promise<Listing[]> {
-  const listings = iaaiListings(await iaaiLoad(iaaiBody(keyword)));
-  return listings.flatMap((listing) => {
+  // Measured 2026-10-19: Facets + empty FullSearch returns 0 lots. Keyword is the site's POST.
+  const search = `https://${IAAI_HOST}/Search?Keyword=${encodeURIComponent(keyword)}`;
+  const listings: Listing[] = [];
+  const want = MAX_LISTINGS + 1;
+  for (let page = 1; listings.length < want; page++) {
+    const parsed = iaaiPage(await iaaiLoad(iaaiBody(search, page)), { sent: listings.length });
+    listings.push(...parsed.listings);
+    if (!parsed.next) break;
+  }
+  return listings.slice(0, want).flatMap((listing) => {
     const stock = listing.details.find((line) => line.label === 'Stock')?.value;
     const year = yearOf(listing.title);
     const inYear =
@@ -141,16 +157,11 @@ const iaaiKeyword = (filters: AuctionFilters): string =>
     .join(' ')
     .toLowerCase();
 
-function iaaiBody(keyword: string): Record<string, unknown> {
-  // Measured 2026-10-19: Facets + empty FullSearch returns 0 lots. Keyword is the site's POST.
-  return {
-    Searches: [{ FullSearch: keyword }],
-    PageSize: IAAI_PAGE_SIZE,
-    CurrentPage: 1,
-    ReturnFacets: false,
-    Sort: [{ SortField: 'AuctionDateTime', IsDescending: true, IsGeoSort: false }],
-  };
-}
+/** [a1, b1, a2, b2, …] — each list keeps its own order. */
+const alternate = <T>(lists: T[][]): T[] =>
+  Array.from({ length: Math.max(0, ...lists.map((list) => list.length)) }, (_, i) =>
+    lists.flatMap((list) => (i < list.length ? [list[i]] : [])),
+  ).flat();
 
 const yearOf = (title: string): number | undefined => {
   const year = /^(\d{4})\s/.exec(title)?.[1];
