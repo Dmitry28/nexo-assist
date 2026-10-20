@@ -66,6 +66,11 @@
    `capped`, time) in the release PR's «Pre-release checks». Why: the 500-listing window passed
    every test, and only a live kufar walk showed HTTP 429 on page 5 (fixed in #168 before it
    shipped). Paid rungs stay off in that run (unset their keys).
+   **Everything, every release** (owner, 2026-10-20): not only the changed path — also (a) every
+   source's `sample` search through its adapter, free rungs only, and every watched-item form
+   (live, gone), so a shared change cannot break a source nobody touched; and (b) the release
+   build started locally (`npm run dev:docker`, the dev bot) and seen to boot (`Bot @… started`,
+   `Daily watch scheduled`). The Telegram tap-through stays the owner's — list what to tap.
 
 ## Approval
 
