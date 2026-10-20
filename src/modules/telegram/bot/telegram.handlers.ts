@@ -102,10 +102,11 @@ export class TelegramHandlers {
     }
     const adapter = this.registry.match(url);
     if (!adapter) {
-      const filed = await this.requests.request(url);
+      const filed = await this.requests.request(url, userId);
       await ctx.reply(
         filed
-          ? `Этот сайт пока не поддерживается — передал заявку на его добавление. ${PROMPT}`
+          ? 'Этот сайт пока не поддерживается — передал заявку на его добавление. Напишу, когда ' +
+              `добавлю. ${PROMPT}`
           : `Этот сайт пока не поддерживается. ${PROMPT}`,
       );
       return;
