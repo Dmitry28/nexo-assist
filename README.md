@@ -83,35 +83,56 @@ production token must never be used locally. Left unset, the app runs with the b
 
 ## Scripts
 
-| Script                                                         | Description                                                     |
-| -------------------------------------------------------------- | --------------------------------------------------------------- |
-| `npm run start:dev`                                            | Run with watch mode                                             |
-| `npm run start:prod`                                           | Run compiled output (`dist/main`)                               |
-| `npm run build`                                                | Compile to `dist/`                                              |
-| `npm run lint`                                                 | ESLint (fails on warnings) + package & marker checks            |
-| `npm run lint:fix`                                             | ESLint with autofix                                             |
-| `npm run format`                                               | Prettier write                                                  |
-| `npm run format:check`                                         | Prettier check (CI)                                             |
-| `npm run typecheck`                                            | `tsc --noEmit`                                                  |
-| `npm test`                                                     | Unit tests                                                      |
-| `npm run test:cov`                                             | Unit tests with coverage                                        |
-| `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                 |
-| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                |
-| `npm run notify:test`                                          | Print the listing cards; `-- --send` delivers them via the bot  |
-| `npm run dev:docker`                                           | Full local stack in docker with hot-reload                      |
-| `npm run db:up`                                                | Start local Postgres (docker)                                   |
-| `npm run db:down`                                              | Stop local Postgres                                             |
-| `npm run db:reset`                                             | Recreate the DB (wipes data)                                    |
-| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes                        |
-| `npm run migration:run`                                        | Apply pending migrations                                        |
-| `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer) |
-| `npm run migration:revert`                                     | Revert the last migration                                       |
-| `npm run migration:show`                                       | List migrations + status                                        |
-| `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster (needs `CD_HOST`)     |
-| `npm run k8s:backup:fetch`                                     | Pull the newest DB dump off the cluster (needs the tunnel)      |
-| `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)              |
-| `npm run k8s:status`                                           | Pods in the cluster                                             |
-| `npm run k8s:logs`                                             | Follow the bot's logs                                           |
+| Script                                                         | Description                                                      |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `npm run start:dev`                                            | Run with watch mode                                              |
+| `npm run start:prod`                                           | Run compiled output (`dist/main`)                                |
+| `npm run build`                                                | Compile to `dist/`                                               |
+| `npm run lint`                                                 | ESLint (fails on warnings) + package & marker checks             |
+| `npm run lint:fix`                                             | ESLint with autofix                                              |
+| `npm run format`                                               | Prettier write                                                   |
+| `npm run format:check`                                         | Prettier check (CI)                                              |
+| `npm run typecheck`                                            | `tsc --noEmit`                                                   |
+| `npm test`                                                     | Unit tests                                                       |
+| `npm run test:cov`                                             | Unit tests with coverage                                         |
+| `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                  |
+| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                 |
+| `npm run notify:test`                                          | Print the listing cards; `-- --send` delivers them via the bot   |
+| `npm run sim:bot -- <steps>`                                   | The real bot against a fake Telegram: chat, tap, `run` the watch |
+| `npm run dev:docker`                                           | Full local stack in docker with hot-reload                       |
+| `npm run db:up`                                                | Start local Postgres (docker)                                    |
+| `npm run db:down`                                              | Stop local Postgres                                              |
+| `npm run db:reset`                                             | Recreate the DB (wipes data)                                     |
+| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes                         |
+| `npm run migration:run`                                        | Apply pending migrations                                         |
+| `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer)  |
+| `npm run migration:revert`                                     | Revert the last migration                                        |
+| `npm run migration:show`                                       | List migrations + status                                         |
+| `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster (needs `CD_HOST`)      |
+| `npm run k8s:backup:fetch`                                     | Pull the newest DB dump off the cluster (needs the tunnel)       |
+| `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)               |
+| `npm run k8s:status`                                           | Pods in the cluster                                              |
+| `npm run k8s:logs`                                             | Follow the bot's logs                                            |
+
+## Testing the bot without Telegram
+
+`npm run sim:bot` runs the real bot — handlers, the local database, the live sites — but talks to a
+fake Telegram on localhost instead of the real one, and prints every reply. Each argument is one
+step:
+
+```bash
+npm run db:up                                   # the local Postgres it writes to
+npm run sim:bot -- /start /help                 # send commands
+npm run sim:bot -- "https://re.kufar.by/l/minsk" "tap:Следить"   # paste a link, tap a button
+npm run sim:bot -- /list "tap:#1" "tap:🔎" "reply:бампер задний"  # set a keyword filter
+npm run sim:bot -- run                          # the daily check, now: what users would get
+```
+
+- `<text>` — the user sends it; `tap:<label>` taps a button of the latest message that has it;
+  `reply:<text>` answers the bot's prompt; `run` runs the daily watch over every subscription.
+- You are `ADMIN_TELEGRAM_ID` from `.env` (so `/check` and `/stats` answer), or `SIM_USER_ID`.
+- Paid keys in `.env` are used like in a normal dev run; GitHub issues are not filed unless
+  `SIM_GITHUB=1`. It refuses a non-local database. `npm run test:e2e` empties that database.
 
 ## Project structure
 

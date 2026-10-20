@@ -1,6 +1,7 @@
 import { LOT_LABELS, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
 import { fetchProtected } from '../scraping/ladder';
+import type { Protection } from '../scraping/ladder';
 import {
   asCoordinates,
   asNumber,
@@ -10,8 +11,9 @@ import {
   requireArray,
   withIds,
 } from '../scraping/next-data';
+import { pageCredits, poolOf } from '../scraping/providers';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
-import type { Listing } from '../source-adapter';
+import type { Listing, PaidPoll } from '../source-adapter';
 import type { PageContext, SearchPage } from '../source-definition';
 
 /** copart.com — US salvage auctions; the site's own search JSON, behind Imperva. */
@@ -38,7 +40,7 @@ export function load(url: string): Promise<string> {
   return fetchProtected({
     url: SEARCH_API,
     host: HOST,
-    protection: { usable: isSearchJson },
+    protection: PROTECTION,
     post: {
       body: JSON.stringify(searchBody(url)),
       headers: {
@@ -57,6 +59,17 @@ export function load(url: string): Promise<string> {
  */
 export const isSearchJson = (body: string): boolean =>
   asNumber(asRecord(parseJson(body))?.returnCode) === 1;
+
+const PROTECTION: Protection = { usable: isSearchJson, freeProxyCountry: 'us' };
+
+/**
+ * What a walk of `lots` costs at worst — every page paid (the free rungs mostly fail from our
+ * IPs), plus one page: lots repeat across pages (measured 2026-10-20: 6 pages for 500).
+ */
+export const pollCredits = (lots: number): PaidPoll => ({
+  credits: (Math.ceil(lots / PAGE_SIZE) + 1) * pageCredits(PROTECTION),
+  pool: poolOf(PROTECTION),
+});
 
 /**
  * The POST the copart.com frontend sends. A filtered link carries `searchCriteria`; a simple

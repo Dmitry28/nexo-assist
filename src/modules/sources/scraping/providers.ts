@@ -17,6 +17,8 @@ const SPENT_FOR_MS = 24 * 60 * 60 * 1000;
 // ZenRows' 422 «could not get content» is a failed bypass on their side, documented as retryable
 // — the prototype saw the same bamper page 422 four runs and return 690 KB on the fifth.
 const BYPASS_RETRY_DELAY_MS = 3_000;
+// The balance is a nicety in a log line — never hold a page for it.
+const BALANCE_TIMEOUT_MS = 5_000;
 
 const logger = new Logger('scraping:providers');
 
@@ -26,6 +28,9 @@ export interface Post {
   /** The site's own headers (Content-Type, Origin…), forwarded the provider's way. */
   headers: Record<string, string>;
 }
+
+/** A provider's account answer, read field by field. */
+type Account = Record<string, unknown>;
 
 /** One managed anti-bot service: how it is asked for a page. */
 interface Provider {
@@ -59,6 +64,17 @@ interface Provider {
   retry: ReadonlySet<number>;
   /** Header with what the call actually cost, when the provider reports it. */
   costHeader?: string;
+  /**
+   * Its account endpoint — free to call — and the credits left in what it answers, logged with
+   * every paid page. Measured 2026-10-20: ScrapingAnt `remained_credits`, ScraperAPI `creditsLeft`,
+   * ZenRows `credit_limit − usage_credits`, Scrape.do `RemainingMonthlyRequest`, ScrapeOps
+   * `plan_api_credits − used_api_credits`; ScrapFly's answer names no plain remainder — none.
+   */
+  balance?: {
+    url: (key: string) => string;
+    headers?: (key: string) => Record<string, string>;
+    left: (account: Account) => unknown;
+  };
   /** The longest one call may take — what is left of the ladder's budget goes to the next. */
   maxMs: number;
   /** Not worth asking with less time than this left (a provider that retries on its side). */
@@ -96,6 +112,12 @@ const PROVIDERS: readonly Provider[] = [
     headers: (key) => ({ 'x-api-key': key }),
     forward: { prefix: 'ant-' },
     pool: 'global',
+    costHeader: 'ant-credits-cost',
+    balance: {
+      url: () => 'https://api.scrapingant.com/v2/usage',
+      headers: (key) => ({ 'x-api-key': key }),
+      left: (account) => account.remained_credits,
+    },
     // 403 a wrong key (measured) or the month's credits gone (its docs); 409 its concurrency limit
     // (docs) — it clears. A site's own 403/429 arrives as 423 «detected by the site» (measured
     // 2026-10-15), never as a bench: asking again cost the prototype another ~22 s for the same.
@@ -116,6 +138,11 @@ const PROVIDERS: readonly Provider[] = [
     },
     forward: { param: ['keep_headers', 'true'] },
     pool: 'global',
+    costHeader: 'sa-credit-cost',
+    balance: {
+      url: (key) => `https://api.scraperapi.com/account?api_key=${key}`,
+      left: (account) => account.creditsLeft,
+    },
     // 401 a bad key (measured), 403 the month's credits gone (docs; no premium is ever asked), 429
     // concurrency. A site's own 401/403/429 arrives as 500 after its retries (measured 2026-10-15),
     // so a blocked site never benches it.
@@ -143,6 +170,14 @@ const PROVIDERS: readonly Provider[] = [
     spent: new Set([401, 402]),
     retry: new Set([422, 429]),
     maxMs: PROVIDER_MAX_MS,
+    balance: {
+      url: () => 'https://api.zenrows.com/v1/subscriptions/self/details',
+      headers: (key) => ({ 'X-API-Key': key }),
+      left: (account) =>
+        typeof account.credit_limit === 'number' && typeof account.usage_credits === 'number'
+          ? account.credit_limit - account.usage_credits
+          : undefined,
+    },
   },
   {
     name: 'scrapedo',
@@ -168,6 +203,10 @@ const PROVIDERS: readonly Provider[] = [
     // the header is the only honest account of the cost.
     costHeader: 'scrape.do-request-cost',
     maxMs: PROVIDER_MAX_MS,
+    balance: {
+      url: (key) => `https://api.scrape.do/info?token=${key}`,
+      left: (account) => account.RemainingMonthlyRequest,
+    },
   },
   {
     // 1000 credits a month, billed only for a 200/404 — a failed bypass costs nothing, which suits
@@ -192,6 +231,13 @@ const PROVIDERS: readonly Provider[] = [
     // It retries the target on its side for up to 2 minutes before answering.
     maxMs: 150_000,
     minMs: 130_000,
+    balance: {
+      url: (key) => `https://proxy.scrapeops.io/v1/account?api_key=${key}`,
+      left: (account) =>
+        typeof account.plan_api_credits === 'number' && typeof account.used_api_credits === 'number'
+          ? account.plan_api_credits - account.used_api_credits
+          : undefined,
+    },
   },
   {
     // 1000 credits granted once at signup, never renewed, and an anti-bot page costs 25-80 of them
@@ -254,13 +300,16 @@ export const poolOf = ({ country }: Protection): CreditPool =>
 
 /**
  * What one page may cost on its pool's first paying provider. Geo: ZenRows' anti-bot tier, 10
- * credits, 25 rendered (measured on ZenRows, Scrape.do, ScrapeOps). Global: ScrapingAnt's browser
- * on its datacenter proxy, 10 either way — its price list (2026-10-15), not yet measured.
- * ScraperAPI after it charges ~21 (render 11 + Cloudflare 10) from its own 1000 a month — the
- * margin, outside the sum.
+ * credits, 25 rendered (measured on ZenRows, Scrape.do, ScrapeOps). Global: ScrapingAnt — 1 without
+ * a browser (its `ant-credits-cost`, a Copart POST, 2026-10-20), 10 with one (its price list).
+ * ScraperAPI after it charges 1 for the same POST (its `sa-credit-cost`), ~21 rendered behind
+ * Cloudflare, from its own 1000 a month — the margin, outside the sum.
  */
-export const pageCredits = (protection: Protection): number =>
-  poolOf(protection) === 'global' || protection.renderWaitMs === undefined ? 10 : 25;
+export const pageCredits = (protection: Protection): number => {
+  const rendered = protection.renderWaitMs !== undefined;
+  if (poolOf(protection) === 'global') return rendered ? 10 : 1;
+  return rendered ? 25 : 10;
+};
 
 /**
  * One paid rung per provider of the site's pool, in order — a rung without its key fails at once,
@@ -326,7 +375,15 @@ async function scrape(
     const headers = provider.headers?.(key);
     const request = post ? asPost(provider, url, headers, post) : { url, init: { headers } };
     const status = await call(provider, request.url, request.init, deadline);
-    if (typeof status === 'string') return status;
+    if (typeof status !== 'number') {
+      // Not awaited: the page is not held for a log line.
+      void creditsLeft(provider, key).then((left) =>
+        logger.log(
+          `${provider.name}: ${status.html.length} chars, cost ${status.cost ?? '?'}, left ${left ?? '?'}`,
+        ),
+      );
+      return status.html;
+    }
     if (provider.spent.has(status)) {
       spentUntil.set(provider.name, Date.now() + SPENT_FOR_MS);
       throw new ProviderUnavailableError(`HTTP ${status} — spent or key refused`);
@@ -339,13 +396,32 @@ async function scrape(
   }
 }
 
-/** One request: the body, or the status when it was not a 2xx. */
+/**
+ * What the provider's account says is left — for the log, so a tier running dry shows before it
+ * is spent. Undefined when it has no account endpoint or that call fails: never worth failing a page.
+ */
+async function creditsLeft(provider: Provider, key: string): Promise<number | undefined> {
+  if (!provider.balance) return undefined;
+  try {
+    const res = await fetch(provider.balance.url(key), {
+      headers: provider.balance.headers?.(key),
+      signal: AbortSignal.timeout(BALANCE_TIMEOUT_MS),
+    });
+    const left = provider.balance.left((await res.json()) as Account);
+    return res.ok && typeof left === 'number' && Number.isFinite(left) ? left : undefined;
+  } catch {
+    // Swallowed whole: undici's error carries the URL, and with it the key.
+    return undefined;
+  }
+}
+
+/** One request: the body and what it cost, or the status when it was not a 2xx. */
 async function call(
   provider: Provider,
   url: string,
   init: { method?: 'POST'; body?: string; headers?: Record<string, string> },
   deadline: number,
-): Promise<string | number> {
+): Promise<{ html: string; cost: string | null | undefined } | number> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
   try {
@@ -365,9 +441,7 @@ async function call(
     }
     if (html.length === 0) throw new SourceUnavailableError('empty body');
     if (html.length > MAX_HTML_LENGTH) throw new SourceUnavailableError('response too large');
-    const cost = provider.costHeader && res.headers.get(provider.costHeader);
-    logger.log(`${provider.name}: ${html.length} chars${cost ? `, cost ${cost}` : ''}`);
-    return html;
+    return { html, cost: provider.costHeader && res.headers.get(provider.costHeader) };
   } finally {
     clearTimeout(timer);
   }

@@ -13,7 +13,7 @@ import {
   UnsupportedSearchError,
 } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { watchedItem } from '@/modules/sources/sources';
+import { siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
@@ -44,6 +44,15 @@ import {
 } from './telegram.format';
 
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
+
+/** A link's host for a log line — `new URL` may refuse what extractUrl took. */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '(not a URL)';
+  }
+};
 
 /** Bot conversation: turn a pasted link into a subscription via inline buttons. */
 @Injectable()
@@ -103,6 +112,9 @@ export class TelegramHandlers {
     const adapter = this.registry.match(url);
     if (!adapter) {
       const filed = await this.requests.request(url, userId);
+      // The host only — the link is the user's, and logs are kept. A link `new URL` refuses
+      // (extractUrl takes any `http…` run) must still get its reply.
+      this.logger.log(`Unsupported site ${hostOf(url)} — request filed: ${filed}`);
       await ctx.reply(
         filed
           ? 'Этот сайт пока не поддерживается — передал заявку на его добавление. Напишу, когда ' +
@@ -119,7 +131,7 @@ export class TelegramHandlers {
       .text('Следить', `subscribe:${nonce}`)
       .text('Отмена', `cancel:${nonce}`);
     const what = item ? 'ценой этого объявления' : 'этим поиском';
-    await ctx.reply(`Следить за ${what} на ${adapter.id}?\n${url}`, {
+    await ctx.reply(`Следить за ${what} на ${siteName(adapter.id)}?\n${url}`, {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });

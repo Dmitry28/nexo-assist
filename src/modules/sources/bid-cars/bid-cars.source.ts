@@ -1,3 +1,5 @@
+import { pollCredits } from '../copart/copart.parser';
+import { MAX_LISTINGS } from '../source-adapter';
 import { defineSource } from '../source-definition';
 
 import { HOST, SEARCH_PATH, load, parsePage, requestUrl } from './bid-cars.parser';
@@ -16,6 +18,9 @@ export const bidCars = defineSource({
   // param is honoured (measured 2026-10-15).
   pins: { 'order-by': 'dateDesc' },
   singlePage: true,
+  // Its fallback walks Copart's window plus the overflow marker (bid-cars.auctions.ts) — every
+  // page paid, at worst; IAAI goes through our proxy, free.
+  paidPoll: pollCredits(MAX_LISTINGS),
   load,
   parse: parsePage,
 });

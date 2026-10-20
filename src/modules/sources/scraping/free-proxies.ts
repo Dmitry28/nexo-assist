@@ -5,8 +5,9 @@ import { fetch } from 'undici';
 
 import { SourceUnavailableError } from '../source-adapter';
 
-import { fetchHtml } from './http';
+import { fetchHtml, fetchJson } from './http';
 import type { Protection } from './ladder';
+import type { Post } from './providers';
 
 // Two public lists of free proxies per country, re-checked by their maintainers every few minutes.
 // Two because each is thin and they disagree: the proxy idriver went through on 2026-10-13 was on
@@ -153,17 +154,18 @@ async function fetchList(list: (typeof LISTS)[number], country: string): Promise
 }
 
 /**
- * The free rung for a geo-fenced site: a few public proxies of its country, raced — the first to
+ * The free rung: a few public proxies of the site's country (or its `freeProxyCountry`), raced — the first to
  * return the real page wins and is tried first for that site next time. Proxies that failed a site
  * are not tried for it again this hour (a list with none left is fetched again — see
- * EMPTY_LIST_FRESH_FOR_MS). Only through the https tunnel (fetchHtml `proxyUrl`), so all a
- * stranger's proxy can do is fail.
+ * EMPTY_LIST_FRESH_FOR_MS). Only through the https tunnel (`proxyUrl` of fetchHtml, or fetchJson
+ * for a POST), so all a stranger's proxy can do is fail.
  */
 export function freeProxyRung(
   url: string,
   host: string,
   usable: Protection['usable'],
   country: string,
+  post?: Post,
 ): { name: string; run: (timeoutMs: number) => Promise<string> } {
   return {
     name: 'free-proxy',
@@ -183,13 +185,16 @@ export function freeProxyRung(
       }
       const race = new AbortController();
       const attempt = async (proxy: string): Promise<{ proxy: string; html: string }> => {
-        const html = await fetchHtml({
+        const through = {
           url,
           host,
           proxyUrl: `http://${proxy}`,
           timeoutMs: Math.min(timeoutMs, RUNG_CAP_MS),
           signal: race.signal,
-        });
+        };
+        // NOTE: the tunnel keeps TLS, yet a stranger's proxy is no place for a secret — a `post`
+        // here is a site's public search (Copart's), never one carrying credentials.
+        const html = await (post ? fetchJson({ ...through, ...post }) : fetchHtml(through));
         if (!usable(html)) throw new SourceUnavailableError('not the page');
         return { proxy, html };
       };

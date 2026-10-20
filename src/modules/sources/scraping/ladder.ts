@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import {
   PaidRungsUnavailableError,
   SearchRewrittenError,
@@ -22,18 +24,27 @@ export interface Protection {
   /** Lower-case ISO-2 country the paid rung's proxy must be in (idriver: Belarus only). */
   country?: string;
   /**
+   * Free proxies of this country first, for a site with no country of its own — so its paid pool
+   * stays the global one (Copart: US proxies, 2 of 200 got through Imperva, 2026-10-20 — the owner
+   * keeps every free way first).
+   */
+  freeProxyCountry?: string;
+  /**
    * Render the page in a browser and wait this long (ms) — only for a page behind a script gate.
    * Billed on top of the anti-bot tier by the geo providers (25 credits a page instead of 10).
    */
   renderWaitMs?: number;
 }
 
+const logger = new Logger('scraping:ladder');
+
 // One page's whole ladder, every rung included. The free rungs take at most 30 + 30 s. A site with
 // a country adds 25 s of free proxies (with their list fetch), and ZenRows and Scrape.do keep their
 // minute each; ScrapeOps (2 min of its own retries) only gets a turn when the rungs before it
 // failed fast — no key, spent — and ScrapFly, the last, likewise. A site without one has only
-// ScrapingAnt and ScraperAPI, a minute each (providers.ts). WatchStatus's stuck-run arithmetic
-// counts this per protected poll.
+// ScrapingAnt and ScraperAPI, a minute each (providers.ts) — after free proxies of its
+// `freeProxyCountry` when it names one (Copart: up to 20 s a page of its walk). WatchStatus's
+// stuck-run arithmetic counts this per protected poll.
 const LADDER_BUDGET_MS = 240_000;
 
 /**
@@ -60,10 +71,12 @@ export async function fetchProtected({
   host: string;
   useProxy?: boolean;
   protection: Protection;
-  /** A POST instead of a GET (Copart's search) — only the paid rungs that forward one climb. */
+  /** A POST instead of a GET (Copart's search) — every free rung carries it, and the paid rungs
+   *  that were measured forwarding one. */
   post?: Post;
 }): Promise<string> {
   const deadline = Date.now() + LADDER_BUDGET_MS;
+  const freeCountry = protection.country ?? protection.freeProxyCountry;
   const free = (name: string, viaProxy: boolean) => ({
     name,
     paid: false,
@@ -76,15 +89,10 @@ export async function fetchProtected({
     // A source that must go through the proxy has no direct rung.
     ...(useProxy ? [] : [free('plain', false)]),
     ...(hasProxy() ? [free('proxy', true)] : []),
-    // A geo-fenced site may let a stranger's proxy of its country through for free.
-    ...(protection.country === undefined || post
+    // A stranger's proxy of the site's country — or of `freeProxyCountry` — may get through free.
+    ...(freeCountry === undefined
       ? []
-      : [
-          {
-            ...freeProxyRung(url, host, protection.usable, protection.country),
-            paid: false,
-          },
-        ]),
+      : [{ ...freeProxyRung(url, host, protection.usable, freeCountry, post), paid: false }]),
     ...paidRungs(url, protection, post).map((rung) => ({ ...rung, paid: true })),
   ];
   const reasons: string[] = [];
@@ -99,7 +107,12 @@ export async function fetchProtected({
     try {
       const html = await rung.run(left);
       paidAsked ||= rung.paid;
-      if (protection.usable(html)) return html;
+      if (protection.usable(html)) {
+        // Every page names its rung: which way a site answers today is the first thing to know
+        // when it stops (a paid rung adds its cost and what is left — providers.ts).
+        logger.log(`${host} via ${rung.name}`);
+        return html;
+      }
       reasons.push(`${rung.name}: not the page (a challenge?)`);
     } catch (err) {
       if (!(err instanceof SourceUnavailableError) || err instanceof SearchRewrittenError) {
