@@ -31,7 +31,7 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d postgres",
     "k8s:backup:fetch": "./deploy/fetch-backup.sh",
-    "dev:docker": "docker compose up --build",
+    "dev:docker": "docker compose up --build --renew-anon-volumes",
     "k8s:tunnel": "./deploy/tunnel.sh",
     "k8s:secrets": "./deploy/secrets.sh",
     "k8s:status": "KUBECONFIG=$HOME/.kube/nexo.yaml kubectl get pods -o wide",

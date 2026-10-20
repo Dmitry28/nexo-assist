@@ -1,6 +1,8 @@
 # Auto-merged by `docker compose up` — local development only.
 # Runs the app in a container with hot-reload: source is bind-mounted, node_modules
 # stays from the image (anonymous volume), and Nest runs in watch mode.
+# NOTE: `up` reuses that volume even after a rebuild, so a dependency added since the first run
+# is missing («Cannot find module», 2026-10-20) — hence `--renew-anon-volumes` in dev:docker.
 #   npm run dev:docker
 services:
   app:
