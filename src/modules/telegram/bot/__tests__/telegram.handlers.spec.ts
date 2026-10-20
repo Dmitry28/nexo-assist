@@ -130,7 +130,7 @@ describe('TelegramHandlers', () => {
     requests.request.mockResolvedValue(filed);
     const ctx = makeCtx({ text: 'https://example.com/x', userId: 1 });
     await bot.onText(ctx);
-    expect(requests.request).toHaveBeenCalledWith('https://example.com/x');
+    expect(requests.request).toHaveBeenCalledWith('https://example.com/x', 1);
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining(text));
   });
 

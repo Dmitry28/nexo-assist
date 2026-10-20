@@ -284,6 +284,11 @@ export const unwatchableNotice = (
     ? unsupportedSearchNotice({ url, params: err.params })
     : `За таким объявлением на ${siteName(source)} пока не слежу — пришлите ссылку на поиск.\n${url}`;
 
+/** Sent once a site the user asked for is supported — they resend the link to subscribe. */
+export const sourceAddedNotice = ({ host, url }: { host: string; url: string }): string =>
+  `✅ Теперь умею следить за ${host} — вы просили добавить этот сайт. Пришлите ссылку на поиск ` +
+  `снова — например, вашу:\n${url}`;
+
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>
   `⚠️ Поиск на ${siteName(source)} перестал отвечать — я поставил его на паузу.\n` +
@@ -327,8 +332,9 @@ export const HELP_MESSAGE = [
   'В /list нажмите номер подписки: ❌ — удалить, 🔎 — фильтр по словам (присылать только ' +
     'объявления с ними), ▶️ — вернуть в работу подписку на паузе (⏸).',
   '',
-  'Данные: храню ваш telegram-id, имя, @username, язык интерфейса и ссылки, за которыми ' +
-    'слежу, — только чтобы присылать уведомления. Хотите удалить — напишите владельцу бота.',
+  'Данные: храню ваш telegram-id, имя, @username, язык интерфейса, ссылки, за которыми ' +
+    'слежу, и ссылки на сайты, которые вы просили добавить, — только чтобы присылать ' +
+    'уведомления. Хотите удалить — напишите владельцу бота.',
 ].join('\n');
 
 /**

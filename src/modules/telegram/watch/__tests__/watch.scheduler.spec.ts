@@ -7,6 +7,7 @@ import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { WatchMetrics } from '@/metrics/watch.metrics';
+import type { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   PaidRungsUnavailableError,
   SourceUnavailableError,
@@ -70,6 +71,11 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
   jest.spyOn(status, 'markRun');
   const health = new SourceHealth();
   const registry = new SchedulerRegistry();
+  const requests = {
+    supported: jest.fn().mockResolvedValue([]),
+    forget: jest.fn().mockResolvedValue(undefined),
+    expire: jest.fn().mockResolvedValue(0),
+  };
   const scheduler = new WatchScheduler(
     // No pacing delay under tests — the jitter math is covered separately.
     makeAppConfig({ watchMinDelayMs: 0, watchJitterMs: 0, ...configOverrides }),
@@ -80,8 +86,9 @@ const build = (configOverrides: Record<string, unknown> = {}) => {
     metrics as unknown as WatchMetrics,
     status,
     health,
+    requests as unknown as SourceRequestsService,
   );
-  return { subscriptions, watch, telegram, metrics, status, scheduler, registry };
+  return { subscriptions, watch, telegram, metrics, status, scheduler, registry, requests };
 };
 
 describe('WatchScheduler.runDaily', () => {
@@ -973,6 +980,38 @@ describe('WatchScheduler.runDaily — quiet report', () => {
 
     expect(subscriptions.pauseAllForUser).toHaveBeenCalledWith('7');
     expect(subscriptions.markNotified).not.toHaveBeenCalled();
+  });
+});
+
+describe('WatchScheduler.runDaily — requested sites', () => {
+  const request = { id: 'r1', telegramId: 7, host: 'newsite.by', url: 'https://newsite.by/s' };
+
+  it('tells a requester once their site is supported, then forgets the request', async () => {
+    const { subscriptions, telegram, requests, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([]);
+    requests.supported.mockResolvedValue([request]);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(7, expect.stringContaining('newsite.by'));
+    expect(requests.forget).toHaveBeenCalledWith('r1');
+  });
+
+  it('keeps the request for the next run when the send fails — unless the user blocked us', async () => {
+    const { subscriptions, telegram, requests, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([]);
+    requests.supported.mockResolvedValue([request]);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    telegram.notify.mockRejectedValueOnce(new Error('network'));
+
+    await scheduler.runDaily();
+    expect(requests.forget).not.toHaveBeenCalled();
+
+    telegram.notify.mockRejectedValueOnce(
+      Object.assign(Object.create(GrammyError.prototype) as GrammyError, { error_code: 403 }),
+    );
+    await scheduler.runDaily();
+    expect(requests.forget).toHaveBeenCalledWith('r1');
   });
 });
 
