@@ -1,9 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import * as Sentry from '@sentry/nestjs';
+import { LessThan } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { fetch } from 'undici';
 
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { SourceRegistry } from '@/modules/sources/source-registry';
+
+import { SourceRequest } from './entities/source-request.entity';
 
 // Where a link to a site we do not support becomes a task: the owner runs an LLM on the issue to
 // add the parser. The repo is public — an issue carries the link only, never who sent it.
@@ -18,6 +24,9 @@ const MAX_LINKS_PER_DAY = 50;
 // Short: the user's reply waits on it, and the bot handles one update at a time — a hanging
 // GitHub would stall every chat, not just this one.
 const TIMEOUT_MS = 5_000;
+// A request not answered by then is let go: the site was declined, or its parser does not read
+// that link — keeping who asked any longer serves no notice (/help: data only to notify).
+const REQUEST_KEPT_DAYS = 180;
 
 interface Issue {
   number: number;
@@ -76,19 +85,57 @@ export class SourceRequestsService {
   private linksToday = 0;
   private createdToday = 0;
 
-  constructor(@Inject(configuration.KEY) private readonly appConfig: AppConfig) {}
+  constructor(
+    @Inject(configuration.KEY) private readonly appConfig: AppConfig,
+    @InjectRepository(SourceRequest) private readonly requests: Repository<SourceRequest>,
+    private readonly registry: SourceRegistry,
+  ) {}
 
   /**
-   * Request support for `url`'s site. Resolves to whether the request is on file (now or from
-   * before) — the user is told so only when it is. Never rejects: GitHub failing must not fail
-   * the reply.
+   * Request support for `url`'s site on behalf of `telegramId`. Resolves to whether the request
+   * is on file (now or from before, the same link from another user included) — and only then is
+   * the user remembered, to be told when the site is added (`supported`). Not filed (the day's cap,
+   * a declined site, GitHub down) — not promised, not remembered. Never rejects: GitHub or the database failing must not fail the
+   * reply.
    */
-  request(url: string): Promise<boolean> {
+  async request(url: string, telegramId: number): Promise<boolean> {
     const token = process.env.GITHUB_ISSUES_TOKEN;
-    if (this.appConfig.isTest || !token) return Promise.resolve(false);
+    if (this.appConfig.isTest || !token) return false;
     const next = this.queue.then(() => this.file(url, token)).catch(() => false);
     this.queue = next;
-    return next;
+    if (!(await next)) return false;
+    try {
+      await this.requests.upsert({ telegramId, host: requestHost(url), url }, [
+        'telegramId',
+        'host',
+      ]);
+    } catch (err) {
+      // Filed all the same: the site still gets added, only this user is not told when.
+      this.logger.warn({ err }, 'Source request filed, but the requester not remembered');
+      Sentry.captureException(err);
+    }
+    return true;
+  }
+
+  /**
+   * The remembered requests whose link a source now reads — a parser for the site shipped.
+   * TODO [L]: loads every row; fine while requests are few (each is deleted once told).
+   */
+  async supported(): Promise<SourceRequest[]> {
+    const all = await this.requests.find();
+    return all.filter((request) => this.registry.match(request.url) !== null);
+  }
+
+  /** Forget requests older than REQUEST_KEPT_DAYS; resolves to how many. */
+  async expire(): Promise<number> {
+    const before = new Date(Date.now() - REQUEST_KEPT_DAYS * 24 * 60 * 60 * 1000);
+    const { affected } = await this.requests.delete({ createdAt: LessThan(before) });
+    return affected ?? 0;
+  }
+
+  /** The requester was told (or cannot be): nothing left to keep about them. */
+  async forget(id: string): Promise<void> {
+    await this.requests.delete({ id });
   }
 
   private async file(url: string, token: string): Promise<boolean> {

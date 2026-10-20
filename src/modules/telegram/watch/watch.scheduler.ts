@@ -2,11 +2,14 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { SchedulerRegistry } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { CronJob } from 'cron';
+import { GrammyError } from 'grammy';
 
 import { TIMEZONE } from '@/common/locale';
+import { wait } from '@/common/wait';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
+import { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   PaidRungsUnavailableError,
   UnsupportedSearchError,
@@ -20,11 +23,12 @@ import type { Findings } from '@/modules/subscriptions/findings';
 import { SubscriptionsService, searchKey } from '@/modules/subscriptions/subscriptions.service';
 import type { PollOutcome, SharedFetches } from '@/modules/subscriptions/watch.service';
 import { WatchService } from '@/modules/subscriptions/watch.service';
-import { isBotBlocked } from '@/modules/telegram/bot/send-card';
+import { SEND_DELAY_MS, isBotBlocked } from '@/modules/telegram/bot/send-card';
 import { deliverAndRecord } from '@/modules/telegram/bot/telegram.deliver';
 import {
   deadSubscriptionNotice,
   quietReport,
+  sourceAddedNotice,
   searchLabel,
   unwatchableNotice,
 } from '@/modules/telegram/bot/telegram.format';
@@ -105,6 +109,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly metrics: WatchMetrics,
     private readonly status: WatchStatus,
     private readonly health: SourceHealth,
+    private readonly requests: SourceRequestsService,
   ) {}
 
   onModuleInit(): void {
@@ -260,6 +265,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     await this.pauseDead(dead, new Set(outages.map(({ source }) => source)), blockedUsers);
     await this.reportQuiet({ quiet, heard, blockedUsers });
     if (unpaid.size > 0) await this.alertUnpaid([...unpaid]);
+    await this.tellRequesters();
     // Last on purpose: the gauges must count the subscriptions this run just paused as paused.
     await this.recordTotals();
   }
@@ -296,6 +302,42 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     await this.notifyAdmin(
       `💳 Платная загрузка недоступна (нет ключа или кончились кредиты) — не опрошены: ${list}.`,
     );
+  }
+
+  /**
+   * Tell each user whose requested site a source now reads — a parser shipped since they asked.
+   * Once: told (or blocked us), the request is forgotten; any other send failure is retried next
+   * run. Checked by the daily run rather than at boot: a new source arrives with a deploy, and a
+   * day's delay costs nothing. A failure here must not affect the run.
+   */
+  private async tellRequesters(): Promise<void> {
+    try {
+      await this.requests.expire();
+      for (const [i, request] of (await this.requests.supported()).entries()) {
+        // Paced like a delivery: one popular site shipping must not burst into Telegram's limit.
+        if (i > 0) await wait(SEND_DELAY_MS);
+        try {
+          await this.telegram.notify(request.telegramId, sourceAddedNotice(request));
+        } catch (err) {
+          // Telegram's own refusal (blocked, chat gone) never clears — forget, or the row lives
+          // forever; a rate limit or a network failure is retried next run.
+          const refused =
+            err instanceof GrammyError &&
+            err.error_code >= 400 &&
+            err.error_code < 500 &&
+            err.error_code !== 429;
+          if (!refused) {
+            this.logger.warn({ err }, `Source-added notice failed for request ${request.id}`);
+            continue;
+          }
+        }
+        await this.requests.forget(request.id);
+        this.logger.log(`Requester told: ${request.host} is supported`);
+      }
+    } catch (err) {
+      this.logger.error({ err }, 'Telling requesters failed');
+      Sentry.captureException(err);
+    }
   }
 
   /** Send an alert to the owner if configured; a failed alert must not affect the run. */
