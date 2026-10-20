@@ -5,8 +5,9 @@ import {
 } from '../source-adapter';
 
 import { freeProxyRung } from './free-proxies';
-import { fetchHtml, hasProxy } from './http';
+import { fetchHtml, fetchJson, hasProxy } from './http';
 import { ProviderUnavailableError, paidRungs } from './providers';
+import type { Post } from './providers';
 
 /**
  * How a source behind anti-bot protection is read (see fetchProtected). Declared by the source.
@@ -53,24 +54,30 @@ export async function fetchProtected({
   host,
   useProxy = false,
   protection,
+  post,
 }: {
   url: string;
   host: string;
   useProxy?: boolean;
   protection: Protection;
+  /** A POST instead of a GET (Copart's search) — only the paid rungs that forward one climb. */
+  post?: Post;
 }): Promise<string> {
   const deadline = Date.now() + LADDER_BUDGET_MS;
   const free = (name: string, viaProxy: boolean) => ({
     name,
     paid: false,
-    run: (ms: number) => fetchHtml({ url, host, useProxy: viaProxy, timeoutMs: ms }),
+    run: (ms: number) =>
+      post
+        ? fetchJson({ url, host, useProxy: viaProxy, timeoutMs: ms, ...post })
+        : fetchHtml({ url, host, useProxy: viaProxy, timeoutMs: ms }),
   });
   const rungs = [
     // A source that must go through the proxy has no direct rung.
     ...(useProxy ? [] : [free('plain', false)]),
     ...(hasProxy() ? [free('proxy', true)] : []),
     // A geo-fenced site may let a stranger's proxy of its country through for free.
-    ...(protection.country === undefined
+    ...(protection.country === undefined || post
       ? []
       : [
           {
@@ -78,7 +85,7 @@ export async function fetchProtected({
             paid: false,
           },
         ]),
-    ...paidRungs(url, protection).map((rung) => ({ ...rung, paid: true })),
+    ...paidRungs(url, protection, post).map((rung) => ({ ...rung, paid: true })),
   ];
   const reasons: string[] = [];
   // Whether a paid service was actually asked — if none was, the failure is ours to fix.

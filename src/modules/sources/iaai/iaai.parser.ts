@@ -5,10 +5,10 @@ import { LOT_LABELS, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
 import { elementText, linkPath } from '../scraping/html';
 import { fetchJson } from '../scraping/http';
-import { asText } from '../scraping/next-data';
+import { asNumber, asText } from '../scraping/next-data';
 import { SourceUnavailableError } from '../source-adapter';
 import type { Listing } from '../source-adapter';
-import type { SearchPage } from '../source-definition';
+import type { PageContext, SearchPage } from '../source-definition';
 
 /** iaai.com — US salvage auctions; the site's own search, no Cloudflare. */
 export const HOST = 'iaai.com';
@@ -41,17 +41,24 @@ export function loadSearch(body: Record<string, unknown>): Promise<string> {
 /** One page of lots for the pasted Keyword, latest auction first (the site's own sort). */
 export const load = (url: string): Promise<string> => loadSearch(searchBody(url));
 
-/** The POST the iaai.com pager sends — Keyword from the link, nothing the link did not ask for. */
-export function searchBody(url: string): Record<string, unknown> {
+/**
+ * The POST the iaai.com pager sends — Keyword from the link, nothing the link did not ask for;
+ * `page` (ours, 1-based) is the pager's CurrentPage (measured 2026-10-20: pages 1–3 of a Camry
+ * search, 100 distinct lots each).
+ */
+export function searchBody(url: string, page = pageOf(url)): Record<string, unknown> {
   const keyword = asText(new URL(url).searchParams.get('Keyword')) ?? '';
   return {
     Searches: [{ FullSearch: keyword }],
     PageSize: PAGE_SIZE,
-    CurrentPage: 1,
+    CurrentPage: page,
     ReturnFacets: false,
     Sort: [{ SortField: 'AuctionDateTime', IsDescending: true, IsGeoSort: false }],
   };
 }
+
+const pageOf = (url: string): number =>
+  Math.max(1, Math.floor(asNumber(new URL(url).searchParams.get('page')) ?? 1));
 
 /**
  * Cards from a search page or a pager fragment. A bare challenge/empty HTML has none of the
@@ -69,9 +76,20 @@ export function listingsFrom(html: string): Listing[] {
   return [...byId.values()];
 }
 
-export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
-  return { listings: listingsFrom(html) };
+export function parsePage(html: string, ctx: Pick<PageContext, 'sent'>): SearchPage<boolean> {
+  const listings = listingsFrom(html);
+  const total = totalOf(html);
+  const seen = ctx.sent + listings.length;
+  return {
+    listings,
+    next:
+      listings.length > 0 && (total === undefined ? listings.length >= PAGE_SIZE : seen < total),
+  };
 }
+
+/** `<div id="TotalVehicleAmount">9956 </div>` — the search's lot count. */
+const totalOf = (html: string): number | undefined =>
+  asNumber(/id="TotalVehicleAmount"[^>]*>([^<]*)</.exec(html)?.[1]);
 
 const isSearchPage = (html: string): boolean =>
   html.includes('data-list--search') ||

@@ -23,10 +23,10 @@ start; more frequent once throttling/dedupe land).
   fetched, shown on the card; any other filter they cannot honour, and `status=All`, are refused; fallback cards link to
   the auction page), and the auctions themselves — copart.com (up
   to the 500-listing window; the link’s `searchCriteria`, or else `query` / make / model) and
-  iaai.com (first 100; the link’s `Keyword`; through our proxy)** — via the adapter
-  registry. **copart.com does not answer production** (an Imperva page for every IP we have,
-  2026-10-20): its polls fail until the owner picks a way in (PRODUCT_PLAN «Сейчас в работе»);
-  a bid.cars search then gets IAAI's lots only. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
+  iaai.com (up to the 500-listing window; the link’s `Keyword`; through our proxy)** — via the adapter
+  registry. copart.com refuses every IP we have (Imperva), so its search goes up the fetch
+  ladder as a POST and is read through a paid service (ScrapingAnt / ScraperAPI) when the free
+  rungs fail. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
   first page only (a page with nothing seen before tells the owner the same way; each page may be paid; a run fetches a search once, however many users watch

@@ -143,6 +143,19 @@ A source is a folder `sources/<site>/` — mirror `rabota/`:
   rabota's page 0); shared paging and pinning are tested once, in `source-definition.spec.ts`.
 - Taking over a host another source matched? Its stored subscriptions need a data migration
   (precedent: `MoveTravelSubscriptions`).
+- **Measure it from the production server, not only from home.** Copart and IAAI answered home
+  and refused Hetzner (2026-10-20): a source checked only from home ships broken. The probe is a
+  plain read-only Node script piped into the app pod; the owner runs it (`CD_HOST` is the
+  server's address in their shell):
+
+  ```bash
+  ssh root@$CD_HOST 'k3s kubectl exec -i deploy/nexo-assist -c app -- node' < probe.js
+  ```
+
+  Try direct and through `SCRAPE_PROXY_URL`. Direct refused, the proxy fine → `useProxy`; both
+  refused → the ladder's paid rungs (`protection`, or `fetchProtected` in `load` for a POST, like
+  Copart) or the owner's call. The result goes into PRODUCT_TECH.md's table of measurements.
+
 - The source's measured gotchas also go into its entry in PRODUCT_PLAN.md.
 
 ## Database & migrations

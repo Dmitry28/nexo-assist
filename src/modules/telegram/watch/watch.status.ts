@@ -7,7 +7,9 @@ import { Injectable } from '@nestjs/common';
  * pacing, a page walk that starts no page after 3 min (paginate's WALK_BUDGET_MS) plus one last
  * page at the 30 s fetch timeout, and about a minute of paced sends. A protected
  * source reads one page through the ladder, capped at LADDER_BUDGET_MS (4 min), so ~5 min — and
- * DAILY_CREDIT_BUDGET admits at most twenty geo and thirty global searches of those; another
+ * DAILY_CREDIT_BUDGET admits at most twenty geo and thirty global searches of those. Copart walks
+ * its pages up the ladder (a POST, outside that budget): 3 min of walk plus one last page of up to
+ * 4 min, ~7 min — measured 40 s for its 500 through ScrapingAnt; another
  * subscription to a search the run already fetched costs only its pacing and sends (~1 min). A
  * run is sequential, so the worst case is ~5 min × active subscriptions: today's ~45 leave a
  * margin of about a third, and the threshold starts touching a live run at about seventy. A
