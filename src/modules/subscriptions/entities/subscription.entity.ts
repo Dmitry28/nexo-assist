@@ -60,4 +60,8 @@ export class Subscription {
    * migration that grows it). null = nothing to catch up; see WatchService.check. */
   @Column({ type: 'int', nullable: true })
   widenedFrom: number | null;
+
+  /** The user's keyword filter, phrases joined by «, » (keyword-filter.ts). null = no filter. */
+  @Column({ type: 'text', nullable: true })
+  keywords: string | null;
 }

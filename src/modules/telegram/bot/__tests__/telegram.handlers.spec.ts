@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import type { Bot, Context } from 'grammy';
+import type { Bot } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing } from '@/__tests__/helpers/listing';
@@ -24,29 +24,12 @@ import type { WatchService } from '@/modules/subscriptions/watch.service';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import type { CheckHandlers } from '../check.handlers';
+import { ListHandlers } from '../list.handlers';
 import { HELP_MESSAGE } from '../telegram.format';
 import { TelegramHandlers } from '../telegram.handlers';
 
 import { makeCtx } from './fixtures/bot-ctx';
-
-type Handler = (ctx: Context) => Promise<void> | void;
-
-/** Captures the handlers grammY would register, so tests can drive them directly. */
-class FakeBot {
-  readonly commands = new Map<string, Handler>();
-  readonly callbacks: Array<{ pattern: RegExp; fn: Handler }> = [];
-  onText!: Handler;
-
-  command(name: string, fn: Handler): void {
-    this.commands.set(name, fn);
-  }
-  on(_event: string, fn: Handler): void {
-    this.onText = fn;
-  }
-  callbackQuery(pattern: RegExp, fn: Handler): void {
-    this.callbacks.push({ pattern, fn });
-  }
-}
+import { FakeBot } from './fixtures/fake-bot';
 
 const sub = (over: Partial<Subscription> = {}): Subscription =>
   makeSubscription({ url: 'u1', ...over });
@@ -77,6 +60,7 @@ describe('TelegramHandlers', () => {
       new SourceRegistry([sourceAdapter('kufar')]),
       status,
       check as unknown as CheckHandlers,
+      new ListHandlers(subscriptions as unknown as SubscriptionsService),
     );
     const fakeBot = new FakeBot();
     handlers.register(fakeBot as unknown as Bot);
@@ -378,87 +362,6 @@ describe('TelegramHandlers', () => {
     const ctx = await pressButton('show:sub-1', 1);
 
     expect(check.onShowCurrent).toHaveBeenCalledWith(ctx, 'sub-1');
-  });
-
-  it('lists subscriptions with remove buttons and removes for the owner', async () => {
-    subscriptions.listByUser.mockResolvedValue([sub({ id: 's1', url: 'u1' })]);
-    const listCtx = makeCtx({ userId: 1 });
-    await bot.commands.get('list')!(listCtx);
-    expect(listCtx.reply).toHaveBeenCalledWith(expect.stringContaining('u1'), expect.anything());
-
-    subscriptions.remove.mockResolvedValue(true);
-    const ctx = await pressButton('remove:s1', 1);
-    expect(subscriptions.remove).toHaveBeenCalledWith('s1', 1);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Удалено');
-  });
-
-  it('marks a paused subscription in /list and offers to resume it', async () => {
-    subscriptions.listByUser.mockResolvedValue([
-      sub({ id: 'active' }),
-      sub({ id: 'paused', pausedAt: new Date() }),
-    ]);
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('list')!(ctx);
-
-    const [text, options] = ctx.reply.mock.calls[0] as [
-      string,
-      { reply_markup: { inline_keyboard: Array<Array<{ callback_data: string }>> } },
-    ];
-    expect(text).toContain('#2 — kufar.by ⏸ на паузе');
-    expect(text).not.toContain('#1 — kufar.by ⏸');
-    const buttons = options.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
-    expect(buttons).toContain('resume:paused');
-    expect(buttons).not.toContain('resume:active');
-  });
-
-  it('caps /list by buttons, not rows — a paused row carries two', async () => {
-    // 50 paused rows would be 100 buttons; Telegram rejects the reply and /list is lost.
-    subscriptions.listByUser.mockResolvedValue(
-      Array.from({ length: 50 }, (_, i) => sub({ id: `s${i}`, pausedAt: new Date() })),
-    );
-
-    const ctx = makeCtx({ userId: 1 });
-    await bot.commands.get('list')!(ctx);
-
-    const [, options] = ctx.reply.mock.calls[0] as [
-      string,
-      { reply_markup: { inline_keyboard: Array<Array<{ callback_data: string }>> } },
-    ];
-    expect(options.reply_markup.inline_keyboard.flat().length).toBeLessThanOrEqual(90);
-  });
-
-  it('resume un-pauses the subscription', async () => {
-    subscriptions.resume.mockResolvedValue(true);
-
-    const ctx = await pressButton('resume:sub-1', 1);
-
-    expect(subscriptions.resume).toHaveBeenCalledWith('sub-1', 1);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Возобновлено');
-  });
-
-  it('resume refuses when the user is at the active-subscription limit', async () => {
-    subscriptions.resume.mockRejectedValue(new SubscriptionLimitError());
-
-    const ctx = await pressButton('resume:sub-1', 1);
-
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(expect.stringContaining('Предел'));
-  });
-
-  it('remove answers "Уже удалено" when nothing was deleted', async () => {
-    subscriptions.remove.mockResolvedValue(false);
-    const ctx = await pressButton('remove:s1', 999);
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Уже удалено');
-  });
-
-  // The spinner is the only feedback a tap gives. An unanswered callback keeps spinning until
-  // Telegram times it out, which reads as a dead bot — so even a malformed one must be answered.
-  it.each(['remove:s1', 'resume:s1'])('clears the spinner on an anonymous %s tap', async (data) => {
-    const ctx = await pressButton(data, 'anonymous');
-
-    expect(ctx.answerCallbackQuery).toHaveBeenCalledWith();
-    expect(subscriptions.remove).not.toHaveBeenCalled();
-    expect(subscriptions.resume).not.toHaveBeenCalled();
   });
 
   it('/stats replies to the admin with counts', async () => {

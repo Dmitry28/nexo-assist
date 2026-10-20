@@ -9,6 +9,7 @@ import { watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from './entities/subscription.entity';
 import { isEmpty } from './findings';
 import type { Findings, Removal } from './findings';
+import { listingText, matchesKeywords, readKeywords } from './keyword-filter';
 import { hasPriceChanged, replacesSnapshot } from './price-change';
 import type { PriceChange } from './price-change';
 import {
@@ -26,6 +27,11 @@ const MASS_PRICE_CHANGE_MIN = 10;
 const MASS_REMOVAL_MIN = 3;
 
 const isMass = (hits: number, of: number, floor: number): boolean => hits >= floor && hits * 2 > of;
+
+const partition = <T>(items: T[], keep: (item: T) => boolean): [T[], T[]] => [
+  items.filter(keep),
+  items.filter((item) => !keep(item)),
+];
 
 /**
  * A watched listing deleted before its first baseline (the subscribe-time one failed on an
@@ -123,7 +129,8 @@ export class WatchService {
    * Fetch current listings: those not seen before, and seen ones whose price changed. Records
    * nothing undelivered — a change keeps its old snapshot until markDelivered, so an unsent one
    * comes back next run. Every other seen listing gets its snapshot replaced now (a seller's
-   * edit or a parser fix must reach storage; sub-floor drift is absorbed run by run).
+   * edit or a parser fix must reach storage; sub-floor drift is absorbed run by run). What the
+   * user's keyword filter drops is settled silently instead (keepWanted) — it is never delivered.
    */
   async check(sub: Subscription, shared?: SharedFetches): Promise<Findings> {
     const result = await this.fetchListings(sub, { shared });
@@ -169,7 +176,35 @@ export class WatchService {
       this.warn(sub, `Page window overflowed for ${sub.source}`);
     }
     const removed = await this.findRemoved(sub, result, seen.size);
-    return { listings: fresh, priceChanges, removed };
+    return this.keepWanted(sub, { listings: fresh, priceChanges, removed });
+  }
+
+  /**
+   * What passes the user's keyword filter. Applied last, so the health signals above (partial,
+   * overflow, mass change) still measure the whole page. What does not pass is settled now, never
+   * left for later: a new listing joins the seen set, a price change becomes the stored snapshot,
+   * a removal is forgotten — kept pending, they would come back every run and pile up into a false
+   * «mass» event. NOTE: a removal is judged by its stored title only (the snapshot has no text), so
+   * a listing that matched on its description alone loses its «снято».
+   */
+  private async keepWanted(sub: Subscription, found: Findings): Promise<Findings> {
+    const phrases = readKeywords(sub.keywords);
+    if (phrases === null) return found;
+    const wanted = (listing: Parameters<typeof listingText>[0]): boolean =>
+      matchesKeywords(listingText(listing), phrases);
+    const [listings, unwanted] = partition(found.listings, wanted);
+    const [priceChanges, unwantedChanges] = partition(found.priceChanges, (c) => wanted(c.after));
+    const [removed, unwantedRemovals] = partition(found.removed, (r) => wanted(r.last));
+    await this.subscriptions.markSeen(sub.id, unwanted);
+    await this.subscriptions.updateSnapshots(
+      sub.id,
+      unwantedChanges.map((change) => change.after),
+    );
+    await this.subscriptions.deleteSeen(
+      sub.id,
+      unwantedRemovals.map((removal) => removal.externalId),
+    );
+    return { listings, priceChanges, removed };
   }
 
   /**
@@ -247,7 +282,10 @@ export class WatchService {
   /** Current listings for a subscription, read-only (does not touch the seen set). */
   async current(sub: Subscription): Promise<Listing[]> {
     const { listings } = await this.fetchListings(sub);
-    return listings;
+    const phrases = readKeywords(sub.keywords);
+    return phrases === null
+      ? listings
+      : listings.filter((listing) => matchesKeywords(listingText(listing), phrases));
   }
 
   /**

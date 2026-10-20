@@ -63,10 +63,19 @@ start; more frequent once throttling/dedupe land).
   never reported as «nothing new».
 - Bot language: **Russian** — the beta audience is the kufar.by/realt.by one. Logs and code stay
   English; per-profile language is Phase 7.
-- Buttons: Следить / Отмена / Показать текущие, and in `/list` ❌ remove / ▶️ resume. A «Следить»
-  prompt stays tappable for 24 hours and only until the next restart; after that the button
-  answers «Кнопка устарела» and the link is pasted again. `/list` shows as much as fits one
-  message, announces the rest, and marks paused subscriptions with ⏸.
+- Buttons: Следить / Отмена / Показать текущие. A «Следить» prompt stays tappable for 24 hours
+  and only until the next restart; after that the button answers «Кнопка устарела» and the link is
+  pasted again. `/list` lists every subscription in one message — a short linked label each
+  («kufar.by · grodno/kupit/dom», ⏸ when paused, its filter under it) — and a grid of number
+  buttons; a number opens that subscription's menu: ❌ remove, 🔎 filter (not on a watched single
+  listing), ▶️ resume when paused, ↩ back.
+- **Keyword filter** per subscription (🔎): the user replies to the bot's prompt with words
+  separated by commas; only listings whose title, description or address hold every word of at
+  least one phrase are delivered (any order, case and ё ignored, a word's start matches its
+  endings — «лобов стекл»). «-» clears it. What does not match is recorded as seen silently and
+  never comes back; listings already seen before the filter was set do not come back either.
+  Health signals (partial fetch, overflow, mass change) still count the whole page. A removal is
+  matched by title only. Only a reply to the prompt sets a filter — a stray message never does.
 - ▶️ and re-sending the URL are **not** the same: ▶️ only lifts the pause, so everything that
   appeared during it still arrives; re-sending re-baselines the subscription and drops that
   backlog. The two need one semantic — PRODUCT_PLAN.md, «Технический бэклог».

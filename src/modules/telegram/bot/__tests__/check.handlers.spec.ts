@@ -397,6 +397,15 @@ describe('CheckHandlers', () => {
     );
   });
 
+  it('show-current says an empty filtered list is the filter’s answer, not the page’s', async () => {
+    subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1', keywords: 'бампер' }));
+    watch.current.mockResolvedValue([]);
+
+    const ctx = await tapShow('sub-1');
+
+    expect(ctx.reply).toHaveBeenCalledWith('По фильтру сейчас ничего нет.', expect.anything());
+  });
+
   it('show-current reports a failed fetch and does not escalate a failed apology', async () => {
     subscriptions.findOwned.mockResolvedValue(sub({ id: 'sub-1' }));
     watch.current.mockRejectedValue(new Error('outage'));

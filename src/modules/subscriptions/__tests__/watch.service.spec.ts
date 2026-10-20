@@ -375,6 +375,68 @@ describe('WatchService.poll — removals', () => {
   });
 });
 
+describe('WatchService — the keyword filter', () => {
+  const filtered = (over: Partial<Subscription> = {}) =>
+    baselined({ keywords: 'бампер задний', ...over });
+  const bumper = listing(1, { title: 'Бампер задний', priceByn: 120 });
+  const mats = listing(2, { title: 'Коврики', priceByn: 100 });
+
+  it('delivers only what matches, and settles the rest as seen — never delivered later', async () => {
+    const { subscriptions, watch } = build([bumper, mats]);
+
+    await expect(watch.poll(filtered())).resolves.toMatchObject({ listings: [bumper] });
+    expect(subscriptions.markSeen).toHaveBeenCalledWith('sub-1', [mats]);
+  });
+
+  it('matches the description and the address too', async () => {
+    const part = listing(3, { title: 'Деталь', description: 'бампер задний, цвет серый' });
+    const { watch } = build([part]);
+
+    await expect(watch.poll(filtered())).resolves.toMatchObject({ listings: [part] });
+  });
+
+  it('stores a filtered-out price change silently, so it does not pile up', async () => {
+    const { subscriptions, watch } = build([{ ...mats, priceByn: 50 }]);
+    subscriptions.getSeen.mockResolvedValue(
+      seenAs(['2'], { '2': { link: mats.link, title: 'Коврики', priceByn: 100 } }),
+    );
+
+    await expect(watch.poll(filtered())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.updateSnapshots).toHaveBeenCalledWith('sub-1', [
+      { ...mats, priceByn: 50 },
+    ]);
+  });
+
+  it('forgets a filtered-out removal instead of keeping its row', async () => {
+    const { subscriptions, watch } = build([bumper], true, false, true);
+    subscriptions.getSeen.mockResolvedValue(
+      seenAs(['1'], { '1': { link: bumper.link, title: 'Бампер задний', priceByn: 120 } }),
+    );
+    subscriptions.findGone.mockResolvedValue([
+      { externalId: '2', snapshot: { link: mats.link, title: 'Коврики' } },
+    ]);
+
+    await expect(watch.poll(filtered())).resolves.toEqual({ kind: 'nothing' });
+    expect(subscriptions.deleteSeen).toHaveBeenCalledWith('sub-1', ['2']);
+  });
+
+  // Health is about the page, not the filter: an overflow warns even when nothing matched.
+  it('measures the window overflow before the filter', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { watch } = build([mats], true, true);
+
+    await watch.poll(filtered());
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Page window overflowed'));
+  });
+
+  it('shows only matching listings in «Показать текущие»', async () => {
+    const { watch } = build([bumper, mats]);
+
+    await expect(watch.current(filtered())).resolves.toEqual([bumper]);
+  });
+});
+
 describe('WatchService — a watched single listing (item link)', () => {
   // kufar's item form — watchedItem reads it from the real source definitions.
   const itemSub = (over: Partial<Subscription> = {}) =>

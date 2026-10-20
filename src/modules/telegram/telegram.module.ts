@@ -5,6 +5,7 @@ import { SourcesModule } from '@/modules/sources/sources.module';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 
 import { CheckHandlers } from './bot/check.handlers';
+import { ListHandlers } from './bot/list.handlers';
 import { TelegramHandlers } from './bot/telegram.handlers';
 import { TelegramService } from './bot/telegram.service';
 import { SourceHealth } from './watch/source-health';
@@ -25,6 +26,7 @@ import { WatchStatus } from './watch/watch.status';
     TelegramService,
     TelegramHandlers,
     CheckHandlers,
+    ListHandlers,
     WatchScheduler,
     WatchStatus,
     SourceHealth,

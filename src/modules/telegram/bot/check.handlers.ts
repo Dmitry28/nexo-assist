@@ -224,7 +224,12 @@ export class CheckHandlers {
         .catch(() => undefined);
       return;
     }
-    await ctx.reply(formatCurrentListings(listings), { link_preview_options: NO_LINK_PREVIEW });
+    // An empty filtered list is the filter's answer, not the page's.
+    const text =
+      listings.length === 0 && sub.keywords
+        ? 'По фильтру сейчас ничего нет.'
+        : formatCurrentListings(listings);
+    await ctx.reply(text, { link_preview_options: NO_LINK_PREVIEW });
   }
 
   /**
