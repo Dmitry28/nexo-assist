@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import { SourceUnavailableError } from '../../source-adapter';
-import { SEARCH_PATH, listingsFrom, searchBody } from '../iaai.parser';
+import { SEARCH_PATH, listingsFrom, parsePage, searchBody } from '../iaai.parser';
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
 
@@ -46,6 +46,25 @@ describe('iaai searchBody', () => {
       ReturnFacets: false,
       Sort: [{ SortField: 'AuctionDateTime', IsDescending: true, IsGeoSort: false }],
     });
+  });
+});
+
+describe('iaai paging', () => {
+  it("sends our page as the pager's CurrentPage", () => {
+    expect(searchBody('https://iaai.com/Search?Keyword=camry&page=3')).toMatchObject({
+      CurrentPage: 3,
+    });
+  });
+
+  it('has a next page until the lots seen reach the total', () => {
+    const html = fixture('iaai-search.html');
+    expect(parsePage(html, { sent: 0 }).next).toBe(false); // 2 of 2
+    const more = html.replace(
+      'id="TotalVehicleAmount" class="hidden">2',
+      'id="TotalVehicleAmount" class="hidden">9956 ',
+    );
+    expect(parsePage(more, { sent: 0 }).next).toBe(true);
+    expect(parsePage(more, { sent: 9954 }).next).toBe(false);
   });
 });
 

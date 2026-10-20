@@ -20,6 +20,13 @@ const BYPASS_RETRY_DELAY_MS = 3_000;
 
 const logger = new Logger('scraping:providers');
 
+/** A request with a body — sent to the provider, which forwards it to the site. */
+export interface Post {
+  body: string;
+  /** The site's own headers (Content-Type, Origin…), forwarded the provider's way. */
+  headers: Record<string, string>;
+}
+
 /** One managed anti-bot service: how it is asked for a page. */
 interface Provider {
   name: string;
@@ -34,6 +41,12 @@ interface Provider {
   headers?(key: string): Record<string, string>;
   /** The page out of the response body, for a provider that wraps it (ScrapFly: JSON). */
   read?(body: string): string;
+  /**
+   * How it forwards a POST: the query flag that passes our headers on, or the prefix it wants on
+   * each. Absent — not measured, so not asked for a POST. Measured 2026-10-20 on Copart's search
+   * (all four: the JSON, 1–3 s).
+   */
+  forward?: { param?: [string, string]; prefix?: string };
   /**
    * The sites it serves, and so the budget its free tier pays into (poolOf): `geo` ones can put
    * the request in the site's country, `global` ones cannot — for a geo-fenced site they would
@@ -81,6 +94,7 @@ const PROVIDERS: readonly Provider[] = [
       return `https://api.scrapingant.com/v2/general?${params.toString()}`;
     },
     headers: (key) => ({ 'x-api-key': key }),
+    forward: { prefix: 'ant-' },
     pool: 'global',
     // 403 a wrong key (measured) or the month's credits gone (its docs); 409 its concurrency limit
     // (docs) — it clears. A site's own 403/429 arrives as 423 «detected by the site» (measured
@@ -100,6 +114,7 @@ const PROVIDERS: readonly Provider[] = [
       if (renderWaitMs !== undefined) params.set('render', 'true');
       return `https://api.scraperapi.com/?${params.toString()}`;
     },
+    forward: { param: ['keep_headers', 'true'] },
     pool: 'global',
     // 401 a bad key (measured), 403 the month's credits gone (docs; no premium is ever asked), 429
     // concurrency. A site's own 401/403/429 arrives as 500 after its retries (measured 2026-10-15),
@@ -122,6 +137,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://api.zenrows.com/v1/?${params.toString()}`;
     },
+    forward: { param: ['custom_headers', 'true'] },
     pool: 'geo',
     // 401 a bad key, 402 the month's credits gone. 429 is the concurrency limit — it clears.
     spent: new Set([401, 402]),
@@ -140,6 +156,7 @@ const PROVIDERS: readonly Provider[] = [
       }
       return `https://api.scrape.do/?${params.toString()}`;
     },
+    forward: { param: ['customHeaders', 'true'] },
     pool: 'geo',
     // 401 a bad token or the month's requests gone (measured 2026-10-14: «Monthly request limit
     // exceeded»), 429 the same per the prototype.
@@ -252,17 +269,49 @@ export const pageCredits = (protection: Protection): number =>
 export const paidRungs = (
   target: string,
   protection: Protection,
+  post?: Post,
 ): { name: string; run: (timeoutMs: number) => Promise<string> }[] =>
-  PROVIDERS.filter((provider) => provider.pool === poolOf(protection)).map((provider) => ({
+  PROVIDERS.filter(
+    (provider) => provider.pool === poolOf(protection) && (post === undefined || provider.forward),
+  ).map((provider) => ({
     name: provider.name,
-    run: (timeoutMs) => scrape(provider, target, protection, timeoutMs),
+    run: (timeoutMs) => scrape(provider, target, protection, timeoutMs, post),
   }));
+
+/** The provider's request for a POST: its forwarding flag on the URL, the site's headers its way. */
+function asPost(
+  provider: Provider,
+  url: string,
+  headers: Record<string, string> | undefined,
+  post: Post,
+): { url: string; init: { method: 'POST'; body: string; headers: Record<string, string> } } {
+  const { param, prefix = '' } = provider.forward ?? {};
+  const target = new URL(url);
+  if (param) target.searchParams.set(...param);
+  const forwarded = Object.fromEntries(
+    Object.entries(post.headers).map(([name, value]) => [`${prefix}${name}`, value]),
+  );
+  return {
+    url: target.toString(),
+    // Content-Type unprefixed as well: the provider reads the body by it.
+    init: {
+      method: 'POST',
+      body: post.body,
+      headers: {
+        ...forwarded,
+        'Content-Type': post.headers['Content-Type'] ?? 'application/json',
+        ...headers,
+      },
+    },
+  };
+}
 
 async function scrape(
   provider: Provider,
   target: string,
   protection: Protection,
   timeoutMs: number,
+  post?: Post,
 ): Promise<string> {
   const key = process.env[provider.keyVar];
   if (!key) throw new ProviderUnavailableError('no key');
@@ -273,12 +322,10 @@ async function scrape(
   }
   const deadline = Date.now() + Math.min(timeoutMs, provider.maxMs);
   for (let attempt = 0; ; attempt++) {
-    const status = await call(
-      provider,
-      provider.requestUrl(target, key, protection),
-      provider.headers?.(key),
-      deadline,
-    );
+    const url = provider.requestUrl(target, key, protection);
+    const headers = provider.headers?.(key);
+    const request = post ? asPost(provider, url, headers, post) : { url, init: { headers } };
+    const status = await call(provider, request.url, request.init, deadline);
     if (typeof status === 'string') return status;
     if (provider.spent.has(status)) {
       spentUntil.set(provider.name, Date.now() + SPENT_FOR_MS);
@@ -296,13 +343,13 @@ async function scrape(
 async function call(
   provider: Provider,
   url: string,
-  headers: Record<string, string> | undefined,
+  init: { method?: 'POST'; body?: string; headers?: Record<string, string> },
   deadline: number,
 ): Promise<string | number> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
   try {
-    const res = await fetch(url, { headers, signal: controller.signal }).catch(() => {
+    const res = await fetch(url, { ...init, signal: controller.signal }).catch(() => {
       // A fresh error without `cause`: undici's carries the request URL, and with it the key.
       throw new SourceUnavailableError(controller.signal.aborted ? 'timed out' : 'request failed');
     });

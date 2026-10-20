@@ -1,6 +1,6 @@
 import { LOT_LABELS, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
-import { fetchJson } from '../scraping/http';
+import { fetchProtected } from '../scraping/ladder';
 import {
   asCoordinates,
   asNumber,
@@ -14,7 +14,7 @@ import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 import type { PageContext, SearchPage } from '../source-definition';
 
-/** copart.com — US salvage auctions; the site's own search JSON, no Cloudflare. */
+/** copart.com — US salvage auctions; the site's own search JSON, behind Imperva. */
 export const HOST = 'copart.com';
 
 /** The lot board the site's search form lands on. */
@@ -22,30 +22,41 @@ export const SEARCH_PATH = /^\/lotSearchResults$/;
 
 const SEARCH_API = 'https://www.copart.com/public/lots/search-results';
 const PAGE_SIZE = 100;
-/** Flip with the source's `useProxy` — POST bypasses `get`, so the flag must live here too. */
-export const USE_PROXY = false;
-
 /** `$3,475` — auction figures are USD; 0 is «no bid yet», not a price. */
 export function usdText(value: number | undefined): string | undefined {
   if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
   return `$${Math.round(value).toLocaleString('en-US')}`;
 }
 
-/** One page of the site's search JSON for the pasted URL. */
+/**
+ * One page of the site's search JSON for the pasted URL, up the fetch ladder as a POST: Imperva
+ * answers every IP we have with its page (Hetzner and the Oracle proxy, 2026-10-20), and the paid
+ * rungs carry the POST (ScrapingAnt, ScraperAPI without a browser, 1–3 s — measured the same day).
+ * The free rungs go first: from elsewhere the site may still answer them.
+ */
 export function load(url: string): Promise<string> {
-  return fetchJson({
+  return fetchProtected({
     url: SEARCH_API,
     host: HOST,
-    body: JSON.stringify(searchBody(url)),
-    useProxy: USE_PROXY,
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Origin: 'https://www.copart.com',
-      Referer: 'https://www.copart.com/',
+    protection: { usable: isSearchJson },
+    post: {
+      body: JSON.stringify(searchBody(url)),
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Origin: 'https://www.copart.com',
+        Referer: 'https://www.copart.com/',
+      },
     },
   });
 }
+
+/**
+ * The search answer rather than Imperva's page — by its envelope, never by its lots. Any other
+ * envelope climbs too (a refused criteria would cost every paid rung once) — none seen so far.
+ */
+export const isSearchJson = (body: string): boolean =>
+  asNumber(asRecord(parseJson(body))?.returnCode) === 1;
 
 /**
  * The POST the copart.com frontend sends. A filtered link carries `searchCriteria`; a simple
@@ -151,9 +162,8 @@ function toListing(lot: Record<string, unknown>): Listing {
         miles !== undefined && miles > 0 ? `${Math.round(miles)} mi` : undefined,
       ),
       detail(LOT_LABELS.engine, asText(lot.egn)),
-      // `egn` / `lcd` (engine, the lot's condition — «RUN AND DRIVE», «ENGINE START PROGRAM»).
-      // TODO [M]: names not yet measured live (Imperva blocked the probe 2026-10-20). Wrong, they
-      // leave every Copart lot without the facts, so a bid.cars engine / start filter drops them all.
+      // `egn` «2.0L 4»; `lcd` the lot's condition — «RUNS AND DRIVES», «ENGINE START PROGRAM»,
+      // «ENHANCED VEHICLES» (not a start code), or none (measured 2026-10-20, 100 Atlas lots).
       detail(LOT_LABELS.start, startText(asText(lot.lcd))),
       detail('Повреждение', asText(lot.dd)),
       detail('Документ', asText(lot.tgd) ?? asText(lot.td)),

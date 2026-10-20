@@ -56,19 +56,20 @@ describe('bid.cars fetch', () => {
 
     const { listings } = await adapter.fetch(sample);
 
+    // The houses in turn — a wide search must not show one house only.
     expect(listings.map((row) => row.externalId)).toEqual([
       '0-46218713',
-      '0-46122379',
       '1-46840646',
+      '0-46122379',
       '1-77707195',
     ]);
     expect(listings.map((row) => new URL(row.link).host)).toEqual([
       'iaai.com',
+      'copart.com',
       'iaai.com',
       'copart.com',
-      'copart.com',
     ]);
-    expect(listings[2]?.coordinates).toEqual({ lat: 47.0864, lon: -122.433 });
+    expect(listings[1]?.coordinates).toEqual({ lat: 47.0864, lon: -122.433 });
     const iaai = fetchMock.mock.calls.find(([url]) => String(url).includes('iaai.com'))?.[1] as
       { body?: string } | undefined;
     expect(JSON.parse(iaai?.body ?? '')).toMatchObject({
@@ -128,6 +129,31 @@ describe('bid.cars fetch', () => {
     await expect(adapter.fetch(`${sample}&auction-type=Copart&engine-size-to=2`)).rejects.toThrow(
       /no lot carries «Двигатель»/,
     );
+  });
+
+  it("walks IAAI's pager to the end of the search", async () => {
+    const page1 = fixture('iaai', 'iaai-search.html').replace(
+      'id="TotalVehicleAmount" class="hidden">2',
+      'id="TotalVehicleAmount" class="hidden">3',
+    );
+    const page2 = `<div id="TotalVehicleAmount">3</div><ul class="data-list data-list--search"><li>
+      <h4><a href="/VehicleDetail/47000001~US">2020 VOLKSWAGEN ATLAS SE</a></h4>
+      <span title="Stock #: 47000001">47000001</span></li></ul>`;
+    fetchMock.mockImplementation((url: unknown, init?: { body?: string }) => {
+      if (!String(url).includes('iaai.com')) {
+        return Promise.resolve(new Response('Just a moment…', { status: 403 }));
+      }
+      const page = (JSON.parse(init?.body ?? '{}') as { CurrentPage: number }).CurrentPage;
+      return Promise.resolve(new Response(page === 1 ? page1 : page2));
+    });
+
+    const { listings } = await adapter.fetch(`${sample}&auction-type=IAAI`);
+
+    expect(listings.map((row) => row.externalId)).toEqual([
+      '0-46218713',
+      '0-46122379',
+      '0-47000001',
+    ]);
   });
 
   it('marks the window capped when the auctions hold more than 500', async () => {

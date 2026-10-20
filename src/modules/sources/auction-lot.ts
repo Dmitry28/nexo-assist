@@ -14,12 +14,12 @@ const START_TEXT: Record<StartCode, string> = {
   stationary: 'Stationary',
 };
 
-/** The auctions' wording — IAAI's «Run & Drive» badge, Copart's «RUN AND DRIVE» — as one code. */
+/** The auctions' wording — IAAI's «Run & Drive» badge, Copart's «RUNS AND DRIVES» — as one code. */
 export function startCode(text: string | undefined): StartCode | undefined {
   // `&amp;` too, nested: the IAAI page through the proxy carries «Run &amp;amp; Drive» (2026-10-20).
   const words = text?.toLowerCase().replace(/&(amp;)*/g, ' and ');
   if (words === undefined) return undefined;
-  if (/run[\s-]+and[\s-]+drive/.test(words)) return 'run-and-drive';
+  if (/runs?[\s-]+and[\s-]+drives?/.test(words)) return 'run-and-drive';
   // «DOES NOT START» / «NON-STARTER» is no start code we know, not «starts».
   if (/\b(not|non)\b[\s-]*start/.test(words)) return undefined;
   if (words.includes('start')) return 'starts';

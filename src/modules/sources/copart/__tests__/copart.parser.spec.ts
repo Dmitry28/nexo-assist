@@ -2,7 +2,14 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import { SourceUnavailableError } from '../../source-adapter';
-import { SEARCH_PATH, listingsFrom, parsePage, searchBody, usdText } from '../copart.parser';
+import {
+  SEARCH_PATH,
+  isSearchJson,
+  listingsFrom,
+  parsePage,
+  searchBody,
+  usdText,
+} from '../copart.parser';
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
 
@@ -23,7 +30,7 @@ describe('copart listingsFrom', () => {
         { label: 'VIN', value: '1V2CR2CA7JC123456' },
         { label: 'Аукцион', value: 'COPART, 2026-10-23' },
         { label: 'Пробег', value: '49183 mi' },
-        { label: 'Двигатель', value: '2.0L  4' },
+        { label: 'Двигатель', value: '2.0L 4' },
         { label: 'Запуск', value: 'Run and Drive' },
         { label: 'Повреждение', value: 'FRONT END' },
       ]),
@@ -98,5 +105,13 @@ describe('usdText', () => {
   it('skips zero and formats thousands', () => {
     expect(usdText(0)).toBeUndefined();
     expect(usdText(3475)).toBe('$3,475');
+  });
+});
+
+describe('copart isSearchJson', () => {
+  it("takes the search envelope, empty or not, and refuses Imperva's page", () => {
+    expect(isSearchJson(fixture('copart-search.json'))).toBe(true);
+    expect(isSearchJson('{"returnCode":1,"data":{"results":{"content":[]}}}')).toBe(true);
+    expect(isSearchJson('<html style="height:100%"><head><META NAME="ROBOTS"')).toBe(false);
   });
 });
