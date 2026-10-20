@@ -23,6 +23,8 @@ describe('copart listingsFrom', () => {
         { label: 'VIN', value: '1V2CR2CA7JC123456' },
         { label: 'Аукцион', value: 'COPART, 2026-10-23' },
         { label: 'Пробег', value: '49183 mi' },
+        { label: 'Двигатель', value: '2.0L  4' },
+        { label: 'Запуск', value: 'Run and Drive' },
         { label: 'Повреждение', value: 'FRONT END' },
       ]),
     );

@@ -18,12 +18,15 @@ start; more frequent once throttling/dedupe land).
   units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
   used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
   `/filter` links ignore their filters). US auction lots from bid.cars (the pasted search:
-  the free page when it opens, otherwise Copart and IAAI with the same filters — leftover
-  filters the auctions cannot honour, and `status=All`, are refused; fallback cards link to
+  the free page when it opens, otherwise Copart and IAAI with the same filters (one house not answering, the other's lots still go out) — odometer,
+  engine size and start code (which the auctions' search does not take) are applied to the lots
+  fetched, shown on the card; any other filter they cannot honour, and `status=All`, are refused; fallback cards link to
   the auction page), and the auctions themselves — copart.com (up
   to the 500-listing window; the link’s `searchCriteria`, or else `query` / make / model) and
-  iaai.com (first 100; the link’s `Keyword`)** — via the adapter
-  registry. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
+  iaai.com (first 100; the link’s `Keyword`; through our proxy)** — via the adapter
+  registry. **copart.com does not answer production** (an Imperva page for every IP we have,
+  2026-10-20): its polls fail until the owner picks a way in (PRODUCT_PLAN «Сейчас в работе»);
+  a bid.cars search then gets IAAI's lots only. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
   first page only (a page with nothing seen before tells the owner the same way; each page may be paid; a run fetches a search once, however many users watch
@@ -150,7 +153,7 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   later links as comments (up to 5 samples), at most 10 new issues a day. The issue carries the
   link (minus any login), never who sent it; a site whose issue the owner closed is not filed again — the repo is public. The user is told the request was passed on only
   when it was (`GITHUB_ISSUES_TOKEN` set and GitHub answered). Decision — PRODUCT_PLAN.md Фаза 6.
-- **A link we cannot watch as sent** (bid.cars filters the auctions cannot honour, a kufar-travel
+- **A link we cannot watch as sent** (a bid.cars filter we cannot apply, a kufar-travel
   hotel) is refused on subscribe; one kept from before is paused by the next run at once, with the
   same reason — not five «failures» and a false «Проверьте ссылку».
 - **Dead-man's switch:** the app pings an external watchdog every 5 minutes (`HEARTBEAT_URL`);
