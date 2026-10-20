@@ -27,6 +27,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "check:dead-code": "knip",
     "notify:test": "ts-node -r tsconfig-paths/register src/scripts/notify-test.ts",
+    "sim:bot": "ts-node -r tsconfig-paths/register src/scripts/bot-sim.ts",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d postgres",

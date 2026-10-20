@@ -43,3 +43,11 @@ not yet taken: it needs a per-spec allowance for the places that log on purpose.
 ```typescript
 jest.spyOn(console, 'error').mockImplementation(() => {});
 ```
+
+## The Bot End to End
+
+`npm run sim:bot -- <steps>` runs the whole app — handlers, database, live sites — against a fake
+Telegram Bot API on localhost (`src/scripts/bot-sim.ts`): send text, `tap:<button>`,
+`reply:<text>` to a prompt, `run` the daily watch, and every bot call is printed. Use it to check
+a user-facing flow before handing it over, instead of asking the owner to tap through. What it
+cannot show is the production server's view of the sites (IPs, proxy) — that stays the daily run's.

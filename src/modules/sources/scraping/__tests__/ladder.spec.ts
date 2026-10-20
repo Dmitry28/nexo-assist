@@ -339,8 +339,9 @@ describe('pageCredits', () => {
   it.each<[string, Protection, number]>([
     ['a geo site', { usable, country: 'by' }, 10],
     ['a rendered geo site', { usable, country: 'by', renderWaitMs: 10_000 }, 25],
-    // ScrapingAnt's browser is one price, rendered or not.
+    // ScrapingAnt: its browser 10, a plain request 1 (its `ant-credits-cost`, measured).
     ['a rendered site without a country', { usable, renderWaitMs: 10_000 }, 10],
+    ['a plain site without a country', { usable }, 1],
   ])('%s costs %p', (_label, asked, credits) => {
     expect(pageCredits(asked)).toBe(credits);
   });

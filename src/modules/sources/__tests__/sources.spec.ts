@@ -1,4 +1,4 @@
-import { siteName, watchedItem } from '../sources';
+import { ADAPTERS, siteName, watchedItem } from '../sources';
 
 describe('siteName', () => {
   it('names a registered source by its site, an unknown id by itself', () => {
@@ -17,5 +17,19 @@ describe('watchedItem', () => {
     expect(watchedItem('gsz', 'https://gsz.gov.by/registration/vacancy-search/')).toBeUndefined();
     // A stored URL that no longer parses must not throw into a delivery.
     expect(watchedItem('kufar', 'not a url')).toBeUndefined();
+  });
+});
+
+// Copart's search is paid page by page (Imperva refuses our IPs): its window, and bid.cars's
+// fallback walk of it — what DAILY_CREDIT_BUDGET counts them at.
+describe('paid polls of the auction walks', () => {
+  it.each([
+    ['copart', 5],
+    ['bid-cars', 6],
+  ])('%s costs %p global credits a poll', (id, credits) => {
+    expect(ADAPTERS.find((adapter) => adapter.id === id)?.paidPoll).toEqual({
+      credits,
+      pool: 'global',
+    });
   });
 });
