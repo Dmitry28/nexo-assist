@@ -120,6 +120,15 @@ export class EnvironmentVariables {
   TELEGRAM_BOT_TOKEN?: string;
 
   /**
+   * Where the bot's Bot API lives. Unset — Telegram itself. The bot simulator
+   * (`npm run sim:bot`, src/scripts/bot-sim.ts) points it at a fake one on localhost, so the real
+   * app runs end to end with nothing sent to Telegram.
+   */
+  @IsOptional()
+  @Matches(/^https?:\/\/\S+$/, { message: 'TELEGRAM_API_ROOT must be an http(s) URL' })
+  TELEGRAM_API_ROOT?: string;
+
+  /**
    * Telegram id of the owner — `/stats`, `/check` in production, and the address of every
    * product alert. Required in production for the same reason as SCRAPE_PROXY_URL below:
    * unset, the app runs fine and just stops telling the owner anything, and missing alerts

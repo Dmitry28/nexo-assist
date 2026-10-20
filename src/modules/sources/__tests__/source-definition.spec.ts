@@ -54,6 +54,28 @@ describe('createSourceAdapters', () => {
     expect(() => createSourceAdapters([{ ...protectedPage, item }])).toThrow(/item/);
   });
 
+  it('prices a protected poll itself, a declared one as declared — never both', () => {
+    const { page: _page, parse: _parse, ...common } = define();
+    const protectedPage = {
+      ...common,
+      singlePage: true as const,
+      parse: () => ({ listings: [listing('1')] }),
+      protection: { usable: () => true, country: 'by' },
+    };
+    const declared = { credits: 5, pool: 'global' as const };
+
+    const [protectedAdapter] = createSourceAdapters([protectedPage]);
+    expect(protectedAdapter).toMatchObject({
+      paidPoll: { credits: 10, pool: 'geo' },
+      readsOnePage: true,
+    });
+    const [walked] = createSourceAdapters([define({ paidPoll: declared })]);
+    expect(walked).toMatchObject({ paidPoll: declared, readsOnePage: false });
+    expect(() => createSourceAdapters([{ ...protectedPage, paidPoll: declared }])).toThrow(
+      /paidPoll/,
+    );
+  });
+
   it('derives the duplicate-check params from pins, paging and noise', () => {
     const [adapter] = createSourceAdapters([
       define({ pins: { sort: 'new', size: '50' }, noise: ['utm'] }),

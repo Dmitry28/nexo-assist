@@ -96,6 +96,7 @@ const PROVIDERS: readonly Provider[] = [
     headers: (key) => ({ 'x-api-key': key }),
     forward: { prefix: 'ant-' },
     pool: 'global',
+    costHeader: 'ant-credits-cost',
     // 403 a wrong key (measured) or the month's credits gone (its docs); 409 its concurrency limit
     // (docs) — it clears. A site's own 403/429 arrives as 423 «detected by the site» (measured
     // 2026-10-15), never as a bench: asking again cost the prototype another ~22 s for the same.
@@ -116,6 +117,7 @@ const PROVIDERS: readonly Provider[] = [
     },
     forward: { param: ['keep_headers', 'true'] },
     pool: 'global',
+    costHeader: 'sa-credit-cost',
     // 401 a bad key (measured), 403 the month's credits gone (docs; no premium is ever asked), 429
     // concurrency. A site's own 401/403/429 arrives as 500 after its retries (measured 2026-10-15),
     // so a blocked site never benches it.
@@ -254,13 +256,16 @@ export const poolOf = ({ country }: Protection): CreditPool =>
 
 /**
  * What one page may cost on its pool's first paying provider. Geo: ZenRows' anti-bot tier, 10
- * credits, 25 rendered (measured on ZenRows, Scrape.do, ScrapeOps). Global: ScrapingAnt's browser
- * on its datacenter proxy, 10 either way — its price list (2026-10-15), not yet measured.
- * ScraperAPI after it charges ~21 (render 11 + Cloudflare 10) from its own 1000 a month — the
- * margin, outside the sum.
+ * credits, 25 rendered (measured on ZenRows, Scrape.do, ScrapeOps). Global: ScrapingAnt — 1 without
+ * a browser (its `ant-credits-cost`, a Copart POST, 2026-10-20), 10 with one (its price list).
+ * ScraperAPI after it charges 1 for the same POST (its `sa-credit-cost`), ~21 rendered behind
+ * Cloudflare, from its own 1000 a month — the margin, outside the sum.
  */
-export const pageCredits = (protection: Protection): number =>
-  poolOf(protection) === 'global' || protection.renderWaitMs === undefined ? 10 : 25;
+export const pageCredits = (protection: Protection): number => {
+  const rendered = protection.renderWaitMs !== undefined;
+  if (poolOf(protection) === 'global') return rendered ? 10 : 1;
+  return rendered ? 25 : 10;
+};
 
 /**
  * One paid rung per provider of the site's pool, in order — a rung without its key fails at once,

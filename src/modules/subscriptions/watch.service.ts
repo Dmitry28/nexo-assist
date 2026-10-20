@@ -170,7 +170,7 @@ export class WatchService {
     // counts as capped here; a small search whose every listing was replaced warns falsely — rare.
     // TODO [L]: a subscription removed mid-fetch has no seen rows left, so a capped walk warns for
     // a sub that is gone (`poll` re-checks `has` only after this). Rare; partial-fetch shares it.
-    const prefix = capped || this.adapter(sub).paidPoll !== undefined;
+    const prefix = capped || this.adapter(sub).readsOnePage === true;
     if (prefix && judged.length > 0 && fresh.length === judged.length) {
       this.warn(sub, `Page window overflowed for ${sub.source}`);
     }

@@ -45,7 +45,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       return;
     }
 
-    const bot = new Bot(token);
+    const { telegramApiRoot: apiRoot } = this.appConfig;
+    const bot = new Bot(token, apiRoot === undefined ? undefined : { client: { apiRoot } });
     // Respect Telegram rate limits automatically (waits out 429 retry_after).
     bot.api.config.use(autoRetry());
     this.handlers.register(bot);

@@ -13,7 +13,7 @@ import {
   UnsupportedSearchError,
 } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { watchedItem } from '@/modules/sources/sources';
+import { siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
@@ -119,7 +119,7 @@ export class TelegramHandlers {
       .text('Следить', `subscribe:${nonce}`)
       .text('Отмена', `cancel:${nonce}`);
     const what = item ? 'ценой этого объявления' : 'этим поиском';
-    await ctx.reply(`Следить за ${what} на ${adapter.id}?\n${url}`, {
+    await ctx.reply(`Следить за ${what} на ${siteName(adapter.id)}?\n${url}`, {
       reply_markup: keyboard,
       link_preview_options: NO_LINK_PREVIEW,
     });

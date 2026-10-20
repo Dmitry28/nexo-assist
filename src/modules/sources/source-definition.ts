@@ -9,7 +9,7 @@ import { paginate } from './scraping/paginate';
 import { mapPool } from './scraping/pool';
 import { pageCredits, poolOf } from './scraping/providers';
 import { PageNotFoundError, SourceUnavailableError } from './source-adapter';
-import type { FetchResult, Listing, SourceAdapter, SourceId } from './source-adapter';
+import type { FetchResult, Listing, PaidPoll, SourceAdapter, SourceId } from './source-adapter';
 
 /** A fetch pinned to the source's host and proxy — what `load` and `enrich` get to work with. */
 export type Get = (url: string) => Promise<string>;
@@ -81,6 +81,12 @@ interface CommonDefinition<Id extends string> {
    * rungs follow redirects on their side).
    */
   protection?: Protection;
+  /**
+   * What one poll may cost, for a source whose `load` climbs the fetch ladder itself (Copart's
+   * POST): its pages × the price of one — so its subscriptions count against DAILY_CREDIT_BUDGET.
+   * A `protection` source gets its own computed; never both.
+   */
+  paidPoll?: PaidPoll;
   /** Fail on a redirect to another path — for sites that rewrite a search (see fetchHtml). */
   pinPath?: boolean;
   /**
@@ -163,6 +169,9 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
   return definitions.map((def) => {
     // A protected poll must cost one paid page: a single page (the literal `singlePage: true`), no
     // second request for the list, no item visits.
+    if (def.protection && def.paidPoll) {
+      throw new Error(`${def.id}: protection computes its own paidPoll — declare one or the other`);
+    }
     if (
       def.protection &&
       (!('singlePage' in def) || 'load' in def || 'enrich' in def || def.pinPath || def.item)
@@ -199,10 +208,10 @@ export function createSourceAdapters(definitions: readonly SourceDefinition[]): 
         (onSearchPath(url) || isItem(def, url)),
       reportsRemoved: def.reportsRemoved === true,
       // The worst case — the free rungs only make the real spend lower.
-      paidPoll: def.protection && {
-        credits: pageCredits(def.protection),
-        pool: poolOf(def.protection),
-      },
+      paidPoll:
+        def.paidPoll ??
+        (def.protection && { credits: pageCredits(def.protection), pool: poolOf(def.protection) }),
+      readsOnePage: def.protection !== undefined,
       fetch: (url, options) =>
         def.item && isItem(def, url)
           ? fetchItem(def, def.item, url)

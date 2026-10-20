@@ -32,6 +32,12 @@ export class SourceUnavailableError extends Error {
   override readonly name: string = 'SourceUnavailableError';
 }
 
+/** What one poll may cost on the paid rungs, and which budget pays it. */
+export interface PaidPoll {
+  credits: number;
+  pool: CreditPool;
+}
+
 /**
  * The site answered a different search than the one asked for: it redirected to another path.
  * realt does this to any URL carrying `addressV2` — the filter is dropped and the search widens
@@ -205,7 +211,9 @@ export interface SourceAdapter {
    * What one poll may cost on the paid rungs, and which budget pays it — undefined for an
    * unprotected source (subscriptions.service.ts § DAILY_CREDIT_BUDGET).
    */
-  readonly paidPoll?: { credits: number; pool: CreditPool };
+  readonly paidPoll?: PaidPoll;
+  /** It reads one page per poll (a `protection` source): any search is a prefix of the site's. */
+  readonly readsOnePage?: boolean;
   /** Whether this adapter handles the given URL (host check). */
   matches(url: string): boolean;
   /**
