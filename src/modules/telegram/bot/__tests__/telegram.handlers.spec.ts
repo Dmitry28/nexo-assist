@@ -6,6 +6,7 @@ import { makeListing } from '@/__tests__/helpers/listing';
 import { sentryCapture } from '@/__tests__/helpers/sentry';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
+import type { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   ListingGoneError,
   SearchRewrittenError,
@@ -49,6 +50,7 @@ describe('TelegramHandlers', () => {
   };
   let watch: { baseline: jest.Mock };
   let check: { onCheck: jest.Mock; onShowCurrent: jest.Mock };
+  let requests: { request: jest.Mock };
   // Real WatchStatus — dependency-free, and /stats reports its last run.
   let status: WatchStatus;
 
@@ -61,6 +63,7 @@ describe('TelegramHandlers', () => {
       status,
       check as unknown as CheckHandlers,
       new ListHandlers(subscriptions as unknown as SubscriptionsService),
+      requests as unknown as SourceRequestsService,
     );
     const fakeBot = new FakeBot();
     handlers.register(fakeBot as unknown as Bot);
@@ -81,6 +84,7 @@ describe('TelegramHandlers', () => {
       countPaused: jest.fn().mockResolvedValue(0),
     };
     watch = { baseline: jest.fn().mockResolvedValue([makeListing(1)]) };
+    requests = { request: jest.fn().mockResolvedValue(false) };
     check = {
       onCheck: jest.fn().mockResolvedValue(undefined),
       onShowCurrent: jest.fn().mockResolvedValue(undefined),
@@ -119,10 +123,15 @@ describe('TelegramHandlers', () => {
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Пришлите ссылку на поиск'));
   });
 
-  it('rejects an unsupported source', async () => {
+  it.each([
+    [true, 'передал заявку'],
+    [false, 'пока не поддерживается. '],
+  ])('rejects an unsupported source, filing a request for it (filed: %s)', async (filed, text) => {
+    requests.request.mockResolvedValue(filed);
     const ctx = makeCtx({ text: 'https://example.com/x', userId: 1 });
     await bot.onText(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('пока не поддерживается'));
+    expect(requests.request).toHaveBeenCalledWith('https://example.com/x');
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining(text));
   });
 
   it('subscribes via the button: adds + baselines, edits the confirmation in', async () => {

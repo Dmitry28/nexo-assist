@@ -5,6 +5,7 @@ import type { Bot, Context } from 'grammy';
 import { extractUrl } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   ListingGoneError,
   SearchRewrittenError,
@@ -58,6 +59,7 @@ export class TelegramHandlers {
     private readonly status: WatchStatus,
     private readonly check: CheckHandlers,
     private readonly list: ListHandlers,
+    private readonly requests: SourceRequestsService,
   ) {}
 
   register(bot: Bot): void {
@@ -100,7 +102,12 @@ export class TelegramHandlers {
     }
     const adapter = this.registry.match(url);
     if (!adapter) {
-      await ctx.reply(`Этот сайт пока не поддерживается. ${PROMPT}`);
+      const filed = await this.requests.request(url);
+      await ctx.reply(
+        filed
+          ? `Этот сайт пока не поддерживается — передал заявку на его добавление. ${PROMPT}`
+          : `Этот сайт пока не поддерживается. ${PROMPT}`,
+      );
       return;
     }
 
