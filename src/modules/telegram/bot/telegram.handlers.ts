@@ -26,30 +26,23 @@ import { reportUserFacing } from '@/modules/telegram/report';
 import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import { isAdmin } from './admin';
+import { callbackParam } from './callback-param';
 import { CheckHandlers } from './check.handlers';
+import { ListHandlers } from './list.handlers';
 import { formatPrice } from './listing-card';
 import type { PendingLink } from './pending-links';
 import { PendingLinks } from './pending-links';
 import {
   HELP_MESSAGE,
-  MAX_MESSAGE_BUDGET_CHARS,
   NO_LINK_PREVIEW,
   PROMPT,
+  PROTECTED_LIMIT_TEXT,
   formatStats,
   searchRewrittenNotice,
   unsupportedSearchNotice,
 } from './telegram.format';
 
-// The site is read through a paid anti-bot service, and the bot as a whole has a daily budget.
-const PROTECTED_LIMIT_TEXT =
-  'Этот сайт защищён от ботов и читается через платный сервис — на весь бот его дневной лимит ' +
-  'уже занят. Попробуйте позже.';
-
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
-// /list button cap — Telegram rejects an inline keyboard of ~100+ buttons, and a rejected
-// reply costs the user /list entirely. Counted in buttons, not rows: a paused row carries two
-// (❌ and ▶️), and paused subscriptions are not capped per user (the limit counts active ones).
-const MAX_LIST_BUTTONS = 90;
 
 /** Bot conversation: turn a pasted link into a subscription via inline buttons. */
 @Injectable()
@@ -64,6 +57,7 @@ export class TelegramHandlers {
     private readonly registry: SourceRegistry,
     private readonly status: WatchStatus,
     private readonly check: CheckHandlers,
+    private readonly list: ListHandlers,
   ) {}
 
   register(bot: Bot): void {
@@ -71,7 +65,8 @@ export class TelegramHandlers {
     bot.command('help', (ctx) =>
       ctx.reply(HELP_MESSAGE, { link_preview_options: NO_LINK_PREVIEW }),
     );
-    bot.command('list', (ctx) => this.showList(ctx));
+    // /list, its menus and the keyword filter (list.handlers.ts) — commands before message:text.
+    this.list.register(bot);
     bot.command('stats', (ctx) => this.onStats(ctx));
     // NOTE: /check polls sources on demand, so it never reaches the public: outside production
     // anyone may use it (dev convenience), in production only the owner — the one place where
@@ -84,14 +79,10 @@ export class TelegramHandlers {
     bot.on('message:text', (ctx) => this.onText(ctx));
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery(/^cancel:(.+)$/, (ctx) => this.onCancel(ctx));
-    // TODO [L]: all three of remove/resume/show pass the tapped id straight to a scoped query,
-    // so it reaches a Postgres `uuid` column and raises 22P02 — one Sentry issue per malformed
-    // tap via bot.catch. Match the uuid shape instead, so a malformed tap simply doesn't match.
-    // (`show:` used to be exempt, filtering an already-loaded list in JS; PR #108 replaced that
-    // with SubscriptionsService.findOwned to close an IDOR, which put it on the same footing.)
-    bot.callbackQuery(/^remove:(.+)$/, (ctx) => this.onRemove(ctx));
-    bot.callbackQuery(/^resume:(.+)$/, (ctx) => this.onResume(ctx));
-    bot.callbackQuery(/^show:(.+)$/, (ctx) => this.check.onShowCurrent(ctx, this.matchParam(ctx)));
+    // TODO [L]: show: (and list.handlers' open/remove/resume/filter) pass the tapped id straight to
+    // a scoped query, so it reaches a Postgres `uuid` column and raises 22P02 — one Sentry issue per
+    // malformed tap via bot.catch. Match the uuid shape instead, so a malformed tap doesn't match.
+    bot.callbackQuery(/^show:(.+)$/, (ctx) => this.check.onShowCurrent(ctx, callbackParam(ctx)));
   }
 
   private async onText(ctx: Context): Promise<void> {
@@ -99,6 +90,8 @@ export class TelegramHandlers {
     const userId = ctx.from?.id;
     // Non-text updates / anonymous senders — nothing to act on.
     if (!text || userId === undefined) return;
+    // A reply to a filter prompt is the filter, not a link.
+    if (await this.list.onReply(ctx)) return;
 
     const url = extractUrl(text);
     if (!url) {
@@ -263,57 +256,6 @@ export class TelegramHandlers {
     await ctx.editMessageText('Отменено.');
   }
 
-  private async showList(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    // Anonymous senders (e.g. channel posts) have no subscriptions to list.
-    if (userId === undefined) return;
-
-    const subs = await this.subscriptions.listByUser(userId);
-    if (subs.length === 0) {
-      await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
-      return;
-    }
-
-    // Stay under Telegram's 4096-char message limit — an oversized reply throws and
-    // the user loses /list (their only way to remove subscriptions).
-    const keyboard = new InlineKeyboard();
-    const lines: string[] = [];
-    let length = 0;
-    let buttons = 0;
-    let anyPaused = false;
-    for (const [i, sub] of subs.entries()) {
-      // A paused subscription delivers nothing; without the mark it looks live and the user
-      // waits for notifications that will never come.
-      const paused = Boolean(sub.pausedAt);
-      const line = `#${i + 1} — ${siteName(sub.source)}${paused ? ' ⏸ на паузе' : ''}\n${sub.url}`;
-      const rowButtons = paused ? 2 : 1;
-      if (
-        length + line.length > MAX_MESSAGE_BUDGET_CHARS ||
-        buttons + rowButtons > MAX_LIST_BUTTONS
-      ) {
-        lines.push(`…и ещё ${subs.length - i} — удалите часть, чтобы увидеть остальные`);
-        break;
-      }
-      keyboard.text(`❌ #${i + 1}`, `remove:${sub.id}`);
-      if (paused) {
-        keyboard.text(`▶️ #${i + 1}`, `resume:${sub.id}`);
-        anyPaused = true;
-      }
-      keyboard.row();
-      buttons += rowButtons;
-      lines.push(line);
-      length += line.length + '\n\n'.length;
-    }
-    // TODO [L]: the legend is pushed after the "…и ещё N" overflow line, and `anyPaused` counts
-    // only the rendered prefix — a user whose only paused subscription falls past the cut never
-    // sees it. Compute it from all subs and insert the hint before the overflow line.
-    if (anyPaused) lines.push('▶️ — возобновить, ❌ — удалить');
-    await ctx.reply(lines.join('\n\n'), {
-      reply_markup: keyboard,
-      link_preview_options: NO_LINK_PREVIEW,
-    });
-  }
-
   /** Admin-only service snapshot. Silent for everyone else — don't reveal the command. */
   private async onStats(ctx: Context): Promise<void> {
     if (!isAdmin({ senderId: ctx.from?.id, adminId: this.appConfig.adminTelegramId })) return;
@@ -326,55 +268,8 @@ export class TelegramHandlers {
     await ctx.reply(formatStats({ users, active, paused, lastRunAt: this.status.lastRunAt }));
   }
 
-  private async onRemove(ctx: Context): Promise<void> {
-    const target = await this.callbackTarget(ctx);
-    if (!target) return;
-
-    const removed = await this.subscriptions.remove(target.id, target.userId);
-    await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено');
-  }
-
-  private async onResume(ctx: Context): Promise<void> {
-    const target = await this.callbackTarget(ctx);
-    if (!target) return;
-    try {
-      const resumed = await this.subscriptions.resume(target.id, target.userId);
-      await ctx.answerCallbackQuery(resumed ? 'Возобновлено' : 'Подписка не найдена');
-    } catch (err) {
-      if (err instanceof SubscriptionLimitError) {
-        await ctx.answerCallbackQuery(`Предел — ${MAX_SUBSCRIPTIONS_PER_USER} активных подписок`);
-        return;
-      }
-      if (err instanceof ProtectedLimitError) {
-        await ctx.answerCallbackQuery(PROTECTED_LIMIT_TEXT);
-        return;
-      }
-      // TODO [L]: this rethrow leaves the callback query unanswered, so the button spins until
-      // Telegram's ~15s timeout — every other callback path answers exactly once. Answer first.
-      throw err;
-    }
-  }
-
-  /** Sender and callback param, or null after clearing the spinner on a malformed callback. */
-  private async callbackTarget(
-    ctx: Context,
-  ): Promise<{ userId: number; id: Subscription['id'] } | null> {
-    const userId = ctx.from?.id;
-    const id = this.matchParam(ctx);
-    if (userId === undefined || id === undefined) {
-      await ctx.answerCallbackQuery();
-      return null;
-    }
-    return { userId, id };
-  }
-
-  /** The capture group of the matched callback_data pattern, if any. */
-  private matchParam(ctx: Context): string | undefined {
-    return Array.isArray(ctx.match) && typeof ctx.match[1] === 'string' ? ctx.match[1] : undefined;
-  }
-
   /** Consume the pending link of the tapped prompt; null if expired or not the owner. */
   private takePending(ctx: Context): PendingLink | null {
-    return this.pending.take(this.matchParam(ctx), ctx.from?.id);
+    return this.pending.take(callbackParam(ctx), ctx.from?.id);
   }
 }
