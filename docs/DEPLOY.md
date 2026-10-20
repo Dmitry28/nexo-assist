@@ -1001,21 +1001,22 @@ API кластера не выставляем в интернет; при ут�
 запись `nexo-assist — dev` с токеном dev-бота: он не секрет продакшена, но восстанавливать
 его после переустановки машины тоже откуда-то надо):
 
-| Поле                   | Где перевыпустить, если утёк                                       |
-| ---------------------- | ------------------------------------------------------------------ |
-| `TELEGRAM_BOT_TOKEN`   | @BotFather → `/mybots` → бот → API Token → **Revoke**              |
-| `DATABASE_URL`         | Supabase → Settings → Database (сброс пароля там же)               |
-| `SCRAPE_PROXY_URL`     | пароль на прокси-хосте: `/root/proxy/pass`                         |
-| `SENTRY_DSN`           | Sentry → Settings → Client Keys → новый ключ, старый off           |
-| `ADMIN_TELEGRAM_ID`    | не отзывается — это id, а не секрет; вернуть можно из @userinfobot |
-| `HEARTBEAT_URL`        | healthchecks.io → проверка → новый ping-URL, старый удалить        |
-| `BACKUP_HEARTBEAT_URL` | там же, вторая проверка (бэкапы, §4.3c)                            |
-| `ZENROWS_API_KEY`      | zenrows.com → Dashboard → API Key → regenerate                     |
-| `SCRAPE_DO_API_KEY`    | scrape.do → Dashboard → API Token → regenerate                     |
-| `SCRAPEOPS_API_KEY`    | scrapeops.io → Dashboard → API Key → regenerate                    |
-| `SCRAPINGANT_API_KEY`  | scrapingant.com → Dashboard → API token → regenerate               |
-| `SCRAPER_API_KEY`      | scraperapi.com → Dashboard → API Key → regenerate                  |
-| `SCRAPFLY_API_KEY`     | scrapfly.io → Dashboard → API Key → rotate                         |
+| Поле                   | Где перевыпустить, если утёк                                                                                                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_BOT_TOKEN`   | @BotFather → `/mybots` → бот → API Token → **Revoke**                                                                                                                                                      |
+| `DATABASE_URL`         | Supabase → Settings → Database (сброс пароля там же)                                                                                                                                                       |
+| `SCRAPE_PROXY_URL`     | пароль на прокси-хосте: `/root/proxy/pass`                                                                                                                                                                 |
+| `SENTRY_DSN`           | Sentry → Settings → Client Keys → новый ключ, старый off                                                                                                                                                   |
+| `ADMIN_TELEGRAM_ID`    | не отзывается — это id, а не секрет; вернуть можно из @userinfobot                                                                                                                                         |
+| `HEARTBEAT_URL`        | healthchecks.io → проверка → новый ping-URL, старый удалить                                                                                                                                                |
+| `BACKUP_HEARTBEAT_URL` | там же, вторая проверка (бэкапы, §4.3c)                                                                                                                                                                    |
+| `ZENROWS_API_KEY`      | zenrows.com → Dashboard → API Key → regenerate                                                                                                                                                             |
+| `SCRAPE_DO_API_KEY`    | scrape.do → Dashboard → API Token → regenerate                                                                                                                                                             |
+| `SCRAPEOPS_API_KEY`    | scrapeops.io → Dashboard → API Key → regenerate                                                                                                                                                            |
+| `SCRAPINGANT_API_KEY`  | scrapingant.com → Dashboard → API token → regenerate                                                                                                                                                       |
+| `SCRAPER_API_KEY`      | scraperapi.com → Dashboard → API Key → regenerate                                                                                                                                                          |
+| `SCRAPFLY_API_KEY`     | scrapfly.io → Dashboard → API Key → rotate                                                                                                                                                                 |
+| `GITHUB_ISSUES_TOKEN`  | GitHub → Settings → Developer settings → Fine-grained tokens → Regenerate (repo `nexo-assist`, Issues: Read and write); метка `source-request` создаётся в репо один раз: `gh label create source-request` |
 
 **Колонка «как перевыпустить» — половина ценности записи:** утечка тогда не паника, а
 процедура на минуту. Все значения, кроме `ADMIN_TELEGRAM_ID`, отзываемы, поэтому их потеря — неудобство, а не

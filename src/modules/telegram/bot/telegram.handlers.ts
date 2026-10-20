@@ -5,6 +5,7 @@ import type { Bot, Context } from 'grammy';
 import { extractUrl } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
+import { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   ListingGoneError,
   SearchRewrittenError,
@@ -12,7 +13,7 @@ import {
   UnsupportedSearchError,
 } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { siteName, watchedItem } from '@/modules/sources/sources';
+import { watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
@@ -39,7 +40,7 @@ import {
   PROTECTED_LIMIT_TEXT,
   formatStats,
   searchRewrittenNotice,
-  unsupportedSearchNotice,
+  unwatchableNotice,
 } from './telegram.format';
 
 const EXPIRED = 'Кнопка устарела — пришлите ссылку ещё раз.';
@@ -58,6 +59,7 @@ export class TelegramHandlers {
     private readonly status: WatchStatus,
     private readonly check: CheckHandlers,
     private readonly list: ListHandlers,
+    private readonly requests: SourceRequestsService,
   ) {}
 
   register(bot: Bot): void {
@@ -100,7 +102,12 @@ export class TelegramHandlers {
     }
     const adapter = this.registry.match(url);
     if (!adapter) {
-      await ctx.reply(`Этот сайт пока не поддерживается. ${PROMPT}`);
+      const filed = await this.requests.request(url);
+      await ctx.reply(
+        filed
+          ? `Этот сайт пока не поддерживается — передал заявку на его добавление. ${PROMPT}`
+          : `Этот сайт пока не поддерживается. ${PROMPT}`,
+      );
       return;
     }
 
@@ -182,12 +189,15 @@ export class TelegramHandlers {
       return null;
     });
 
-    if (baseline instanceof UnsupportedSearchError) {
-      this.logger.log(`Rejected an unmapped search: ${baseline.params.join(', ')}`);
+    if (baseline instanceof UnsupportedSearchError || baseline instanceof UnwatchableItemError) {
+      // Not kept, like a rewritten search: every poll would answer the same.
+      this.logger.log(`Rejected an unwatchable link: ${baseline.message}`);
       await this.subscriptions.remove(sub.id, candidate.userId);
       await ctx.editMessageText(
-        unsupportedSearchNotice({ url: candidate.url, params: baseline.params }),
-        { link_preview_options: NO_LINK_PREVIEW },
+        unwatchableNotice(baseline, { source: sub.source, url: candidate.url }),
+        {
+          link_preview_options: NO_LINK_PREVIEW,
+        },
       );
       return;
     }
@@ -204,14 +214,9 @@ export class TelegramHandlers {
       });
       return;
     }
-    if (baseline instanceof ListingGoneError || baseline instanceof UnwatchableItemError) {
-      // Not kept, like a rewritten search: every poll would answer the same.
+    if (baseline instanceof ListingGoneError) {
       await this.subscriptions.remove(sub.id, candidate.userId);
-      const why =
-        baseline instanceof ListingGoneError
-          ? 'Это объявление уже снято — следить не за чем.'
-          : `За таким объявлением на ${siteName(sub.source)} пока не слежу — пришлите ссылку на поиск.`;
-      await ctx.editMessageText(`${why}\n${candidate.url}`, {
+      await ctx.editMessageText(`Это объявление уже снято — следить не за чем.\n${candidate.url}`, {
         link_preview_options: NO_LINK_PREVIEW,
       });
       return;

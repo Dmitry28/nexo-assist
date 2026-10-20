@@ -7,7 +7,11 @@ import { TIMEZONE } from '@/common/locale';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { WatchMetrics } from '@/metrics/watch.metrics';
-import { PaidRungsUnavailableError } from '@/modules/sources/source-adapter';
+import {
+  PaidRungsUnavailableError,
+  UnsupportedSearchError,
+  UnwatchableItemError,
+} from '@/modules/sources/source-adapter';
 import type { SourceId } from '@/modules/sources/source-adapter';
 import { siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
@@ -22,6 +26,7 @@ import {
   deadSubscriptionNotice,
   quietReport,
   searchLabel,
+  unwatchableNotice,
 } from '@/modules/telegram/bot/telegram.format';
 import { TelegramService } from '@/modules/telegram/bot/telegram.service';
 import type { ReportOp } from '@/modules/telegram/report';
@@ -57,7 +62,9 @@ type ProcessResult =
   | { state: 'blocked' }
   | { state: 'poll-failed'; dead: boolean }
   // A protected source with no paid service to ask — ours to fix, not the link's.
-  | { state: 'unpaid' };
+  | { state: 'unpaid' }
+  // A link the source cannot watch as sent — paused with its reason, not counted as a failure.
+  | { state: 'unwatchable' };
 
 /**
  * What a run did, for its closing log line: without it a failure in the log names no total.
@@ -70,7 +77,8 @@ interface RunSummary {
   failed: number;
   /** Had something new to send. */
   fresh: number;
-  /** Never asked: no paid service for a protected source, or skipped after its user blocked us. */
+  /** Not checked: no paid service for a protected source, a link we cannot watch, or skipped after
+   *  its user blocked us. */
   unchecked: number;
 }
 
@@ -227,6 +235,11 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
         summary.unchecked++;
         continue;
       }
+      // Not tallied either: the link, not the site, is what cannot be watched.
+      if (result.state === 'unwatchable') {
+        summary.unchecked++;
+        continue;
+      }
       recordOnce(sub, result.state === 'poll-failed');
       if (result.state === 'poll-failed') summary.failed++;
       if (result.state === 'poll-failed' && result.dead) dead.push(sub);
@@ -325,6 +338,10 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       // No streak, no per-subscription report: every protected subscription fails alike, and
       // the owner gets one line for the run (alertUnpaid).
       if (err instanceof PaidRungsUnavailableError) return { state: 'unpaid' };
+      if (err instanceof UnsupportedSearchError || err instanceof UnwatchableItemError) {
+        await this.pauseUnwatchable(sub, err);
+        return { state: 'unwatchable' };
+      }
       this.logger.error({ err }, `Watch failed for ${sub.source} subscription ${sub.id}`);
       // The scheduled run — not /check — is where site outages actually land, so this is the
       // path that has to carry `kind: source`; otherwise that split never shows up in practice.
@@ -534,6 +551,39 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
     await this.notifyAdmin(
       `⏸ Подписка «${sub.source}» на паузе — неудачных опросов подряд: ${failures}.\n${sub.url}`,
     );
+  }
+
+  /**
+   * Pause a link the source cannot watch as sent (one kept from before subscribe refused it, or
+   * by an outage at subscribe) and tell the user why. At once, not after a failure streak: every
+   * poll would answer the same, and «Проверьте ссылку» would be false — the link works.
+   */
+  private async pauseUnwatchable(
+    sub: Subscription,
+    err: UnsupportedSearchError | UnwatchableItemError,
+  ): Promise<void> {
+    // NOTE: bid.cars raises this only on its Copart/IAAI fallback, i.e. while bid.cars itself
+    // answers 403 (PRODUCT_TECH.md). Should it open again, such a link becomes watchable — revisit.
+    // Guarded: thrown, the failure would reach pollAll's catch and be tallied as a source success.
+    // A pause that did not stick tells nobody «на паузе»; the next run retries it.
+    try {
+      await this.subscriptions.pause(sub.id);
+    } catch (e) {
+      this.logger.error({ err: e }, `Failed to pause unwatchable subscription ${sub.id}`);
+      this.report({ err: e, sub, op: 'pause' });
+      return;
+    }
+    this.metrics.recordPause('unwatchable');
+    this.logger.log(`Paused unwatchable subscription ${sub.id}: ${err.message}`);
+    await this.telegram
+      .notify(
+        sub.user.telegramId,
+        `⏸ ${unwatchableNotice(err, sub)}\n\nПодписку поставил на паузу.`,
+      )
+      .catch((e: unknown) =>
+        this.logger.warn({ err: e }, `Unwatchable notice failed for ${sub.id}`),
+      );
+    await this.notifyAdmin(`⏸ Подписка «${sub.source}» на паузе — ${err.name}.\n${sub.url}`);
   }
 
   /** Pause a user's subscriptions after a 403; a write failure must not abort the run. */

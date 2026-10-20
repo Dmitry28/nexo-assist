@@ -10,6 +10,8 @@ import type { WatchMetrics } from '@/metrics/watch.metrics';
 import {
   PaidRungsUnavailableError,
   SourceUnavailableError,
+  UnsupportedSearchError,
+  UnwatchableItemError,
 } from '@/modules/sources/source-adapter';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import type { Findings } from '@/modules/subscriptions/findings';
@@ -465,6 +467,27 @@ describe('WatchScheduler.runDaily', () => {
     const alerts = telegram.notify.mock.calls.filter(([to]) => to === 99);
     expect(alerts).toHaveLength(1);
     expect(alerts[0][1]).toContain('Платная загрузка недоступна');
+  });
+
+  // Every poll would answer the same — five runs of «failure» and then a false «Проверьте ссылку».
+  it.each([
+    ['an unsupported search', new UnsupportedSearchError('u1', ['odometer-to']), 'odometer-to'],
+    ['an unwatchable item', new UnwatchableItemError('hotel'), 'пока не слежу'],
+  ])('pauses %s at once with its reason, not as a failure', async (_, err, reason) => {
+    const { subscriptions, watch, telegram, metrics, scheduler } = build({ adminTelegramId: 99 });
+    subscriptions.listActive.mockResolvedValue([sub(1)]);
+    watch.poll.mockRejectedValue(err);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(subscriptions.bumpFailures).not.toHaveBeenCalled();
+    expect(subscriptions.pause).toHaveBeenCalledWith('1');
+    expect(metrics.recordPause).toHaveBeenCalledWith('unwatchable');
+    const [toUser] = telegram.notify.mock.calls.filter(([to]) => to === 1);
+    expect(toUser[1]).toContain(reason);
+    expect(toUser[1]).toContain('на паузу');
+    expect(telegram.notify.mock.calls.some(([to]) => to === 99)).toBe(true);
   });
 
   it('alerts the admin when a subscription is auto-paused as dead', async () => {

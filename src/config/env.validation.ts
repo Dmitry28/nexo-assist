@@ -232,6 +232,16 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   SCRAPFLY_API_KEY?: string;
 
+  /**
+   * GitHub token that files links to unsupported sites as issues (SourceRequestsService). Optional:
+   * unset, such a link is only refused. Fine-grained, this repo only, «Issues: Read and write» — read where
+   * used like the keys above.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  GITHUB_ISSUES_TOKEN?: string;
+
   /** Base pause between subscription polls, in ms — paces the scraper off a source. */
   @IsNumber()
   @Min(0)
