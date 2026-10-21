@@ -104,7 +104,7 @@ start; more frequent once throttling/dedupe land).
 - Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
   refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
   orchestrator restarts it.
-- Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
+- Unsupported link → refused and filed as a source request (§ Volume and limits).
 
 Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
 design; «Volume and limits» describes what is **already shipped** (limits, pausing, alerts).
@@ -126,7 +126,7 @@ design; «Volume and limits» describes what is **already shipped** (limits, pau
    `0 9 * * *` is 09:00 Europe/Minsk, whatever the server's clock.
 2. Collect the unique normalized URLs of active subscriptions (dedupe).
 3. For each URL the adapter fetches listings **page by page** (newest-first, capped
-   at a few pages) and normalizes them. (Early stop-on-already-seen is a later
+   at 20 pages / 500 listings) and normalizes them. (Early stop-on-already-seen is a later
    optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.

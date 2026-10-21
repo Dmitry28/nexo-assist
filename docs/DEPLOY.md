@@ -120,8 +120,8 @@ _Открытых шагов нет._
 - **Kustomize** — накладывает манифесты без шаблонов (в отличие от Helm). `kubectl -k`
   умеет это из коробки. Наш [`k8s/kustomization.yaml`](../k8s/kustomization.yaml)
   собирает configmap + db-ca + deployment + backup-cronjob + service.
-- **Registry (GHCR)** — хранилище образов. CD пушит туда `nexo-assist:<sha>` и
-  прописывает этот тег в деплой.
+- **Registry (GHCR)** — хранилище образов. CI (job `publish-image`) пушит туда
+  `nexo-assist:sha-<коммит>`, CD прописывает этот тег в деплой.
 
 ## Наши файлы
 
@@ -178,20 +178,19 @@ data-source (Шаг 1).
 (non-root, read-only rootfs, drop caps), `envFrom` (configmap + secret). Детали —
 в «Концепциях» и Шаге 2.
 
-- **Тебе:** в самом файле — ничего; при деплое создаёшь Secret и пинишь образ (§4.6).
+- **Тебе:** в самом файле — ничего; при деплое создаёшь Secret (§4.6).
 
 ### `k8s/configmap.yaml` — несекретные настройки
 
-Все несекретные env: `APP_ENV`, `PORT`, `WATCH_*`, `THROTTLE_*`, `LOG_LEVEL`,
-`CORS_ORIGIN`, (закомментирован `OTEL_*`).
+Несекретные env, которым в проде нужно значение не по умолчанию (`APP_ENV`, `WATCH_*`,
+`THROTTLE_*`, `LOG_LEVEL`…); полный список — в самом файле.
 
 - **Тебе:** по желанию подправить значения (напр. `WATCH_CRON`, `CORS_ORIGIN` — сузить
   до своего домена в проде). **Секреты сюда не клади.**
 - **`ADMIN_TELEGRAM_ID` переехал отсюда в Secret** — это не пароль, но твой личный telegram-id,
   а репозиторий публичный. Задаётся как остальные секреты:
   `./deploy/secrets.sh ADMIN_TELEGRAM_ID`, затем `kubectl rollout restart deployment/nexo-assist`.
-  ⚠️ **До следующего деплоя:** в проде переменная обязательна, без неё под не стартует
-  (crashloop → автооткат). Так задумано: на этот id уходят **все** алерты, а их отсутствие
+  В проде переменная обязательна, без неё под не стартует. Так задумано: на этот id уходят **все** алерты, а их отсутствие
   неотличимо от «всё хорошо». Старое значение остаётся в истории git — оно уже опубликовано;
   вреда, кроме деанонимизации, нет: telegram-id подделать нельзя, доступа он не даёт.
 
@@ -204,8 +203,8 @@ data-source (Шаг 1).
 
 ### `k8s/kustomization.yaml` — что собрать вместе
 
-Объединяет configmap + db-ca + deployment + backup-cronjob + service; сюда добавляется блок `images:` для пина
-образа по sha (пинит оба контейнера — app и initContainer).
+Объединяет configmap + db-ca + deployment + backup-cronjob + service; блок `images:` пинит
+образ по sha (оба контейнера — app и initContainer).
 
 - **Тебе:** ничего. `deploy.sh` сам переписывает `newTag` на sha деплоя; закоммиченный
   тег — устаревший плейсхолдер, поэтому перед ручным `apply` его нужно запинить
@@ -441,8 +440,9 @@ sudo -u deploy /usr/local/bin/deploy.sh <sha>
 **Переезд на другой хост** = поднять k3s (§4.4) и выполнить:
 
 ```bash
-sudo bash deploy/setup-server.sh   # пользователь, доступ к кластеру, чекаут, скрипт, архив логов, CD-ключ,
-                                   # + отключение входа по паролю и fail2ban (шаг 6)
+# Пользователь, доступ к кластеру, чекаут, скрипт, архив логов, CD-ключ,
+# + отключение входа по паролю и fail2ban (шаг 6). Нужен root.
+curl -fsSL https://raw.githubusercontent.com/Dmitry28/nexo-assist/main/deploy/setup-server.sh | sudo bash
 ```
 
 затем положить новый приватный ключ в `CD_SSH_KEY`, новый адрес в `CD_HOST` и **новый ключ
@@ -753,8 +753,8 @@ kubectl port-forward deploy/nexo-assist 3000:3000   # затем curl /api/v1/he
 - **ImagePullBackOff** — пакет приватный → сделай public (4.5) или заведи pull-секрет.
 - **Init:CrashLoopBackOff** (migrate) — проверь `DATABASE_URL` в секрете и логи
   initContainer'а; частая причина — неверный URL/SSL.
-- **CrashLoopBackOff** (app) — `kubectl logs`; обычно нет `TELEGRAM_BOT_TOKEN` или
-  конфликт `409` (второй поллер на том же токене — не запускай бота ещё где-то).
+- **CrashLoopBackOff** (app) — `kubectl logs`; обычно нет обязательной переменной (лог назовёт её:
+  `TELEGRAM_BOT_TOKEN`, `SCRAPE_PROXY_URL`, `ADMIN_TELEGRAM_ID`, `HEARTBEAT_URL`) или конфликт `409` (второй поллер на том же токене — не запускай бота ещё где-то).
 - **Поды/CoreDNS не стартуют, DNS/pull-таймауты внутри кластера** — почти всегда
   iptables Oracle Ubuntu режет трафик k3s. Разреши подсети и сохрани (см. 4.4):
   `sudo iptables -I INPUT -s 10.42.0.0/16 -j ACCEPT && sudo iptables -I INPUT -s 10.43.0.0/16 -j ACCEPT && sudo netfilter-persistent save`.

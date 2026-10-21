@@ -24,8 +24,3 @@ One deliberate exception: **`strictPropertyInitialization` is off**, because ent
 populated by TypeORM and `class-transformer`, not by constructors. `noUncheckedIndexedAccess` is
 **not** on — so an index access is typed as present even when it is not; narrow it yourself where
 it matters (`split('?')[0]`, `match[1]`, `array[i]`).
-
-## NestJS Specifics
-
-- DTOs are classes (not interfaces) — required for `class-validator` and `class-transformer`.
-- Use `@ApiProperty()` from `@nestjs/swagger` on DTO fields for auto-documentation.

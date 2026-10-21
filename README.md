@@ -2,16 +2,15 @@
 
 # nexo-assist
 
-Telegram listing-watch bot: paste a kufar.by / realt.by / gsz.gov.by / rabota.by search link and get new
-listings on a schedule. Built on a production-ready [NestJS](https://nestjs.com) 11
+Telegram listing-watch bot: paste a search link from a supported site (kufar, realt, av.by, bid.cars and
+more) and get new listings on a schedule. Built on a production-ready [NestJS](https://nestjs.com) 11
 base: validated config, structured logging, global error handling, OpenAPI docs,
 health checks, and a full lint/format/test pipeline. Product spec:
 [docs/PRODUCT.md](docs/PRODUCT.md).
 
 ## Using the bot
 
-Send the bot a search link from **kufar.by**, **realt.by** or **gsz.gov.by** or **rabota.by** (vacancies) with your
-filters already applied;
+Send the bot a search link from a supported site with your filters already applied;
 it offers a "Следить" button and, from then on, sends the listings that appeared since the
 last check, once a day — a card per listing with its photos, price in both currencies, the
 source's own details and a map pin where there is one; past 30 in one delivery the rest arrives
@@ -26,8 +25,8 @@ beta audience does. Fixed pages (a price list, a notice board) work too — the 
 | `/list`  | your subscriptions: ❌ removes one, ⏸ marks a paused one, ▶️ brings it back |
 | `/help`  | the same summary inside the bot                                             |
 
-It stores your Telegram id, name, @username, interface language and the links it watches — only
-to deliver notifications; ask the owner to have them deleted.
+It stores your Telegram id, name, @username, interface language, the links it watches and the links
+you asked it to support — only to deliver notifications; ask the owner to have them deleted.
 
 The bot's avatar is [docs/assets/logo.png](docs/assets/logo.png) (640×640; `logo.svg` is the
 source) — Telegram takes it only by hand, through @BotFather's `/setuserpic`.
@@ -153,6 +152,7 @@ src/
 ├── health/                  # Liveness + readiness probes (Terminus) + the watchdog heartbeat
 ├── metrics/                 # Prometheus controller (exempt from rate limiting)
 └── modules/
+    ├── source-requests/     # Requests for unsupported sites (filed as GitHub issues)
     ├── sources/             # Source plugins: one parser + declarative definition per site
     ├── subscriptions/       # Domain: subscription store + watch (baseline/diff) logic
     └── telegram/            # Bot + daily watch run, split into bot/ and watch/ subfolders

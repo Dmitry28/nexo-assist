@@ -24,9 +24,9 @@ Globals wired through `APP_*` providers (`ValidationPipe`, `AllExceptionsFilter`
 
 In e2e, apply `configureApp(app)` from `src/app.setup.ts` after `createNestApplication()` so tests hit the same `/api/v1/...` routes as production (and k8s probes). Don't duplicate prefix/versioning setup inline.
 
-For a unit with no injected dependencies, instantiate it directly (`new UsersService()`) — `Test.createTestingModule` earns its ceremony only once providers need wiring.
+For a unit with no injected dependencies, instantiate it directly with `new` — `Test.createTestingModule` earns its ceremony only once providers need wiring.
 
-The global stubs in `src/__tests__/setup/` (Sentry, `undici` fetch) are deliberately generic so most specs need no setup. Bend one for a single case with `mockImplementationOnce` / `mockResolvedValueOnce` on its helper — **never `jest.mock()` the same module inside a spec**, which replaces the shared stub for that whole file and leaves the helpers reading nothing ([observability.md § Testing a report](observability.md#testing-a-report)).
+The global stubs in `src/__tests__/setup/` (Sentry, `undici` fetch) are deliberately generic so most specs need no setup. Bend one for a single case with `mockImplementationOnce` / `mockResolvedValueOnce` on its helper — **never `jest.mock()` the same module inside a spec**, which replaces the shared stub for that whole file and leaves the helpers reading nothing ([observability.md](observability.md)).
 
 ## Fixtures and Helpers
 
