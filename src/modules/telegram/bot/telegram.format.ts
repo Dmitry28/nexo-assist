@@ -284,10 +284,17 @@ export const unwatchableNotice = (
     ? unsupportedSearchNotice({ url, params: err.params })
     : `За таким объявлением на ${siteName(source)} пока не слежу — пришлите ссылку на поиск.\n${url}`;
 
+/** A link to a site we do not read — its request filed (SourceRequestsService), or not. */
+export const SITE_REQUESTED =
+  'Спасибо! Этот сайт пока не поддерживается — я передал заявку на его добавление и сообщу вам, ' +
+  'как только он появится.';
+export const SITE_UNSUPPORTED =
+  'К сожалению, этот сайт пока не поддерживается. Список сайтов, с которыми я работаю, — в /help.';
+
 /** Sent once a site the user asked for is supported — they resend the link to subscribe. */
 export const sourceAddedNotice = ({ host, url }: { host: string; url: string }): string =>
-  `✅ Теперь умею следить за ${host} — вы просили добавить этот сайт. Пришлите ссылку на поиск ` +
-  `снова — например, вашу:\n${url}`;
+  `✅ Хорошая новость: теперь я умею следить за ${host}, который вы просили добавить. Пришлите ` +
+  `ссылку на поиск ещё раз — и я начну следить:\n${url}`;
 
 /** Sent when a subscription is auto-paused because its URL kept failing. */
 export const deadSubscriptionNotice = ({ source, url }: { source: string; url: string }): string =>

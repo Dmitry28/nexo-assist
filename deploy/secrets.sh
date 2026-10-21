@@ -27,6 +27,14 @@ SECRET=${SECRET:-nexo-assist-secrets}
 # other's updates.
 ALL_KEYS=(TELEGRAM_BOT_TOKEN DATABASE_URL SCRAPE_PROXY_URL SENTRY_DSN ADMIN_TELEGRAM_ID HEARTBEAT_URL BACKUP_HEARTBEAT_URL ZENROWS_API_KEY SCRAPE_DO_API_KEY SCRAPEOPS_API_KEY SCRAPINGANT_API_KEY SCRAPER_API_KEY SCRAPFLY_API_KEY GITHUB_ISSUES_TOKEN)
 KEYS=("${@:-${ALL_KEYS[@]}}")
+# Only the names the app reads: a typo would store the value under a key nothing reads, and the
+# app would quietly run as if it were unset (measured 2026-10-20: `GITHUB_ISSUES_TOKEN.`, a period
+# copied along with the command).
+for key in "${KEYS[@]}"; do
+  [[ " ${ALL_KEYS[*]} " == *" $key "* ]] || {
+    echo "unknown key: '$key' — one of: ${ALL_KEYS[*]}" >&2; exit 1
+  }
+done
 
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }
 [[ -r "$KUBECONFIG" ]] || { echo "kubeconfig not found: $KUBECONFIG" >&2; exit 1; }
