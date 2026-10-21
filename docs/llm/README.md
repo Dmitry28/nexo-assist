@@ -7,17 +7,17 @@ LLM configuration and rules for nexo-assist — used by Claude Code and compatib
 ```
 CLAUDE.md / AGENTS.md ─► docs/llm/ENTRY_POINT.md   (always-loaded context)
 .claude/skills/*      ─► docs/llm/rules|commands/* (thin wrappers around these docs)
-.claude/agents/*      ─► .claude/skills/*          (isolated runners on cheap models)
 ```
 
-Single source of truth: content lives here in `docs/llm/`; skills and agents only point at it. Skill descriptions/triggers live in each `.claude/skills/<name>/SKILL.md` frontmatter — they are not duplicated here.
+Single source of truth: content lives here in `docs/llm/`; skills only point at it. The one
+agent, `.claude/agents/compressed-locator.md`, is self-contained (it wraps no skill): a read-only locator on a
+cheap model.
 
 ## Structure
 
 - `ENTRY_POINT.md` — always-loaded context; its Quick Reference table lists every rule.
 - `rules/` — background knowledge, one doc per topic.
-- `commands/` — instructions behind user-invocable skills (`/git-commit`, `/review-code`,
-  `/logic-review`, `/pr-description`, `/verify-task-result`, `/refine`).
+- `commands/` — instructions behind user-invocable skills.
 - `mcp.example.json` — MCP servers reference.
 
 ## MCP Servers

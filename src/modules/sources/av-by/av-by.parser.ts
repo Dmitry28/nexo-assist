@@ -2,6 +2,7 @@ import { matchesHost } from '@/common/url';
 
 import { detail, listingDetails } from '../listing-details';
 import { preview } from '../listing-text';
+import { cardListings } from '../scraping/html';
 import type { Protection } from '../scraping/ladder';
 import {
   asArray,
@@ -81,7 +82,7 @@ export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
     (advert) => advert.top === true,
     (advert) => raisedAt(advert),
   );
-  return { listings: fresh.map(toListing).filter((listing) => listing !== undefined) };
+  return { listings: cardListings(fresh, toListing, 'av-by') };
 }
 
 /** When the advert was last raised, or published if never — what the page orders by. */

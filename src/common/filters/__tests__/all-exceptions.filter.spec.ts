@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -40,6 +41,14 @@ describe('AllExceptionsFilter', () => {
     expect(response.status).toHaveBeenCalledWith(404);
     expect(body()).toMatchObject({ statusCode: 404, message: 'No such thing', path: '/api/v1/x' });
     expect(errorLog).not.toHaveBeenCalled();
+  });
+
+  it('labels an HttpException built from a plain string by its own name, not as a 500', () => {
+    const { host, body } = makeHost();
+
+    filter.catch(new HttpException('Gone', 410), host);
+
+    expect(body()).toMatchObject({ statusCode: 410, message: 'Gone', error: 'HttpException' });
   });
 
   it('passes a ValidationPipe message array through', () => {

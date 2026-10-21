@@ -23,9 +23,9 @@ the owner learns about them by silence. Tracked in [PRODUCT_PLAN.md](../../PRODU
 § Технический бэклог — extend that mechanism rather than adding a second one.
 
 **A deliberate exit reports nothing on its own.** `main.ts`'s `reportAndExit` is bound only to
-`uncaughtException`/`unhandledRejection`, so your own `logger.fatal` + `process.exit(1)` (the dead
-polling loop in `telegram.service.ts` — the one failure that kills the whole product) produces no
-Sentry event and no flush. Capture and `Sentry.flush` before exiting, or throw instead.
+`uncaughtException`/`unhandledRejection`, so your own `logger.fatal` + `process.exit(1)` produces no
+Sentry event and no flush. Capture and `Sentry.flush` before exiting (as the dead polling loop in
+`bot/telegram.service.ts` does), or throw instead.
 
 A spec asserts a report through `sentryScope()` / `sentryCapture()` from
 `@/__tests__/helpers/sentry` — the stub is global

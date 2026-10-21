@@ -4,30 +4,20 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 ## 1. Plan
 
-- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps ("where is X", "what calls Y", "how does Z work across modules") go to a subagent.
+- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps go to a subagent: `compressed-locator` for "where is X" / "what calls Y", Explore for "how does Z work across modules".
 - Describe the solution; for complex tasks add non-goals, milestones, acceptance criteria.
 - **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs? Does it work right for both the user and the admin?
 - For complex tasks, document key architectural decisions: what was chosen vs. rejected and why (prevents re-deliberation).
 - For medium/complex tasks a written plan is mandatory before code. "Too simple to need a plan" → scale the plan down, don't skip it.
 - **Review the written plan** (medium/complex) with a fresh, non-fork subagent that gets only the task and the plan, not your reasoning, and checks it against [logic-review.md § Task alignment](logic-review.md#task-alignment) and [Self-Check](development-philosophy.md#self-check). Fix what holds up, say which findings you rejected and why.
-- Get user confirmation before implementing anything non-trivial.
 
 ## 2. Implement
 
-- One milestone at a time: describe the plan → wait for approval → implement → show the diff → wait for approval → next. Keep changes focused and atomic.
+- One milestone at a time: describe the plan → wait for approval → implement → show the diff → wait for approval, then commit it ([github.md § Approval](github.md#approval)) → next. Keep changes focused and atomic.
 - When the user asks to work **step by step**, follow [step-by-step-flow.md](step-by-step-flow.md) — it adds a per-step review before each commit.
 - **Show a milestone for review only when it is finished** — implemented _and_ verified (§ 3). A half-done diff costs a review pass that has to be repeated.
 - **No new tests while implementing** — run the existing suite to catch regressions; new tests come once, at [post-completion step 1](#post-completion-checklist). A test written against one milestone gets rewritten by the next and bloats every diff the user reviews on the way.
-- Implement → verify → report; commit only once the owner approves the diff
-  ([github.md § Approval](github.md#approval)).
-- After opening a PR, surface the URL so the user can review.
-- Reflect on what was learned — if new findings affect the solution, address them before moving on.
 - If you hit ambiguity or a blocking decision mid-task — **surface it immediately instead of guessing.**
-
-## Git Workflow
-
-- Branch flow, language, and PR lifecycle → [github.md](github.md).
-- Pre-commit hook (husky + lint-staged): ESLint `--fix` + Prettier on staged `.ts`, Prettier on staged docs/configs (globs: `lint-staged` in `package.json`).
 
 ## 3. Verify
 

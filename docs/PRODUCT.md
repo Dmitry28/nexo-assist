@@ -18,7 +18,7 @@ start; more frequent once throttling/dedupe land).
   units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
   used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
   `/filter` links ignore their filters). US auction lots from bid.cars (the pasted search:
-  the free page when it opens, otherwise Copart and IAAI with the same filters (one house not answering, the other's lots still go out) — odometer,
+  the free page when it opens, otherwise Copart and IAAI with the same filters (one house not answering, the other's lots still go out; a layout change or spent paid keys stop the whole search until fixed, and the owner is alerted) — odometer,
   engine size and start code (which the auctions' search does not take) are applied to the lots
   fetched, shown on the card; any other filter they cannot honour, and `status=All`, are refused; fallback cards link to
   the auction page), and the auctions themselves — copart.com (up
@@ -26,9 +26,8 @@ start; more frequent once throttling/dedupe land).
   iaai.com (up to the 500-listing window; the link’s `Keyword`; through our proxy)** — via the adapter
   registry. copart.com refuses every IP we have (Imperva), so its search goes up the fetch
   ladder as a POST and is read through a paid service (ScrapingAnt / ScraperAPI) when the free
-  rungs fail — so a Copart search and a bid.cars one (its Copart walk) — 6 credits a poll each — count
-  against the same daily paid-credit budget as the protected sites: about 50 such searches
-  bot-wide, past which a new one is refused. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
+  rungs fail — so Copart and bid.cars searches (its Copart walk) share a daily paid-credit budget of
+  their own: about 50 such searches bot-wide, past which a new one is refused. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
   first page only (a page with nothing seen before tells the owner the same way; each page may be paid; a run fetches a search once, however many users watch
@@ -40,7 +39,7 @@ start; more frequent once throttling/dedupe land).
   searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
   source publishes one (the real-estate sources do). Past **30 cards** in one delivery the rest
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
-  Messages are paced one per second. A lone photo Telegram cannot fetch is downloaded by the bot
+  A lone photo Telegram cannot fetch is downloaded by the bot
   and uploaded as a file — that is how idriver's photos arrive. Media that still fails falls
   back to the text card; a refused pin is ignored — the listing already arrived.
 - **Price changes** on listings already delivered come after the cards as a text digest
@@ -70,7 +69,7 @@ start; more frequent once throttling/dedupe land).
   English; per-profile language is Phase 7.
 - Buttons: Следить / Отмена / Показать текущие. A «Следить» prompt stays tappable for 24 hours
   and only until the next restart; after that the button answers «Кнопка устарела» and the link is
-  pasted again. `/list` lists every subscription in one message — a short linked label each
+  pasted again. `/list` lists the subscriptions in one message (as many as fit; the rest are counted) — a short linked label each
   («kufar.by · grodno/kupit/dom», ⏸ when paused, its filter under it) — and a grid of number
   buttons; a number opens that subscription's menu: ❌ remove, 🔎 filter (not on a watched single
   listing), ▶️ resume when paused, ↩ back.
@@ -104,7 +103,9 @@ start; more frequent once throttling/dedupe land).
 - Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
   refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
   orchestrator restarts it.
-- Unsupported link → plain "this site is not supported yet" message (Issue flow is Phase 6).
+- Unsupported link → refused and filed as a source request (§ Volume and limits). A link to a
+  site we read, but not to a search or a listing (a home or lot page), is refused without a
+  request — the site is not new. A search the site answers 404 for is refused at subscribe.
 
 Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
 design; «Volume and limits» describes what is **already shipped** (limits, pausing, alerts).
@@ -126,7 +127,7 @@ design; «Volume and limits» describes what is **already shipped** (limits, pau
    `0 9 * * *` is 09:00 Europe/Minsk, whatever the server's clock.
 2. Collect the unique normalized URLs of active subscriptions (dedupe).
 3. For each URL the adapter fetches listings **page by page** (newest-first, capped
-   at a few pages) and normalizes them. (Early stop-on-already-seen is a later
+   at 20 pages / 500 listings) and normalizes them. (Early stop-on-already-seen is a later
    optimization — for now dedup happens in step 5 via the seen set.)
 4. Diff against the source's previous snapshot → delta (new / removed / price).
 5. Per subscription, build the delivery using its baseline and what was already delivered.

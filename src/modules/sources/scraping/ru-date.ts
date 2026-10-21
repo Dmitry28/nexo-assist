@@ -22,7 +22,7 @@ const pad2 = (value: number): string => String(value).padStart(2, '0');
  */
 export function ruDate(text: string): string | undefined {
   const numeric = /(?<!\d)(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\d)/.exec(text);
-  const spelled = new RegExp(`(\\d{1,2})\\s+(${MONTHS.join('|')})\\s+(\\d{4})`).exec(
+  const spelled = new RegExp(`(?<!\\d)(\\d{1,2})\\s+(${MONTHS.join('|')})\\s+(\\d{4})`).exec(
     text.toLowerCase(),
   );
   // The earlier of the two wins — a title's auction date precedes a decision date it cites.

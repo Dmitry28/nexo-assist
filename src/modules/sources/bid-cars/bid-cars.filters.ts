@@ -23,7 +23,7 @@ const NOISE = new Set(['search-type', 'order-by', 'page']);
 
 const ANY = new Set(['', 'all']);
 
-type AuctionHouse = 'copart' | 'iaai';
+export type AuctionHouse = 'copart' | 'iaai';
 
 /** What the pasted bid.cars link asked for, in the auctions' own terms. */
 export interface AuctionFilters {

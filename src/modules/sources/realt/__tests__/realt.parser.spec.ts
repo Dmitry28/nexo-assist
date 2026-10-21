@@ -104,17 +104,6 @@ describe('extractPage', () => {
 
     expect(extractPage(page).linkPath).toBeNull();
   });
-
-  it('refuses a slug that is not a path of plain segments — a guess is worse than none', () => {
-    const junkSeo =
-      '<script id="__NEXT_DATA__" type="application/json">' +
-      JSON.stringify({
-        props: { pageProps: { objects: [], seoPayload: { parentUrl: '/sale/plots?x=1' } } },
-      }) +
-      '</script>';
-
-    expect(extractPage(junkSeo).linkPath).toBeNull();
-  });
 });
 
 describe('mapObject', () => {

@@ -95,20 +95,23 @@ export class SourceRequestsService {
    * Request support for `url`'s site on behalf of `telegramId`. Resolves to whether the request
    * is on file (now or from before, the same link from another user included) — and only then is
    * the user remembered, to be told when the site is added (`supported`). Not filed (the day's cap,
-   * a declined site, GitHub down) — not promised, not remembered. Never rejects: GitHub or the database failing must not fail the
-   * reply.
+   * a declined site, GitHub down) — not promised, not remembered. Never rejects: GitHub or the
+   * database failing must not fail the reply.
    */
   async request(url: string, telegramId: number): Promise<boolean> {
     const token = process.env.GITHUB_ISSUES_TOKEN;
-    if (this.appConfig.isTest || !token) return false;
+    // A link `new URL` refuses has no site to request — extractUrl takes any `http…` run.
+    if (this.appConfig.isTest || !token || !URL.canParse(url)) return false;
     const next = this.queue.then(() => this.file(url, token)).catch(() => false);
     this.queue = next;
     if (!(await next)) return false;
     try {
-      await this.requests.upsert({ telegramId, host: requestHost(url), url }, [
-        'telegramId',
-        'host',
-      ]);
+      // createdAt set explicitly: an upsert leaves unset columns alone, and `expire` counts the
+      // 180 days from the user's latest ask, not their first.
+      await this.requests.upsert(
+        { telegramId, host: requestHost(url), url, createdAt: new Date() },
+        ['telegramId', 'host'],
+      );
     } catch (err) {
       // Filed all the same: the site still gets added, only this user is not told when.
       this.logger.warn({ err }, 'Source request filed, but the requester not remembered');
@@ -141,7 +144,10 @@ export class SourceRequestsService {
   private async file(url: string, token: string): Promise<boolean> {
     this.rollDay();
     if (this.filed.has(url)) return true;
-    if (this.linksToday >= MAX_LINKS_PER_DAY) return false;
+    if (this.linksToday >= MAX_LINKS_PER_DAY) {
+      this.logger.warn(`Source request not handled — ${MAX_LINKS_PER_DAY} links today`);
+      return false;
+    }
     this.linksToday++;
     try {
       const host = requestHost(url);

@@ -7,6 +7,7 @@ import { SourceUnavailableError } from '../source-adapter';
 
 import { fetchHtml, fetchJson } from './http';
 import type { Protection } from './ladder';
+import { asArray, asRecord } from './next-data';
 import type { Post } from './providers';
 
 // Two public lists of free proxies per country, re-checked by their maintainers every few minutes.
@@ -24,7 +25,7 @@ const LISTS: readonly { url: (country: string) => string; read: (body: string) =
     // JSON; each HTTP proxy's ip and port, written the way the first list writes them.
     read: (body) => {
       type Entry = { ip?: unknown; port?: unknown; protocols?: unknown };
-      const data = (JSON.parse(body) as { data?: unknown[] }).data ?? [];
+      const data = asArray<unknown>(asRecord(JSON.parse(body))?.data) ?? [];
       return data
         .filter((entry): entry is Entry => typeof entry === 'object' && entry !== null)
         .filter(

@@ -8,6 +8,7 @@ describe('ruDate', () => {
     ['без даты', undefined],
     ['5 ноября 2026 г. (решение от 12.09.2026)', '05.11.2026'],
     ['99.99.2025 — не дата', undefined],
+    ['лот 115 ноября 2026', undefined],
   ])('%p → %p', (text, expected) => {
     expect(ruDate(text)).toBe(expected);
   });

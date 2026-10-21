@@ -3,12 +3,13 @@
 ## Type Safety
 
 **Avoid type assertions (`as`)** — narrow instead (type guards, `in`/`typeof`/`instanceof`,
-discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`. If you reach for
+discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`, and in specs a partial
+test double where it is built (`({ … }) as Subscription`) or a jest mock-call read
+(`mock.calls[0][1] as Findings`). If you reach for
 `as`, fix the source type or coerce at the boundary — never cast at the call site.
 
 **Reuse types smartly:**
 
-- Entity fields in locals/params come from the entity, not primitives: `User['id']`, not `string`.
 - Extract function parameter types: `Parameters<typeof function>[0]`.
 - Keep only used props in interfaces — never add fields speculatively.
 - Use `Partial<T>`, `Pick<T, K>`, `Omit<T, K>` instead of re-declaring shapes.
@@ -24,8 +25,3 @@ One deliberate exception: **`strictPropertyInitialization` is off**, because ent
 populated by TypeORM and `class-transformer`, not by constructors. `noUncheckedIndexedAccess` is
 **not** on — so an index access is typed as present even when it is not; narrow it yourself where
 it matters (`split('?')[0]`, `match[1]`, `array[i]`).
-
-## NestJS Specifics
-
-- DTOs are classes (not interfaces) — required for `class-validator` and `class-transformer`.
-- Use `@ApiProperty()` from `@nestjs/swagger` on DTO fields for auto-documentation.

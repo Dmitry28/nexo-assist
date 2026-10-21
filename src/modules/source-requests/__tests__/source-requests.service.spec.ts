@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
+import { sentryCapture } from '@/__tests__/helpers/sentry';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 import { AppEnv } from '@/config/env.validation';
@@ -101,6 +102,8 @@ describe('SourceRequestsService', () => {
     github();
     const service = build();
     await expect(service.request('http://[x', 7)).resolves.toBe(false);
+    // Refused up front: no bug report for the user's typo.
+    expect(sentryCapture()).not.toHaveBeenCalled();
     await expect(service.request('https://example.com/a', 7)).resolves.toBe(true);
   });
 
@@ -138,7 +141,12 @@ describe('SourceRequestsService', () => {
     github();
     await build().request('https://www.example.com/s', 7);
     expect(repo.upsert).toHaveBeenCalledWith(
-      { telegramId: 7, host: 'example.com', url: 'https://www.example.com/s' },
+      {
+        telegramId: 7,
+        host: 'example.com',
+        url: 'https://www.example.com/s',
+        createdAt: expect.any(Date),
+      },
       ['telegramId', 'host'],
     );
 

@@ -6,17 +6,8 @@ import { DataSource } from 'typeorm';
 import { makeListing as listing } from '@/__tests__/helpers/listing';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
-import { InitSchema1783163228738 } from '@/database/migrations/1783163228738-InitSchema';
-import { AddUsers1783179934781 } from '@/database/migrations/1783179934781-AddUsers';
-import { AddNormalizedUrl1783187484846 } from '@/database/migrations/1783187484846-AddNormalizedUrl';
-import { AddPausedAt1783195101942 } from '@/database/migrations/1783195101942-AddPausedAt';
-import { AddConsecutiveFailures1783196783018 } from '@/database/migrations/1783196783018-AddConsecutiveFailures';
-import { EnableRowLevelSecurity1785920305000 } from '@/database/migrations/1785920305000-EnableRowLevelSecurity';
-import { AddLastNotifiedAt1791244800000 } from '@/database/migrations/1791244800000-AddLastNotifiedAt';
 import { MoveTravelSubscriptions1791331200000 } from '@/database/migrations/1791331200000-MoveTravelSubscriptions';
 import { RenormalizeSubscriptionUrls1791417600000 } from '@/database/migrations/1791417600000-RenormalizeSubscriptionUrls';
-import { AddListingSnapshot1791504000000 } from '@/database/migrations/1791504000000-AddListingSnapshot';
-import { AddWidenedFrom1791590400000 } from '@/database/migrations/1791590400000-AddWidenedFrom';
 import { SeenListing } from '@/modules/subscriptions/entities/seen-listing.entity';
 import { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import { User } from '@/modules/subscriptions/entities/user.entity';
@@ -49,22 +40,7 @@ describe('Subscriptions + watch (integration, real Postgres)', () => {
           type: 'postgres',
           url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
           entities: [Subscription, SeenListing, User],
-          // TODO [L]: hand-written — a new migration not listed here creates no table locally, so
-          // the RLS invariant below passes. CI is covered (migration:run globs them first); switch
-          // to the globbed path to close the local gap.
-          migrations: [
-            InitSchema1783163228738,
-            AddUsers1783179934781,
-            AddNormalizedUrl1783187484846,
-            AddPausedAt1783195101942,
-            AddConsecutiveFailures1783196783018,
-            EnableRowLevelSecurity1785920305000,
-            AddLastNotifiedAt1791244800000,
-            MoveTravelSubscriptions1791331200000,
-            RenormalizeSubscriptionUrls1791417600000,
-            AddListingSnapshot1791504000000,
-            AddWidenedFrom1791590400000,
-          ],
+          migrations: [`${__dirname}/../src/database/migrations/*.ts`],
           migrationsRun: true,
           synchronize: false,
         }),

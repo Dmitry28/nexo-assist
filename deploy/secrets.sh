@@ -37,6 +37,7 @@ for key in "${KEYS[@]}"; do
 done
 
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }
+command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
 [[ -r "$KUBECONFIG" ]] || { echo "kubeconfig not found: $KUBECONFIG" >&2; exit 1; }
 kubectl get nodes >/dev/null 2>&1 || {
   echo "cluster unreachable — is the tunnel up? run ./deploy/tunnel.sh" >&2; exit 1
@@ -49,8 +50,9 @@ for key in "${KEYS[@]}"; do
   printf '%s (leave empty to skip): ' "$key" >&2
   read -rs value; echo >&2
   [[ -z "$value" ]] && continue
-  # jq builds the JSON so quotes/backslashes in a value can't break the payload.
-  PATCH_ENTRIES+=("$(jq -n --arg k "$key" --arg v "$value" '{($k): $v}')")
+  # jq builds the JSON so quotes/backslashes in a value can't break the payload; the value goes in
+  # on stdin (printf is a builtin), never as an argument `ps` would show.
+  PATCH_ENTRIES+=("$(printf '%s' "$value" | jq -Rs --arg k "$key" '{($k): .}')")
   unset value
 done
 

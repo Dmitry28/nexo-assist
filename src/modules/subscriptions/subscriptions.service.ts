@@ -252,7 +252,13 @@ export class SubscriptionsService {
 
   /** Create the Telegram user, or refresh their profile — keyed by telegramId. */
   private async upsertUser(profile: TelegramUserProfile): Promise<User> {
-    await this.users.upsert(profile, ['telegramId']);
+    // Absent → null, not left out: an upsert skips undefined columns, so a @username the user
+    // dropped would otherwise be kept forever.
+    const { username = null, firstName = null, lastName = null, language = null } = profile;
+    await this.users.upsert(
+      { telegramId: profile.telegramId, username, firstName, lastName, language },
+      ['telegramId'],
+    );
     return this.users.findOneByOrFail({ telegramId: profile.telegramId });
   }
 
@@ -261,9 +267,9 @@ export class SubscriptionsService {
    * with its stored snapshot (undefined when the row has none yet). Only the candidates are
    * queried, never the whole set: the table is window-pruned (3.4).
    *
-   * WRITES, despite the name: it also refreshes `seenAt` on the rows it found, which keeps the
-   * prune's "keep the newest N" aligned with the page window — without it a listing bumped back
-   * into the window could lose its seen row and be re-delivered as "new". One call, because
+   * NOTE: writes, despite the name — it also refreshes `seenAt` on the rows it found, which keeps
+   * the prune's "keep the newest N" aligned with the page window — without it a listing bumped
+   * back into the window could lose its seen row and be re-delivered as "new". One call, because
    * both halves must cover exactly the same ids.
    */
   async getSeen(

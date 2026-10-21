@@ -2,7 +2,7 @@ import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
-import { elementText } from '../scraping/html';
+import { cardListings, elementText } from '../scraping/html';
 import type { Protection } from '../scraping/ladder';
 import { asPositiveNumber } from '../scraping/next-data';
 import { UNTITLED_LISTING } from '../source-adapter';
@@ -33,12 +33,8 @@ export const PROTECTION: Protection = {
  * pager is walked (protected: one page a poll).
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
-  const byId = new Map<string, Listing>();
-  for (const photoLink of parse(html).querySelectorAll('a[href^="/zapchast_"][title]')) {
-    const listing = toListing(photoLink);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  return { listings: [...byId.values()] };
+  const cards = parse(html).querySelectorAll('a[href^="/zapchast_"][title]');
+  return { listings: cardListings(cards, toListing, 'bamper') };
 }
 
 function toListing(photoLink: HTMLElement): Listing | undefined {

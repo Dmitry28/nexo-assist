@@ -6,7 +6,8 @@
 src/
 ├── main.ts             # Bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen)
 ├── app.setup.ts        # configureApp() — helmet, CORS, prefix, versioning; shared by main.ts and e2e
-├── tracing.ts          # OpenTelemetry init (must stay the first import in main.ts)
+├── sentry.ts           # Error reporting init (import order: ENTRY_POINT § Key Files)
+├── tracing.ts          # OpenTelemetry init (import order: ENTRY_POINT § Key Files)
 ├── app.module.ts       # Root module: Config, Logger, Throttler, Prometheus, global filter/guard
 ├── config/
 │   ├── configuration.ts   # registerAs('app', ...) — typed AppConfig + single validation point
@@ -33,6 +34,7 @@ src/
     │   ├── source-definition.ts # SourceDefinition → SourceAdapter (shared matching, paging)
     │   ├── listing-details.ts  # Builds the labelled detail lines parsers fill
     │   ├── listing-text.ts     # Shared wording: salary, preview, rating
+    │   ├── auction-lot.ts      # US-auction lot facts and filters (copart, iaai, bid-cars)
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared reading: fetch, paginate, JSON/HTML/text helpers
     │   └── <site>/             # One folder per site: its parser + its SourceDefinition
@@ -63,7 +65,7 @@ Two separate vars — never branch app logic on `NODE_ENV`:
 | Stage      | `APP_ENV`     | Where         | `NODE_ENV` (technical) |
 | ---------- | ------------- | ------------- | ---------------------- |
 | local      | `development` | your machine  | development            |
-| staging    | `staging`     | `dev` branch  | production             |
+| staging    | `staging`     | not deployed  | production             |
 | production | `production`  | `main` branch | production             |
 | test       | `test`        | jest          | test                   |
 
@@ -101,12 +103,12 @@ used, saying why in the schema docblock. Precedents: `sources/scraping/http.ts`,
 
 ## Adding a New Feature Module
 
-Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What is ours:
+Mirror `subscriptions/` — the rest is standard Nest. What is ours:
 
-- DTOs in `dto/` (`class-validator` + `@ApiProperty`), entities in `entities/`; **map entities to
-  DTOs at the controller boundary** — never return a raw entity.
-- Throw Nest HTTP exceptions; the global `AllExceptionsFilter` shapes the response.
-- Schema changes only via a generated migration (see below).
+- Entities in `entities/`; schema changes only via a generated migration (see below).
+- An HTTP feature (none yet; only `health/` and `metrics/` have controllers): DTOs in `dto/`
+  (`class-validator` + `@ApiProperty`), **mapped from entities at the controller boundary** —
+  never a raw entity; Nest HTTP exceptions, shaped by the global `AllExceptionsFilter`.
 
 ## Adding a Source
 
@@ -181,3 +183,5 @@ Update **all of these** in lockstep:
 3. `.env.example` — document it (every variable the code reads, script-only ones included —
    `npm run lint` fails without it: `scripts/lint/check-env-example.js`).
 4. `k8s/configmap.yaml` — add it when the production value must differ from the default.
+5. Credential-like → add it to `ALL_KEYS` in `deploy/secrets.sh` (the Secret, not the ConfigMap);
+   the script refuses a key not on that list.

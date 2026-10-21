@@ -60,6 +60,9 @@ describe('fetchProtected', () => {
     delete process.env.SCRAPE_DO_API_KEY;
     delete process.env.SCRAPINGANT_API_KEY;
     delete process.env.SCRAPER_API_KEY;
+    delete process.env.SCRAPEOPS_API_KEY;
+    delete process.env.SCRAPFLY_API_KEY;
+    jest.useRealTimers();
   });
 
   it('stops at the first free rung that returns the real page — nothing paid', async () => {
@@ -138,8 +141,6 @@ describe('fetchProtected', () => {
       .filter((url) => !url.startsWith('https://x.by'));
     expect(paid).toHaveLength(6);
     for (const url of paid) expect(url).toMatch(PAID_SCRAPER_ORIGIN);
-    delete process.env.SCRAPEOPS_API_KEY;
-    delete process.env.SCRAPFLY_API_KEY;
   });
 
   it('reads the page out of ScrapFly’s JSON, the last rung', async () => {
@@ -153,7 +154,6 @@ describe('fetchProtected', () => {
     await expect(get()).resolves.toBe(REAL);
     expect(calledHosts()).toEqual(['x.by', 'api.scrapfly.io']);
     expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('asp')).toBe('true');
-    delete process.env.SCRAPFLY_API_KEY;
   });
 
   it('asks ScrapingAnt, then ScraperAPI, for a site without a country', async () => {
@@ -258,7 +258,6 @@ describe('fetchProtected', () => {
 
     // No ScrapeOps — ZenRows and Scrape.do were measured carrying it.
     expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com', 'api.scrape.do']);
-    delete process.env.SCRAPEOPS_API_KEY;
   });
 
   // Measured: a site's own block reaches us as ScraperAPI 500 / ScrapingAnt 423, a refused key as
@@ -329,7 +328,6 @@ describe('fetchProtected', () => {
 
     await expect(run).resolves.toBe(REAL);
     expect(calledHosts()).toEqual(['x.by', 'api.zenrows.com', 'api.zenrows.com']);
-    jest.useRealTimers();
   });
 
   // Ours to fix, not the link's: the scheduler must not count it against the subscription.
@@ -360,7 +358,6 @@ describe('fetchProtected', () => {
     await jest.advanceTimersByTimeAsync(3_000);
 
     await expect(run).resolves.toBe(REAL);
-    jest.useRealTimers();
   });
 
   it('has no direct rung for a source that must go through the proxy', async () => {

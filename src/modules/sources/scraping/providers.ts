@@ -6,10 +6,10 @@ import { wait } from '@/common/wait';
 import { SourceUnavailableError } from '../source-adapter';
 import type { CreditPool } from '../source-adapter';
 
+import { MAX_HTML_LENGTH } from './http';
 import type { Protection } from './ladder';
+import { asRecord } from './next-data';
 
-// A ceiling, not a guess: a provider is cut by whatever is left of the ladder's budget first.
-const MAX_HTML_LENGTH = 5 * 1024 * 1024;
 // A provider that said «spent» or «bad key» is not asked again for a day: every later poll of the
 // run would otherwise pay a round trip (and ZenRows its retries) to hear the same answer. The
 // free tiers renew monthly; a day keeps a renewed or re-keyed provider from waiting long.
@@ -257,9 +257,7 @@ const PROVIDERS: readonly Provider[] = [
     },
     // The page only when the site itself answered 2xx — an envelope can carry its error page.
     read: (body) => {
-      const { result } = JSON.parse(body) as {
-        result?: { content?: unknown; status_code?: unknown; success?: unknown };
-      };
+      const result = asRecord(asRecord(JSON.parse(body))?.result);
       const ok =
         result?.success !== false &&
         typeof result?.status_code === 'number' &&
@@ -407,7 +405,7 @@ async function creditsLeft(provider: Provider, key: string): Promise<number | un
       headers: provider.balance.headers?.(key),
       signal: AbortSignal.timeout(BALANCE_TIMEOUT_MS),
     });
-    const left = provider.balance.left((await res.json()) as Account);
+    const left = provider.balance.left(asRecord(await res.json()) ?? {});
     return res.ok && typeof left === 'number' && Number.isFinite(left) ? left : undefined;
   } catch {
     // Swallowed whole: undici's error carries the URL, and with it the key.

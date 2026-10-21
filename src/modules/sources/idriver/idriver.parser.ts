@@ -4,7 +4,7 @@ import type { HTMLElement } from 'node-html-parser';
 import { matchesHost } from '@/common/url';
 
 import { detail, listingDetails } from '../listing-details';
-import { elementText } from '../scraping/html';
+import { cardListings, elementText } from '../scraping/html';
 import type { Protection } from '../scraping/ladder';
 import { asPositiveNumber } from '../scraping/next-data';
 import { ruDate } from '../scraping/ru-date';
@@ -36,12 +36,8 @@ export const PROTECTION: Protection = {
  * costs a paid render. The page passed `usable`, so no cards is an empty catalogue, not a block.
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
-  const byId = new Map<string, Listing>();
-  for (const card of parse(html).querySelectorAll('li[itemtype="https://schema.org/Offer"]')) {
-    const listing = toListing(card);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  return { listings: [...byId.values()] };
+  const cards = parse(html).querySelectorAll('li[itemtype="https://schema.org/Offer"]');
+  return { listings: cardListings(cards, toListing, 'idriver') };
 }
 
 function toListing(card: HTMLElement): Listing | undefined {
@@ -75,8 +71,8 @@ function toListing(card: HTMLElement): Listing | undefined {
  * The card's first photo at full size — one, like the prototype: a part has up to 16, and a
  * feed of 50 parts as albums would bury the text. Telegram cannot fetch img*.idriver.by by URL,
  * so these go up as files (send-card.ts → photo-upload.ts). Measured 2026-10-19 from a home IP
- * (not yet from Hetzner): img77 serves them to anyone; the newest offers' img55 answers 404 even
- * from a Belarusian proxy — those cards arrive as text.
+ * and 2026-10-20 from Hetzner: img77 serves them to anyone; the newest offers' img55 answers 404
+ * (thumbnail, `-1` and a Referer too, 2026-10-21) even from a Belarusian proxy — those cards arrive as text.
  */
 function leadPhoto(card: HTMLElement): string[] {
   const src = card.querySelector('img[itemprop="image"]')?.getAttribute('src');

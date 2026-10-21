@@ -60,6 +60,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const res = exception.getResponse();
       if (typeof res === 'string') {
         message = res;
+        error = exception.name;
       } else if (typeof res === 'object' && res !== null) {
         message = 'message' in res && isMessage(res.message) ? res.message : exception.message;
         error = 'error' in res && typeof res.error === 'string' ? res.error : exception.name;

@@ -22,8 +22,8 @@ describe('validateEnv', () => {
 
   it('requires TELEGRAM_BOT_TOKEN in production — the bot is the product', () => {
     expect(() => validateEnv({ APP_ENV: AppEnv.Production })).toThrow('TELEGRAM_BOT_TOKEN');
-    // Production also requires SCRAPE_PROXY_URL and ADMIN_TELEGRAM_ID (see below) — supplied
-    // so this asserts the token.
+    // Production also requires the other @RequiredInProduction vars — supplied so this asserts
+    // the token.
     const prod = {
       APP_ENV: AppEnv.Production,
       SCRAPE_PROXY_URL: 'http://p:8888',

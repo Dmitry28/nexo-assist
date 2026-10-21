@@ -39,6 +39,8 @@ export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
   return { listings: [...titles].map(([path, title]) => toListing(path, title)) };
 }
 
+// A link with broken percent-encoding is skipped: its path is the notice's id, and an undecodable
+// one cannot be matched against NOTICE_PATH.
 function safeDecode(path: string): string | undefined {
   try {
     return decodeURI(path);

@@ -4,7 +4,16 @@ import type { Listing } from './source-adapter';
  * The lot facts the US auction parsers (Copart, IAAI) put on a card — and the bid.cars fallback
  * filters by, since the auctions' own searches do not take those filters. One spelling for both.
  */
-export const LOT_LABELS = { odometer: 'Пробег', engine: 'Двигатель', start: 'Запуск' } as const;
+export const LOT_LABELS = {
+  odometer: 'Пробег',
+  engine: 'Двигатель',
+  start: 'Запуск',
+  stock: 'Stock',
+} as const;
+
+/** A VIN as the auction shows it, or undefined when it is masked (`*`) — a partial VIN misleads. */
+export const fullVin = (vin: string | undefined): string | undefined =>
+  vin !== undefined && !vin.includes('*') ? vin : undefined;
 
 export type StartCode = 'run-and-drive' | 'starts' | 'stationary';
 

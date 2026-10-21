@@ -1,4 +1,4 @@
-import { LOT_LABELS, startText } from '../auction-lot';
+import { LOT_LABELS, fullVin, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
 import { fetchProtected } from '../scraping/ladder';
 import type { Protection } from '../scraping/ladder';
@@ -168,7 +168,7 @@ function toListing(lot: Record<string, unknown>): Listing {
     images: thumb?.startsWith('https://') === true ? [thumb] : [],
     coordinates: lat === undefined || lon === undefined ? undefined : asCoordinates([lon, lat]),
     details: listingDetails(
-      detail('VIN', maskedVin(asText(lot.fv))),
+      detail('VIN', fullVin(asText(lot.fv))),
       detail('Аукцион', when === undefined ? 'COPART' : `COPART, ${when}`),
       detail(
         LOT_LABELS.odometer,
@@ -184,9 +184,6 @@ function toListing(lot: Record<string, unknown>): Listing {
     ),
   };
 }
-
-const maskedVin = (vin: string | undefined): string | undefined =>
-  vin !== undefined && !vin.includes('*') ? vin : undefined;
 
 const keys = (flag: string | undefined): string | undefined =>
   flag === 'YES' ? 'есть' : flag === 'NO' ? 'нет' : undefined;

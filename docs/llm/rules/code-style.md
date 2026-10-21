@@ -2,14 +2,14 @@
 
 ## Naming
 
-- Boolean flags follow **verb + noun** order with the resource explicit (`isUserCreationAllowed`), never noun + verb or a bare verb without a resource (`isCreating`).
+- Boolean fields and flags follow **verb + noun** order with the resource explicit (`isUserCreationAllowed`), never noun + verb or a bare verb without a resource (`isCreating`). A short-lived local may read as a participle (`const resumed = …`).
 - **Named exports** everywhere (no default exports except where a framework demands one).
 - File names kebab-case, suffixed by role: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dto.ts`, `*.entity.ts`, `*.filter.ts`, `*.guard.ts`, `*.interceptor.ts`.
 
 ## Constants
 
-- Magic numbers and strings extracted to constants with descriptive names.
-- Group related defaults into a `DEFAULTS` object (except booleans).
+- Magic numbers and strings extracted to constants with descriptive names. Env defaults live only
+  in `src/config/env.validation.ts`.
 
 ## Function Parameters
 
@@ -17,7 +17,8 @@
 swap silently → object parameter. The trigger is swap risk, not arity: parameters of
 distinct types that no call site could transpose stay positional
 (`notify(chatId, text)`, `listingCard(listing, limit, position)`), as do signatures
-mirroring a platform API (`withParam(url, key, value)` ~ `URLSearchParams.set`).
+mirroring a platform API (`withParam(url, key, value)` ~ `URLSearchParams.set`) and a
+label/value pair read like one (`detail(label, value, unit)`).
 Past four, take an object regardless — a fifth parameter says the function does too much.
 
 ```typescript
@@ -31,7 +32,7 @@ function send(params: { message: string; channel: string; retries: number }) {}
 ## NestJS Specifics
 
 - One class per file.
-- Config: inject the typed `AppConfig` via `@Inject(configuration.KEY)` (see [architecture.md](architecture.md#config-access)) — never `process.env` or string-path `ConfigService.get()` inside modules.
+- Config access → [architecture.md § Config Access](architecture.md#config-access).
 - Use the `@/*` path alias for intra-`src` imports across folders.
 
 ## Conditions

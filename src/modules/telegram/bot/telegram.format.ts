@@ -288,6 +288,8 @@ export const unwatchableNotice = (
 export const SITE_REQUESTED =
   'Спасибо! Этот сайт пока не поддерживается — я передал заявку на его добавление и сообщу вам, ' +
   'как только он появится.';
+export const PAGE_UNSUPPORTED =
+  'Этот сайт я поддерживаю, но не такую страницу — какие ссылки подходят, сказано в /help.';
 export const SITE_UNSUPPORTED =
   'К сожалению, этот сайт пока не поддерживается. Список сайтов, с которыми я работаю, — в /help.';
 
@@ -310,6 +312,8 @@ const SITES = SOURCES.map((source) => `• ${source.host} — ${source.about}`).
 export const PROMPT =
   'Пришлите ссылку на поиск с поддерживаемого сайта (список — в /help) — буду следить за ' +
   'новыми объявлениями.';
+
+export const NO_SUBSCRIPTIONS = `Пока нет ни одной подписки. ${PROMPT}`;
 
 /**
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:
@@ -374,5 +378,5 @@ export const formatStats = (stats: {
 
 // The site is read through a paid anti-bot service, and the bot as a whole has a daily budget.
 export const PROTECTED_LIMIT_TEXT =
-  'Этот сайт защищён от ботов и читается через платный сервис — на весь бот его дневной лимит ' +
-  'уже занят. Попробуйте позже.';
+  'Этот сайт защищён от ботов и читается через платный сервис — на весь бот его лимит занят; ' +
+  'место освободится, когда другие такие подписки удалят или бот поставит их на паузу.';

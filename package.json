@@ -1,7 +1,7 @@
 {
   "name": "nexo-assist",
   "version": "0.1.0",
-  "description": "Telegram listing-watch bot (kufar.by, realt.by) on NestJS",
+  "description": "Telegram listing-watch bot on NestJS",
   "author": "NEXO",
   "private": true,
   "license": "UNLICENSED",
@@ -36,8 +36,8 @@
     "dev:docker": "docker compose up --build --renew-anon-volumes",
     "k8s:tunnel": "./deploy/tunnel.sh",
     "k8s:secrets": "./deploy/secrets.sh",
-    "k8s:status": "KUBECONFIG=$HOME/.kube/nexo.yaml kubectl get pods -o wide",
-    "k8s:logs": "KUBECONFIG=$HOME/.kube/nexo.yaml kubectl logs deploy/nexo-assist -c app --tail=50 -f",
+    "k8s:status": "KUBECONFIG=${NEXO_KUBECONFIG:-$HOME/.kube/nexo.yaml} kubectl get pods -o wide",
+    "k8s:logs": "KUBECONFIG=${NEXO_KUBECONFIG:-$HOME/.kube/nexo.yaml} kubectl logs deploy/nexo-assist -c app --tail=50 -f",
     "typeorm": "node -r dotenv/config -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration:generate": "npm run typeorm -- migration:generate -d src/database/data-source.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/database/data-source.ts",
@@ -109,9 +109,6 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.70.0"
-  },
-  "overrides": {
-    "multer": "~2.3.0"
   },
   "lint-staged": {
     "*.ts": [

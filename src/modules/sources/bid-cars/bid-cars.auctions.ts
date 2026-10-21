@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { withParam } from '@/common/url';
 
-import { matchesLot, missingFact } from '../auction-lot';
+import { LOT_LABELS, matchesLot, missingFact } from '../auction-lot';
 import {
   HOST as COPART_HOST,
   load as copartLoad,
@@ -14,10 +14,15 @@ import {
   parsePage as iaaiPage,
   searchBody as iaaiBody,
 } from '../iaai/iaai.parser';
-import { MAX_LISTINGS, SourceUnavailableError, UnsupportedSearchError } from '../source-adapter';
+import {
+  MAX_LISTINGS,
+  PaidRungsUnavailableError,
+  SourceUnavailableError,
+  UnsupportedSearchError,
+} from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
-import type { AuctionFilters } from './bid-cars.filters';
+import type { AuctionFilters, AuctionHouse } from './bid-cars.filters';
 import { auctionFilters } from './bid-cars.filters';
 
 const logger = new Logger('bid-cars:auctions');
@@ -41,29 +46,35 @@ export async function fromAuctions(url: string): Promise<Listing[]> {
           : await iaaiLots(filters, keyword);
       // Loud, not an empty result: a fact the filter needs that no lot of a house carries is the
       // parser missing the field, and failing every lot on it would silence that house for good.
-      // Only past a floor — a handful of lots may all lack a start badge.
+      // A plain Error, so the loop below rethrows it instead of reading the house as down.
+      // Only past a floor — a small search can honestly have no odometer or engine on any lot
+      // (Copart drops `0 mi`).
       const missing =
         lots.length >= FACT_CHECK_MIN_LOTS ? missingFact(lots, filters.lot) : undefined;
       if (missing !== undefined) {
-        throw new SourceUnavailableError(`${house}: no lot carries «${missing}» — layout changed?`);
+        throw new Error(`${house}: no lot carries «${missing}» — layout changed?`);
       }
       return lots;
     }),
   );
   // One house not answering is not the search down: the other's lots still go out (Copart refuses
-  // every datacenter IP we have, measured 2026-10-20). Our own bug or a refused filter is not
-  // «not answering» — rethrown. Every house down — the search did not answer.
-  const byHouse = new Map<string, Listing[]>();
+  // every datacenter IP we have, measured 2026-10-20). Our own bug, a layout change, a refused
+  // filter or spent paid rungs (the run's unpaid alert) is not «not answering» — rethrown. Every
+  // house down — the search did not answer.
+  const byHouse = new Map<AuctionHouse, Listing[]>();
   const down: SourceUnavailableError[] = [];
   for (const [i, result] of settled.entries()) {
-    const house = houses[i] as string;
+    const house = houses[i];
     if (result.status === 'fulfilled') {
       byHouse.set(house, result.value);
       continue;
     }
     const err: unknown = result.reason;
-    if (!(err instanceof SourceUnavailableError) || err instanceof UnsupportedSearchError)
-      throw err;
+    const isDown =
+      err instanceof SourceUnavailableError &&
+      !(err instanceof UnsupportedSearchError) &&
+      !(err instanceof PaidRungsUnavailableError);
+    if (!isDown) throw err;
     down.push(err);
     logger.warn({ err }, `bid.cars fallback: ${house} did not answer — the other house only`);
   }
@@ -122,8 +133,16 @@ async function iaaiLots(filters: AuctionFilters, keyword: string): Promise<Listi
     listings.push(...parsed.listings);
     if (!parsed.next) break;
   }
-  return listings.slice(0, want).flatMap((listing) => {
-    const stock = listing.details.find((line) => line.label === 'Stock')?.value;
+  const lots = listings.slice(0, want);
+  const stockOf = (listing: Listing): string | undefined =>
+    listing.details.find((line) => line.label === LOT_LABELS.stock)?.value;
+  // Lots without a stock number are dropped below — all of them is a layout change, not a search
+  // that found nothing: a plain Error, so the poll fails loudly (see the fact check above).
+  if (lots.length > 0 && lots.every((listing) => stockOf(listing) === undefined)) {
+    throw new Error('iaai: no lot carries a stock number — layout changed?');
+  }
+  return lots.flatMap((listing) => {
+    const stock = stockOf(listing);
     const year = yearOf(listing.title);
     const inYear =
       (filters.yearFrom === undefined || (year !== undefined && year >= filters.yearFrom)) &&

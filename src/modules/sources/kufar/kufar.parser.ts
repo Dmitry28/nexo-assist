@@ -1,7 +1,7 @@
 import { matchesHost } from '@/common/url';
 
 import { detail, listingDetails } from '../listing-details';
-import { markCut } from '../listing-text';
+import { markCut, PREVIEW_CHARS } from '../listing-text';
 import {
   asArray,
   asCoordinates,
@@ -22,8 +22,8 @@ import type { SearchPage } from '../source-definition';
 /**
  * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
  * NOTE: every field here is a promise about untyped JSON, not a guarantee — the blob is cast,
- * not validated (extractPage only checks that `ads` is an array). So `subject`, which the
- * digest dereferences, is read defensively in mapAd.
+ * not validated (extractPage checks only that `ads` is an array of items with an id). So
+ * `subject`, which the digest dereferences, is read defensively in mapAd.
  */
 interface RawKufarAd {
   ad_id: number;
@@ -60,11 +60,6 @@ const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/gallery';
 /** The source's host — every search and every listing link must be on it (or a subdomain). */
 export const HOST = 'kufar.by';
 
-interface RawPagination {
-  label: string;
-  token: string | null;
-}
-
 /** One page of a Kufar search: ads + the cursor token for the next page (null = last). */
 export interface KufarPage {
   ads: RawKufarAd[];
@@ -90,8 +85,10 @@ export function extractPage(html: string): KufarPage {
   );
   // No pagination block, or one of another shape, simply means no next page — unlike `ads`,
   // whose absence is the signal that the page is not a search result at all.
-  const pagination = asArray<RawPagination>(listing?.pagination) ?? [];
-  const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
+  const pagination = asArray<unknown>(listing?.pagination) ?? [];
+  // Elements unchecked too: a null among them must read as no next page, not a TypeError.
+  const nextCursor =
+    asText(pagination.map(asRecord).find((p) => p?.label === 'next')?.token) ?? null;
   return { ads, nextCursor };
 }
 
@@ -146,7 +143,7 @@ export function mapAd(ad: RawKufarAd): Listing {
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
-    description: markCut(asText(ad.body_short), BODY_SHORT_CHARS),
+    description: markCut(asText(ad.body_short), PREVIEW_CHARS),
     // Kufar counts in 1/100 of the currency (1385000 → 13850 BYN).
     priceByn: asPrice(ad.price_byn, { minorUnits: true }),
     priceUsd: asPrice(ad.price_usd, { minorUnits: true }),
@@ -191,7 +188,9 @@ function link(ad: RawKufarAd): string {
 
 /** One parameter by key, taking its raw value (`v`) or its display label (`vl`). */
 function param(params: RawParam[] | undefined, key: string, field: 'v' | 'vl' = 'v'): unknown {
-  return asArray<RawParam>(params)?.find((p) => p.p === key)?.[field];
+  return asArray<unknown>(params)
+    ?.map(asRecord)
+    .find((p) => p?.p === key)?.[field];
 }
 
 // The object type lives under a different key per category. Verified live on two searches: a
@@ -206,10 +205,6 @@ function propertyType(ad: RawKufarAd): string | undefined {
     asText(param(ad.ad_parameters, 'garage_parking_type', 'vl'))
   );
 }
-
-// kufar's own cut for a listing preview, measured on a live page: every long `body_short` is
-// exactly this many characters, and it cuts mid-word with nothing to show for it.
-const BODY_SHORT_CHARS = 150;
 
 // One line per parameter, each under its own label. Lumping them together produced «Удобства:
 // Центральное» — true of the heating, unreadable as a fact.

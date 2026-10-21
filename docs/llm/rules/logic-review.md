@@ -38,14 +38,14 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 
 ### Edge cases
 
-- `null` / `undefined` / empty inputs handled (validation DTOs cover the boundary).
+- `null` / `undefined` / empty inputs handled (Telegram text and callback data, pasted URLs, site data).
 - Error paths return the standard error shape (global filter), not leaked internals.
 - Race conditions: concurrent requests, double-submits, out-of-order responses.
 - Boundary values: `0`, `1`, max, off-by-one (pagination limits, throttle windows).
 
 ### Security & data
 
-- Input validated at system boundaries (DTOs with `class-validator`; whitelist on).
+- Input validated at system boundaries (user messages and callback data, scraped pages, env).
 - No sensitive data in logs, URLs, error messages.
 - Authorization checks present where required.
 
@@ -59,7 +59,7 @@ Same H/M/L/D/Q + SA convention as [code-review.md § Comment Labels](code-review
 
 Start with a one-line coverage receipt, then the AC traceability matrix, then findings grouped by file (H → M → L → D → Q).
 
-AC matrix legend: `[x]` met (concrete `file:line`) · `[~]` ambiguous, or solved differently on purpose → `[M]` finding · `[ ]` not implemented → `[H]` finding.
+AC matrix legend: `[x]` met (concrete `file:line`) · `[~]` ambiguous → `[M]` finding, or solved differently on purpose and explained in the PR → a note, no finding · `[ ]` not implemented → `[H]` finding.
 
 ```
 ## Logic Review

@@ -184,6 +184,11 @@ describe('TelegramService', () => {
 });
 
 describe('notifyCard', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
   it('wires the bot API into the shared send path', async () => {
     jest.useFakeTimers();
     const { bot, service } = started(pollsForever);

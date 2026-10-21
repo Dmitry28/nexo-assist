@@ -40,6 +40,7 @@ describe('downloadPhoto', () => {
       reply(new Uint8Array([1]), { 'content-type': 'image/jpeg' }, 404),
     ],
     ['a page instead of an image', reply(new Uint8Array([1]), { 'content-type': 'text/html' })],
+    ['a prototype key as the type', reply(new Uint8Array([1]), { 'content-type': 'constructor' })],
     ['a declared oversize', reply(new Uint8Array([1]), { 'content-length': String(MAX + 1) })],
     ['an empty body', reply(new Uint8Array([]))],
     ['an undeclared oversize', reply(new Uint8Array(MAX + 1))],

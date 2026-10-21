@@ -31,11 +31,25 @@
       "Bash(rm -fr *)",
       "Bash(kubectl apply *)",
       "Bash(kubectl delete *)",
+      "Bash(kubectl patch *)",
+      "Bash(kubectl scale *)",
+      "Bash(kubectl edit *)",
+      "Bash(kubectl exec *)",
+      "Bash(kubectl create *)",
+      "Bash(kubectl rollout restart *)",
+      "Bash(kubectl rollout undo *)",
+      "Bash(npm run k8s:secrets*)",
       "Bash(docker system prune *)",
       "Bash(docker system prune)",
       "Bash(docker volume rm *)",
       "Bash(npm publish *)",
-      "Bash(npm publish)"
+      "Bash(npm publish)",
+      "Bash(./deploy/*)",
+      "Bash(deploy/*)",
+      "Bash(ssh *)",
+      "Bash(bash deploy/*)",
+      "Bash(sh deploy/*)",
+      "Bash(scp *)"
     ],
     "deny": [
       "Bash(git push --force *)",
@@ -53,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "name=$(jq -r '.tool_input.skill // empty'); [ -n \"$name\" ] && grep -q 'context: fork' \".claude/skills/$name/SKILL.md\" 2>/dev/null && echo \"The '$name' skill ran in FORKED context - its step-by-step instructions are NOT in your context. If you continue its workflow manually (git/API/edits), first Read .claude/skills/$name/SKILL.md and the docs it references, then follow those steps exactly. Do not improvise the remaining steps from memory.\" >&2; exit 0"
+            "command": "name=$(jq -r '.tool_input.skill // empty'); [ -n \"$name\" ] && grep -q 'context: fork' \"$CLAUDE_PROJECT_DIR/.claude/skills/$name/SKILL.md\" 2>/dev/null && jq -n --arg m \"The '$name' skill ran in FORKED context - its step-by-step instructions are NOT in your context. If you continue its workflow manually (git/API/edits), first Read .claude/skills/$name/SKILL.md and the docs it references, then follow those steps exactly. Do not improvise the remaining steps from memory.\" '{hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: $m}}'; exit 0"
           }
         ]
       },
@@ -62,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // empty' | grep -E '(docs/llm/.*[.]md|[.]claude/skills/.*[.]md)$' >/dev/null && echo 'Re-read the diff you just wrote. Cut filler, restatements of rules already in the file, prescriptive lists with one obvious item, AI-tone phrasing. If a sentence does not change behaviour for the next reader - delete it. See docs/llm/rules/llm-skills-guide.md.' >&2; exit 0"
+            "command": "jq -r '.tool_input.file_path // empty' | grep -E '(docs/llm/.*[.]md|[.]claude/skills/.*[.]md)$' >/dev/null && jq -n --arg m \"Re-read the diff you just wrote. Cut filler, restatements of rules already in the file, prescriptive lists with one obvious item, AI-tone phrasing. If a sentence does not change behaviour for the next reader - delete it. See docs/llm/rules/llm-skills-guide.md.\" '{hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: $m}}'; exit 0"
           }
         ]
       }

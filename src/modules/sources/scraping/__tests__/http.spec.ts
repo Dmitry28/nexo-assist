@@ -56,6 +56,14 @@ describe('fetchHtml', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('reads a malformed redirect Location as the site failing, not our bug', async () => {
+    fetchMock.mockResolvedValue(redirectTo('http://['));
+
+    await expect(fetchHtml({ url: 'https://x.by/l', host: 'x.by' })).rejects.toThrow(
+      SourceUnavailableError,
+    );
+  });
+
   it('resolves a relative redirect Location against the current URL', async () => {
     fetchMock
       .mockResolvedValueOnce(redirectTo('/normalized'))

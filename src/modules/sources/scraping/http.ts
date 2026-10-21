@@ -7,7 +7,7 @@ import { PageNotFoundError, SearchRewrittenError, SourceUnavailableError } from 
 
 const FETCH_TIMEOUT_MS = 30_000;
 // NOTE: a char cap (String.length is UTF-16 units, not bytes) — a coarse safety bound, not exact.
-const MAX_HTML_LENGTH = 5 * 1024 * 1024;
+export const MAX_HTML_LENGTH = 5 * 1024 * 1024;
 
 // Follow redirects ourselves (not the default 'follow') so each hop is host-checked before it
 // is issued — see fetchFollowingHost. A small cap guards against redirect loops.
@@ -102,6 +102,10 @@ async function fetchFollowingHost({
     if (hop >= MAX_REDIRECTS) throw new Error(`Too many redirects for ${url}`);
     const location = res.headers.get('location');
     if (location === null) return res; // broken redirect — let the caller's !res.ok check reject it
+    // A malformed Location is the site misbehaving, not our bug.
+    if (!URL.canParse(location, currentUrl)) {
+      throw new SourceUnavailableError(`Bad redirect Location for ${url}`);
+    }
     const next = new URL(location, currentUrl).toString();
     if (!matchesHost({ url: next, host })) {
       throw new Error(`Redirected off ${host} (${next}) for ${url}`);

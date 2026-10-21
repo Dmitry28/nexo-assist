@@ -106,6 +106,17 @@ const build = () => {
 const addInput = { user: { telegramId: 42 }, source: 'kufar' as const, url: 'https://kufar.by/l' };
 
 describe('SubscriptionsService.add', () => {
+  it('clears a profile field Telegram no longer sends — a dropped @username is not kept', async () => {
+    const { users, service } = build();
+
+    await service.add(addInput);
+
+    expect(users.upsert).toHaveBeenCalledWith(
+      { telegramId: 42, username: null, firstName: null, lastName: null, language: null },
+      ['telegramId'],
+    );
+  });
+
   // Paid anti-bot reads are bounded by free tiers — a daily credit budget per pool, bot-wide.
   describe('the daily credit budget', () => {
     const bidCars = {
@@ -290,6 +301,25 @@ describe('SubscriptionsService.remove', () => {
 
     await expect(service.remove('sub-1', 42)).resolves.toBe(true);
     expect(subs.delete).toHaveBeenCalledWith({ id: 'sub-1' });
+  });
+});
+
+describe('SubscriptionsService.setKeywords', () => {
+  it('scopes the lookup to the caller, so nobody can filter a stranger’s subscription', async () => {
+    const { subs, service } = build();
+    subs.findOneBy.mockResolvedValue(null);
+
+    await expect(service.setKeywords('sub-1', 999, 'дом')).resolves.toBe(false);
+    expect(subs.findOneBy).toHaveBeenCalledWith({ id: 'sub-1', user: { telegramId: 999 } });
+    expect(subs.update).not.toHaveBeenCalled();
+  });
+
+  it('saves the filter once ownership is confirmed', async () => {
+    const { subs, service } = build();
+    subs.findOneBy.mockResolvedValue(active());
+
+    await expect(service.setKeywords('sub-1', 42, 'дом')).resolves.toBe(true);
+    expect(subs.update).toHaveBeenCalledWith({ id: 'sub-1' }, { keywords: 'дом' });
   });
 });
 
