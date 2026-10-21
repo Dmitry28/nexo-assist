@@ -18,7 +18,7 @@ start; more frequent once throttling/dedupe land).
   units and gcn.by state auctions (no paging there), and cars and parts behind anti-bot protection —
   used parts from idriver.by and bamper.by, used cars from cars.av.by (a brand or model page — its
   `/filter` links ignore their filters). US auction lots from bid.cars (the pasted search:
-  the free page when it opens, otherwise Copart and IAAI with the same filters (one house not answering, the other's lots still go out) — odometer,
+  the free page when it opens, otherwise Copart and IAAI with the same filters (one house not answering, the other's lots still go out; a layout change or spent paid keys stop the whole search until fixed, and the owner is alerted) — odometer,
   engine size and start code (which the auctions' search does not take) are applied to the lots
   fetched, shown on the card; any other filter they cannot honour, and `status=All`, are refused; fallback cards link to
   the auction page), and the auctions themselves — copart.com (up
@@ -105,7 +105,7 @@ start; more frequent once throttling/dedupe land).
   orchestrator restarts it.
 - Unsupported link → refused and filed as a source request (§ Volume and limits). A link to a
   site we read, but not to a search or a listing (a home or lot page), is refused without a
-  request — the site is not new.
+  request — the site is not new. A search the site answers 404 for is refused at subscribe.
 
 Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
 design; «Volume and limits» describes what is **already shipped** (limits, pausing, alerts).

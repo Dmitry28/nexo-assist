@@ -21,7 +21,7 @@ npm run start:dev       # dev server with hot-reload
 npm run build           # compile TypeScript
 npm run start:prod      # run production build
 npm run typecheck       # type check without emitting (fast)
-npm run lint            # ESLint + package-version and marker-format checks
+npm run lint            # ESLint + package-version, marker-format and .env.example checks
 npm run lint:fix        # ESLint with auto-fix
 npm run format:check    # Prettier check (no writes)
 npm test                # unit tests
@@ -50,7 +50,7 @@ Easy to break:
 - **No over-engineering.** Don't anticipate futures; don't add abstractions before a second consumer exists.
 - **Fix it or log it — never walk past it.** Noticed a real problem outside the current scope? Verify it's real (read the code), then: **`[H]` only — critical correctness or security — gets fixed now.** Anything else gets a marker and you move on: a `TODO [H|M|L]` at the code it affects ([rules/code-style.md](rules/code-style.md#comments)), or an entry in the «Технический бэклог» of [docs/PRODUCT_PLAN.md](../PRODUCT_PLAN.md) when it's bigger than a comment. This applies to review findings too — a pile of `[L]`s must not stall the task it was reviewing.
 - **Nothing important lives only in chat.** Anything worth knowing later — a decision and its reasoning, a non-obvious constraint, a diagnosis, a workaround, an incident and its fix — must land somewhere durable **in the same change**: the right doc (see the Project Docs table) or a `NOTE:`/comment at the code it constrains (format: [rules/code-style.md](rules/code-style.md)). Rule of thumb: if the next person (or the next session) would ask "why is this like that?" — write it down where they'll look.
-- Follow existing NestJS module structure — mirror `subscriptions` ([architecture.md § Module Rules](rules/architecture.md#module-rules)).
+- Follow existing NestJS module structure — mirror `subscriptions` ([architecture.md § Adding a New Feature Module](rules/architecture.md#adding-a-new-feature-module)).
 - **Talk plainly.** Concise, facts only, no filler; mark assumptions and anything unverified. Narrate **every step, not just the whole task**: before it, what you're doing and _why_; after it, _what_ changed, _why_, and how you verified — in language a non-implementer follows, never a diff dump.
 - **Teach as you go.** The owner is new to DevOps/infra, so every infra, deploy, k8s, network or security step comes with the **concept in simple words** (what it is, why we need it, what breaks without it), and every diagnosis shows the reasoning (symptom → what it means → fix). Plain analogies over jargon; if an explanation didn't land, re-explain simpler. Durable versions live in [DEPLOY.md](../DEPLOY.md).
 - **Never commit or merge without the owner's review** — show the diff + a plain summary, then
