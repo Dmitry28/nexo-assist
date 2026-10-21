@@ -1033,9 +1033,7 @@ Read-only админка для обзора всего сервиса (не д�
     `SENTRY_FLUSH_MS` в `sentry.ts` (сейчас константа в `telegram/report.ts`); `as` в
     `bot-sim.ts`; тесты guard'ов `TELEGRAM_API_ROOT`/`SENTRY_ENABLED`; три одинаковых цикла
     дайджеста в `notify-test.ts`; размер дампа в DEPLOY и backup-cronjob расходится — замерить.
-  - Безопасность [D]: `.claude/settings.json` спрашивает только про `kubectl apply/delete` —
-    `patch`, `scale`, `rollout`, `edit`, `exec`, `create` и `npm run k8s:secrets` идут без
-    вопроса (решает владелец); туннель по умолчанию под root — отдельный пользователь только
+  - Безопасность [D]: туннель по умолчанию под root — отдельный пользователь только
     для проброса порта позволил бы закрыть вход root.
 
 - **Доки: дубли и журнал [L].** Аудит `.md` 2026-10-21 исправил неверные факты, но не
