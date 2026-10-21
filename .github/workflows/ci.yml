@@ -45,9 +45,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Blocking at high: every high/critical had a fix within range (2026-10-21). The remaining
+      # moderates need Nest 12 (js-yaml via @nestjs/swagger) or have no fix (sprintf-js).
       - name: Security audit
         run: npm audit --audit-level=high
-        continue-on-error: true
 
       - name: Lint
         run: npm run lint
