@@ -10,8 +10,8 @@ metadata:
   name: nexo-assist-backups
 spec:
   accessModes: [ReadWriteOnce]
-  # A dump is a few MB; a gigabyte holds years of them. k3s ships the local-path provisioner,
-  # so this is a directory on the node's disk.
+  # A dump is a few MB; a gigabyte is far more than the 7 we keep. k3s ships the local-path
+  # provisioner, so this is a directory on the node's disk.
   resources:
     requests:
       storage: 1Gi

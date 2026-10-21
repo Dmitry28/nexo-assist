@@ -78,36 +78,36 @@ production token must never be used locally. Left unset, the app runs with the b
 
 ## Scripts
 
-| Script                                                         | Description                                                      |
-| -------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `npm run start:dev`                                            | Run with watch mode                                              |
-| `npm run start:prod`                                           | Run compiled output (`dist/main`)                                |
-| `npm run build`                                                | Compile to `dist/`                                               |
-| `npm run lint`                                                 | ESLint (fails on warnings) + package & marker checks             |
-| `npm run lint:fix`                                             | ESLint with autofix                                              |
-| `npm run format`                                               | Prettier write                                                   |
-| `npm run format:check`                                         | Prettier check (CI)                                              |
-| `npm run typecheck`                                            | `tsc --noEmit`                                                   |
-| `npm test`                                                     | Unit tests                                                       |
-| `npm run test:cov`                                             | Unit tests with coverage                                         |
-| `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                  |
-| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                 |
-| `npm run notify:test`                                          | Print the listing cards; `-- --send` delivers them via the bot   |
-| `npm run sim:bot -- <steps>`                                   | The real bot against a fake Telegram: chat, tap, `run` the watch |
-| `npm run dev:docker`                                           | Full local stack in docker with hot-reload                       |
-| `npm run db:up`                                                | Start local Postgres (docker)                                    |
-| `npm run db:down`                                              | Stop local Postgres                                              |
-| `npm run db:reset`                                             | Recreate the DB (wipes data)                                     |
-| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes                         |
-| `npm run migration:run`                                        | Apply pending migrations                                         |
-| `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer)  |
-| `npm run migration:revert`                                     | Revert the last migration                                        |
-| `npm run migration:show`                                       | List migrations + status                                         |
-| `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster (needs `CD_HOST`)      |
-| `npm run k8s:backup:fetch`                                     | Pull the newest DB dump off the cluster (needs the tunnel)       |
-| `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)               |
-| `npm run k8s:status`                                           | Pods in the cluster                                              |
-| `npm run k8s:logs`                                             | Follow the bot's logs                                            |
+| Script                                                         | Description                                                          |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `npm run start:dev`                                            | Run with watch mode                                                  |
+| `npm run start:prod`                                           | Run compiled output (`dist/main`)                                    |
+| `npm run build`                                                | Compile to `dist/`                                                   |
+| `npm run lint`                                                 | ESLint (fails on warnings) + package, marker & `.env.example` checks |
+| `npm run lint:fix`                                             | ESLint with autofix                                                  |
+| `npm run format`                                               | Prettier write                                                       |
+| `npm run format:check`                                         | Prettier check (CI)                                                  |
+| `npm run typecheck`                                            | `tsc --noEmit`                                                       |
+| `npm test`                                                     | Unit tests                                                           |
+| `npm run test:cov`                                             | Unit tests with coverage                                             |
+| `npm run test:e2e`                                             | End-to-end tests (needs the DB)                                      |
+| `npm run check:dead-code`                                      | Knip (unused files/exports/deps)                                     |
+| `npm run notify:test`                                          | Print the listing cards; `-- --send` delivers them via the bot       |
+| `npm run sim:bot -- <steps>`                                   | The real bot against a fake Telegram: chat, tap, `run` the watch     |
+| `npm run dev:docker`                                           | Full local stack in docker with hot-reload                           |
+| `npm run db:up`                                                | Start local Postgres (docker)                                        |
+| `npm run db:down`                                              | Stop local Postgres                                                  |
+| `npm run db:reset`                                             | Recreate the DB (wipes data)                                         |
+| `npm run migration:generate -- src/database/migrations/<Name>` | Generate a migration from entity changes                             |
+| `npm run migration:run`                                        | Apply pending migrations                                             |
+| `npm run migration:run:prod`                                   | Apply migrations on the compiled build (deploy / initContainer)      |
+| `npm run migration:revert`                                     | Revert the last migration                                            |
+| `npm run migration:show`                                       | List migrations + status                                             |
+| `npm run k8s:tunnel`                                           | Open/repair the SSH tunnel to the cluster (needs `CD_HOST`)          |
+| `npm run k8s:backup:fetch`                                     | Pull the newest DB dump off the cluster (needs the tunnel)           |
+| `npm run k8s:secrets`                                          | Create or update the cluster Secret (hidden input)                   |
+| `npm run k8s:status`                                           | Pods in the cluster                                                  |
+| `npm run k8s:logs`                                             | Follow the bot's logs                                                |
 
 ## Testing the bot without Telegram
 
@@ -136,7 +136,7 @@ src/
 ├── main.ts                  # Bootstrap: logger, Swagger, shutdown hooks, fatal handlers
 ├── app.setup.ts             # configureApp(): helmet, CORS, prefix, versioning (shared with e2e)
 ├── sentry.ts                # Error reporting init (imported first, before tracing)
-├── tracing.ts               # OpenTelemetry init (imported first; opt-in via env)
+├── tracing.ts               # OpenTelemetry init (imported second; opt-in via env)
 ├── app.module.ts            # Root module: config, logger, throttler, metrics, global filter
 ├── config/
 │   ├── configuration.ts     # Typed, namespaced config (app.*)
@@ -170,9 +170,7 @@ Copy `.env.example` to `.env` and adjust. Invalid/missing values fail fast at st
 ## Observability
 
 - **Metrics** — Prometheus scrape endpoint at `/api/v1/metrics`. Default Node/process
-  metrics plus product metrics: `nexo_deliveries_total`, `nexo_poll_errors_total`,
-  `nexo_subscriptions_paused_total`, `nexo_users`, `nexo_active_subscriptions` (see
-  `src/metrics/watch.metrics.ts`).
+  metrics plus product metrics (`nexo_*`, see `src/metrics/watch.metrics.ts`).
 - **Tracing** — OpenTelemetry, opt-in. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and optionally
   `OTEL_SERVICE_NAME`) to start the SDK; auto-instruments HTTP/Express. See `src/tracing.ts`.
   Control sampling without code changes via standard env: `OTEL_TRACES_SAMPLER=parentbased_traceidratio`
@@ -198,7 +196,9 @@ proxy layers (e.g. a CDN in front of the ingress).
 # Single image (production runtime). Apply the schema first — migrations run from this
 # same image via `npm run migration:run:prod` (as the k8s initContainer does).
 docker build -t nexo-assist .
-docker run -p 3000:3000 --env-file .env nexo-assist
+# Runs as production (the image has no dev dependencies — `development` needs pino-pretty),
+# so the production-required settings must be in .env: see docker-compose.yml.
+docker run -p 3000:3000 --env-file .env -e APP_ENV=production nexo-assist
 
 # Full local dev stack — Postgres + app with hot-reload (runs migrations, watches src/)
 npm run dev:docker

@@ -4,6 +4,8 @@ import request from 'supertest';
 
 import { AppModule } from '@/app.module';
 import { configureApp } from '@/app.setup';
+import type { AppConfig } from '@/config/configuration';
+import configuration from '@/config/configuration';
 import { EnvironmentVariables } from '@/config/env.validation';
 
 // Derived from the schema defaults — k8s probes target these exact paths.
@@ -27,6 +29,11 @@ describe('App (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  // A local `.env` says development — that would start the real bot, cron and heartbeat here.
+  it('boots as the test stage, whatever the local .env says', () => {
+    expect(app.get<AppConfig>(configuration.KEY).isTest).toBe(true);
   });
 
   it(`GET ${PREFIX}/health/live -> 200`, () => {

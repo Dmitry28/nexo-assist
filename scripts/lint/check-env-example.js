@@ -17,7 +17,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const SCHEMA = path.join(ROOT, 'src', 'config', 'env.validation.ts');
 const EXAMPLE = path.join(ROOT, '.env.example');
 // Set by the platform or the toolchain, never by us.
-const EXTERNAL = new Set(['NODE_ENV']);
+const EXTERNAL = new Set(['NODE_ENV', 'TZ']);
 
 const sourceFiles = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
