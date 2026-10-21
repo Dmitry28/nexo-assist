@@ -3,8 +3,9 @@
 ## Type Safety
 
 **Avoid type assertions (`as`)** — narrow instead (type guards, `in`/`typeof`/`instanceof`,
-discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`, and a partial test
-double cast where it is built (`({ … }) as Subscription` in `src/__tests__/helpers/`). If you reach for
+discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`, and in specs a partial
+test double where it is built (`({ … }) as Subscription`) or a jest mock-call read
+(`mock.calls[0][1] as Findings`). If you reach for
 `as`, fix the source type or coerce at the boundary — never cast at the call site.
 
 **Reuse types smartly:**

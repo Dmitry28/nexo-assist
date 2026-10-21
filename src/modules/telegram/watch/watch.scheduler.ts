@@ -59,12 +59,12 @@ export const QUIET_REPORT_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Outcome of processing one subscription — drives the source tally, the 403 pause, the
-// deferred dead-link pause (`dead`: this poll failure was the one that ran the streak out) and
+// deferred dead-link pause (`isDead`: this poll failure was the one that ran the streak out) and
 // the quiet report (`poll`: what a successful poll found).
 type ProcessResult =
   | { state: 'ok'; poll: PollOutcome['kind'] }
   | { state: 'blocked' }
-  | { state: 'poll-failed'; dead: boolean }
+  | { state: 'poll-failed'; isDead: boolean }
   // A protected source with no paid service to ask — ours to fix, not the link's.
   | { state: 'unpaid' }
   // A link the source cannot watch as sent — paused with its reason, not counted as a failure.
@@ -247,7 +247,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       }
       recordOnce(sub, result.state === 'poll-failed');
       if (result.state === 'poll-failed') summary.failed++;
-      if (result.state === 'poll-failed' && result.dead) dead.push(sub);
+      if (result.state === 'poll-failed' && result.isDead) dead.push(sub);
       if (result.state === 'ok' && result.poll === 'nothing') quiet.push(sub);
       if (result.state === 'ok' && result.poll === 'fresh') {
         heard.add(sub.userId);
@@ -342,6 +342,7 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       }
     } catch (err) {
       this.logger.error({ err }, 'Telling requesters failed');
+      // NOTE: bare on purpose — a run-wide step, no single user to attach.
       Sentry.captureException(err);
     }
   }
@@ -397,14 +398,14 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
       this.metrics.recordPollError(sub.source);
       // Guard the bookkeeping so a DB hiccup can't hide a poll failure from the source
       // tally — otherwise a broken adapter + failing write would suppress the outage alert.
-      const dead = await this.recordFailure(sub).catch((e: unknown) => {
+      const isDead = await this.recordFailure(sub).catch((e: unknown) => {
         this.logger.error({ err: e }, `recordFailure failed for ${sub.id}`);
         this.report({ err: e, sub, op: 'record-failure' });
         // The bump never stuck, so the streak is still one short — pausing off a stale count
         // would retire the subscription a run early.
         return false;
       });
-      return { state: 'poll-failed', dead };
+      return { state: 'poll-failed', isDead };
     }
     // Successful poll — clear any prior failure streak so a dead-link pause needs N in a row.
     if (sub.consecutiveFailures > 0) await this.subscriptions.resetFailures(sub.id);

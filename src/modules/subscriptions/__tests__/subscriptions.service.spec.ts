@@ -106,6 +106,17 @@ const build = () => {
 const addInput = { user: { telegramId: 42 }, source: 'kufar' as const, url: 'https://kufar.by/l' };
 
 describe('SubscriptionsService.add', () => {
+  it('clears a profile field Telegram no longer sends — a dropped @username is not kept', async () => {
+    const { users, service } = build();
+
+    await service.add(addInput);
+
+    expect(users.upsert).toHaveBeenCalledWith(
+      { telegramId: 42, username: null, firstName: null, lastName: null, language: null },
+      ['telegramId'],
+    );
+  });
+
   // Paid anti-bot reads are bounded by free tiers — a daily credit budget per pool, bot-wide.
   describe('the daily credit budget', () => {
     const bidCars = {

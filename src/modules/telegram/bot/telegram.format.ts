@@ -378,5 +378,5 @@ export const formatStats = (stats: {
 
 // The site is read through a paid anti-bot service, and the bot as a whole has a daily budget.
 export const PROTECTED_LIMIT_TEXT =
-  'Этот сайт защищён от ботов и читается через платный сервис — на весь бот его дневной лимит ' +
-  'уже занят. Попробуйте позже.';
+  'Этот сайт защищён от ботов и читается через платный сервис — на весь бот его лимит занят; ' +
+  'место освободится, когда другие такие подписки удалят или бот поставит их на паузу.';

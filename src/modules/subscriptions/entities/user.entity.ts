@@ -6,7 +6,10 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-/** A Telegram account. Profile fields are captured on first interaction (ctx.from). */
+/**
+ * A Telegram account. Profile fields are refreshed from ctx.from on every subscribe
+ * (absent → null).
+ */
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')

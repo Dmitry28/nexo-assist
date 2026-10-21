@@ -193,6 +193,12 @@ describe('withIds', () => {
     expect(withIds(items, idOf, 'kufar')).toEqual([{ id: 1 }, { id: 'a7' }]);
   });
 
+  it('drops a null item instead of crashing on it', () => {
+    const items: { id?: unknown }[] = JSON.parse('[null, { "id": 1 }]');
+
+    expect(withIds(items, idOf, 'kufar')).toEqual([{ id: 1 }]);
+  });
+
   // A renamed id field: every listing would become "undefined" and merge into one.
   it('throws a source error when a non-empty page has no id at all', () => {
     expect(() => withIds([{}, {}], idOf, 'kufar')).toThrow(SourceUnavailableError);

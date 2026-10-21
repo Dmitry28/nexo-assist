@@ -6,6 +6,7 @@
 src/
 ├── main.ts             # Bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen)
 ├── app.setup.ts        # configureApp() — helmet, CORS, prefix, versioning; shared by main.ts and e2e
+├── sentry.ts           # Error reporting init (import order: ENTRY_POINT § Key Files)
 ├── tracing.ts          # OpenTelemetry init (import order: ENTRY_POINT § Key Files)
 ├── app.module.ts       # Root module: Config, Logger, Throttler, Prometheus, global filter/guard
 ├── config/
@@ -33,6 +34,7 @@ src/
     │   ├── source-definition.ts # SourceDefinition → SourceAdapter (shared matching, paging)
     │   ├── listing-details.ts  # Builds the labelled detail lines parsers fill
     │   ├── listing-text.ts     # Shared wording: salary, preview, rating
+    │   ├── auction-lot.ts      # US-auction lot facts and filters (copart, iaai, bid-cars)
     │   ├── sources.module.ts
     │   ├── scraping/           # Shared reading: fetch, paginate, JSON/HTML/text helpers
     │   └── <site>/             # One folder per site: its parser + its SourceDefinition

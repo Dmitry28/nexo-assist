@@ -141,7 +141,12 @@ describe('SourceRequestsService', () => {
     github();
     await build().request('https://www.example.com/s', 7);
     expect(repo.upsert).toHaveBeenCalledWith(
-      { telegramId: 7, host: 'example.com', url: 'https://www.example.com/s' },
+      {
+        telegramId: 7,
+        host: 'example.com',
+        url: 'https://www.example.com/s',
+        createdAt: expect.any(Date),
+      },
       ['telegramId', 'host'],
     );
 

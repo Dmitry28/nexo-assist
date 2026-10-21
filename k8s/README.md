@@ -10,6 +10,7 @@ the pin check, rollback and log archive. Raw apply is the last resort:
 ```bash
 # Pin the release first — the committed tag is a stale placeholder, so applying as-is
 # would deploy whatever sha happens to be written in kustomization.yaml:
+# (needs the standalone `kustomize` binary — `kubectl` has no `edit`)
 (cd k8s && kustomize edit set image nexo-assist=ghcr.io/dmitry28/nexo-assist:sha-<sha>)
 
 kubectl apply -k k8s/            # what CD runs (after the pin above)

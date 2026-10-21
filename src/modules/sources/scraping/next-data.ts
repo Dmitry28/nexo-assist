@@ -134,7 +134,8 @@ export function requireArray<T>(value: unknown, source: SourceId, what: string):
 // TODO [L]: a partial drop leaves no trace — return the count so the walk can warn once.
 export function withIds<T>(items: T[], idOf: (item: T) => unknown, source: SourceId): T[] {
   const kept = items.filter((item) => {
-    const id = idOf(item);
+    // A null among the items is one malformed item too, not a TypeError in every caller's idOf.
+    const id = item === null || item === undefined ? undefined : idOf(item);
     return typeof id === 'number' ? Number.isFinite(id) : asText(id) !== undefined;
   });
   if (items.length > 0 && kept.length === 0) {

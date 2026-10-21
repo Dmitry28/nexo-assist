@@ -67,6 +67,24 @@ describe('extractPage', () => {
     expect(extractPage(oddPagination)).toEqual({ ads: [], nextCursor: null });
   });
 
+  // A null inside an array the blob promised must not be a TypeError (filed as our bug).
+  it('skips a null pagination entry', () => {
+    const page =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({
+        props: {
+          pageProps: {
+            initialState: {
+              listing: { ads: [], pagination: [null, { label: 'next', token: 't1' }] },
+            },
+          },
+        },
+      }) +
+      '</script>';
+
+    expect(extractPage(page).nextCursor).toBe('t1');
+  });
+
   it('throws when the listing state is missing — a layout change must not read as empty', () => {
     const noAds =
       '<script id="__NEXT_DATA__" type="application/json">' +
@@ -174,6 +192,16 @@ describe('mapAd', () => {
       { label: 'Тип', value: 'Таунхаус' },
       { label: 'Комнат', value: 'Студия' },
     ]);
+  });
+
+  it('skips a null ad parameter', () => {
+    const ad = mapAd({
+      ad_id: 1,
+      list_time: '2026-01-01T00:00:00Z',
+      ad_parameters: JSON.parse('[null, { "p": "size", "v": 98 }]'),
+    });
+
+    expect(ad.details).toContainEqual({ label: 'Площадь', value: '98 м²' });
   });
 
   it('takes the plot area from size_area and the building area from size', () => {

@@ -3,7 +3,7 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from
 /**
  * Who asked for a site we did not support — kept here, never in the public issue, so they can be
  * told once a parser for it ships. One row per user and site (their latest link); the row is
- * deleted once they are told, or after REQUEST_KEPT_DAYS.
+ * deleted once they are told, or REQUEST_KEPT_DAYS after their latest ask.
  * NOTE: no foreign key to `users` (a requester may never have subscribed) — deleting a user's data
  * by hand (/help) must clear this table by `telegramId` too.
  */
@@ -27,6 +27,8 @@ export class SourceRequest {
   @Column({ type: 'text' })
   url: string;
 
+  // NOTE: refreshed on every ask (the upsert sets it), so it is the latest ask, not a creation
+  // time — `expire` counts from it.
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
