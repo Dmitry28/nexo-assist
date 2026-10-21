@@ -124,8 +124,8 @@ describe('TelegramHandlers', () => {
   });
 
   it.each([
-    [true, 'передал заявку'],
-    [false, 'пока не поддерживается. '],
+    [true, 'передал заявку на его добавление и сообщу вам'],
+    [false, 'Список сайтов, с которыми я работаю, — в /help'],
   ])('rejects an unsupported source, filing a request for it (filed: %s)', async (filed, text) => {
     requests.request.mockResolvedValue(filed);
     const ctx = makeCtx({ text: 'https://example.com/x', userId: 1 });
