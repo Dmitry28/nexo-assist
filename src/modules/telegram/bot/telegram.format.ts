@@ -288,6 +288,8 @@ export const unwatchableNotice = (
 export const SITE_REQUESTED =
   'Спасибо! Этот сайт пока не поддерживается — я передал заявку на его добавление и сообщу вам, ' +
   'как только он появится.';
+export const PAGE_UNSUPPORTED =
+  'Этот сайт я поддерживаю, но не такую страницу — какие ссылки подходят, сказано в /help.';
 export const SITE_UNSUPPORTED =
   'К сожалению, этот сайт пока не поддерживается. Список сайтов, с которыми я работаю, — в /help.';
 
@@ -310,6 +312,8 @@ const SITES = SOURCES.map((source) => `• ${source.host} — ${source.about}`).
 export const PROMPT =
   'Пришлите ссылку на поиск с поддерживаемого сайта (список — в /help) — буду следить за ' +
   'новыми объявлениями.';
+
+export const NO_SUBSCRIPTIONS = `Пока нет ни одной подписки. ${PROMPT}`;
 
 /**
  * The command menu Telegram shows under "≡". Admin-only commands stay out on purpose:

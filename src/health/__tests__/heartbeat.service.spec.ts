@@ -27,6 +27,7 @@ describe('HeartbeatService', () => {
     service.onModuleDestroy();
     delete process.env.HEARTBEAT_URL;
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it('pings at once, so a wrong URL surfaces during the deploy', () => {
@@ -54,7 +55,6 @@ describe('HeartbeatService', () => {
     jest.advanceTimersByTime(2 * PING_INTERVAL_MS);
 
     expect(undiciFetchMock()).toHaveBeenCalledTimes(3); // immediate + two intervals
-    jest.useRealTimers();
   });
 
   it('warns on a rejected ping — a mistyped URL answers 404, it does not throw', async () => {

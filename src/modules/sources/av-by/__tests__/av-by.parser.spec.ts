@@ -50,8 +50,16 @@ describe('av.by parsePage', () => {
 
   // The link goes inside <a href>: one off av.by, or none, is not ours to print.
   it('drops an advert without its own av.by link', () => {
-    const advert = { id: 1, publicUrl: 'https://evil.example/1' };
-    expect(parsePage(pageWith({ adverts: [advert, { id: 2 }], count: 2 })).listings).toEqual([]);
+    const ours = { id: 3, publicUrl: 'https://cars.av.by/bmw/x5/3' };
+    const adverts = [{ id: 1, publicUrl: 'https://evil.example/1' }, { id: 2 }, ours];
+    expect(parsePage(pageWith({ adverts, count: 3 })).listings.map((l) => l.externalId)).toEqual([
+      '3',
+    ]);
+  });
+
+  it('fails loudly when no advert carries an av.by link — publicUrl renamed?', () => {
+    const adverts = [{ id: 1, publicUrl: 'https://evil.example/1' }, { id: 2 }];
+    expect(() => parsePage(pageWith({ adverts, count: 2 }))).toThrow(SourceUnavailableError);
   });
 
   it('fails loudly when a search with adverts sends none', () => {

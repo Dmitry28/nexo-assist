@@ -10,4 +10,6 @@ coverage
 !.env.example
 npm-debug.log
 .eslintcache
+# Production dumps from `npm run k8s:backup:fetch` — user data, never in an image layer.
+backups
 test

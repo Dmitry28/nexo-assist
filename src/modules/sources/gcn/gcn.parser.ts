@@ -2,7 +2,7 @@ import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
-import { elementText, linkPath } from '../scraping/html';
+import { cardListings, elementText, linkPath } from '../scraping/html';
 import { asPositiveNumber, asRecord, asText, parseJson } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
@@ -52,12 +52,8 @@ export function parsePage(body: string): Omit<SearchPage<never>, 'next'> {
       'gcn: the grid request was refused — nonce or layout changed?',
     );
   }
-  const byId = new Map<string, Listing>();
-  for (const item of parse(body).querySelectorAll('.vc_grid-item')) {
-    const listing = toListing(item);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  return { listings: [...byId.values()] };
+  const items = parse(body).querySelectorAll('.vc_grid-item');
+  return { listings: cardListings(items, toListing, 'gcn') };
 }
 
 function toListing(item: HTMLElement): Listing | undefined {
@@ -85,10 +81,7 @@ function toListing(item: HTMLElement): Listing | undefined {
 }
 
 /** The lot page: the starting price (only there) and the utilities line, when present. */
-export async function enrich(
-  listing: Listing,
-  get: (url: string) => Promise<string>,
-): Promise<Listing> {
+export async function enrich(listing: Listing, get: Get): Promise<Listing> {
   // The whole page's text, not a block: the price sits in the post body, whose markup varies.
   const text = elementText(parse(await get(listing.link))) ?? '';
   // «34 294,00 руб.» measured; «бел. руб.» and «BYN» read the same.

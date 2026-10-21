@@ -1,5 +1,5 @@
 // The pod's clock, on every machine: a spec must not pass only because the laptop happens to
-// sit in Minsk. Set here, before workers spawn (they inherit it) and before anything caches it.
+// sit in Minsk. Set here, before anything caches it.
 process.env.TZ = 'UTC';
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */
@@ -22,7 +22,10 @@ module.exports = {
     '<rootDir>/__tests__/setup/mock-sentry.ts',
   ],
   clearMocks: true,
-  maxWorkers: '50%',
+  // One process, everywhere: jest's worker pool segfaults roughly once in seven runs, and the
+  // killed worker's suite simply does not run while the summary still reads "N passed". The
+  // suite takes ~5 s in band, so the pool buys nothing (cause unknown — PRODUCT_PLAN.md backlog).
+  maxWorkers: 1,
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

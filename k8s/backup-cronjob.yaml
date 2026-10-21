@@ -23,6 +23,7 @@ metadata:
 spec:
   # 03:00 UTC — off the watch run (09:00 Minsk = 06:00 UTC), so a dump never competes with delivery.
   schedule: '0 3 * * *'
+  timeZone: 'Etc/UTC'
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

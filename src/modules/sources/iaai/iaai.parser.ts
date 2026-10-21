@@ -1,9 +1,9 @@
 import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
-import { LOT_LABELS, startText } from '../auction-lot';
+import { LOT_LABELS, fullVin, startText } from '../auction-lot';
 import { detail, listingDetails } from '../listing-details';
-import { elementText, linkPath } from '../scraping/html';
+import { cardListings, elementText, linkPath } from '../scraping/html';
 import { fetchJson } from '../scraping/http';
 import { asNumber, asText } from '../scraping/next-data';
 import { SourceUnavailableError } from '../source-adapter';
@@ -68,12 +68,11 @@ export function listingsFrom(html: string): Listing[] {
   if (!isSearchPage(html)) {
     throw new SourceUnavailableError('iaai: search markup missing — page layout changed?');
   }
-  const byId = new Map<string, Listing>();
-  for (const link of parse(html).querySelectorAll('a[href*="/VehicleDetail/"]')) {
-    const listing = toListing(link);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  return [...byId.values()];
+  return cardListings(
+    parse(html).querySelectorAll('a[href*="/VehicleDetail/"]'),
+    toListing,
+    'iaai',
+  );
 }
 
 export function parsePage(html: string, ctx: Pick<PageContext, 'sent'>): SearchPage<boolean> {
@@ -119,9 +118,9 @@ function toListing(titleLink: HTMLElement): Listing | undefined {
     listTime: '',
     images: image === undefined ? [] : [image],
     details: listingDetails(
-      detail('VIN', maskedVin(fact.get('VIN'))),
+      detail('VIN', fullVin(fact.get('VIN'))),
       detail('Аукцион', 'IAAI'),
-      detail('Stock', fact.get('Stock #') ?? fact.get('Stock #:')),
+      detail(LOT_LABELS.stock, fact.get('Stock #')),
       detail(LOT_LABELS.odometer, fact.get('Odometer')),
       detail(LOT_LABELS.engine, fact.get('Engine')?.split(',')[0]),
       detail(LOT_LABELS.start, startText(fact.get('Start Code')) ?? startBadge(card)),
@@ -166,7 +165,7 @@ function facts(card: HTMLElement): Map<string, string> {
     if (raw === undefined) continue;
     const split = raw.indexOf(':');
     if (split === -1) continue;
-    const label = raw.slice(0, split).replace(/:$/, '').trim();
+    const label = raw.slice(0, split).trim();
     const value = raw.slice(split + 1).trim();
     if (label && value) lines.set(label, value);
   }
@@ -183,6 +182,3 @@ const estimate = (acv: string | undefined): string | undefined =>
   acv === undefined ? undefined : `Оценка: ${acv.replace(/\s+USD$/i, '')}`;
 
 const inventoryId = (path: string): string | undefined => path.match(/\/VehicleDetail\/(\d+)/)?.[1];
-
-const maskedVin = (vin: string | undefined): string | undefined =>
-  vin !== undefined && !vin.includes('*') ? vin : undefined;

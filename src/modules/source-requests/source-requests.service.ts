@@ -95,12 +95,13 @@ export class SourceRequestsService {
    * Request support for `url`'s site on behalf of `telegramId`. Resolves to whether the request
    * is on file (now or from before, the same link from another user included) — and only then is
    * the user remembered, to be told when the site is added (`supported`). Not filed (the day's cap,
-   * a declined site, GitHub down) — not promised, not remembered. Never rejects: GitHub or the database failing must not fail the
-   * reply.
+   * a declined site, GitHub down) — not promised, not remembered. Never rejects: GitHub or the
+   * database failing must not fail the reply.
    */
   async request(url: string, telegramId: number): Promise<boolean> {
     const token = process.env.GITHUB_ISSUES_TOKEN;
-    if (this.appConfig.isTest || !token) return false;
+    // A link `new URL` refuses has no site to request — extractUrl takes any `http…` run.
+    if (this.appConfig.isTest || !token || !URL.canParse(url)) return false;
     const next = this.queue.then(() => this.file(url, token)).catch(() => false);
     this.queue = next;
     if (!(await next)) return false;

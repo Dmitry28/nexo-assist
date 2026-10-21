@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { withParam } from '@/common/url';
 
-import { matchesLot, missingFact } from '../auction-lot';
+import { LOT_LABELS, matchesLot, missingFact } from '../auction-lot';
 import {
   HOST as COPART_HOST,
   load as copartLoad,
@@ -17,7 +17,7 @@ import {
 import { MAX_LISTINGS, SourceUnavailableError, UnsupportedSearchError } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 
-import type { AuctionFilters } from './bid-cars.filters';
+import type { AuctionFilters, AuctionHouse } from './bid-cars.filters';
 import { auctionFilters } from './bid-cars.filters';
 
 const logger = new Logger('bid-cars:auctions');
@@ -53,10 +53,10 @@ export async function fromAuctions(url: string): Promise<Listing[]> {
   // One house not answering is not the search down: the other's lots still go out (Copart refuses
   // every datacenter IP we have, measured 2026-10-20). Our own bug or a refused filter is not
   // «not answering» — rethrown. Every house down — the search did not answer.
-  const byHouse = new Map<string, Listing[]>();
+  const byHouse = new Map<AuctionHouse, Listing[]>();
   const down: SourceUnavailableError[] = [];
   for (const [i, result] of settled.entries()) {
-    const house = houses[i] as string;
+    const house = houses[i];
     if (result.status === 'fulfilled') {
       byHouse.set(house, result.value);
       continue;
@@ -122,8 +122,16 @@ async function iaaiLots(filters: AuctionFilters, keyword: string): Promise<Listi
     listings.push(...parsed.listings);
     if (!parsed.next) break;
   }
-  return listings.slice(0, want).flatMap((listing) => {
-    const stock = listing.details.find((line) => line.label === 'Stock')?.value;
+  const lots = listings.slice(0, want);
+  const stockOf = (listing: Listing): string | undefined =>
+    listing.details.find((line) => line.label === LOT_LABELS.stock)?.value;
+  // Lots without a stock number are dropped below — all of them is a layout change, not a search
+  // that found nothing: thrown, so this house reads as down instead of silently empty.
+  if (lots.length > 0 && lots.every((listing) => stockOf(listing) === undefined)) {
+    throw new SourceUnavailableError('iaai: no lot carries a stock number — layout changed?');
+  }
+  return lots.flatMap((listing) => {
+    const stock = stockOf(listing);
     const year = yearOf(listing.title);
     const inYear =
       (filters.yearFrom === undefined || (year !== undefined && year >= filters.yearFrom)) &&

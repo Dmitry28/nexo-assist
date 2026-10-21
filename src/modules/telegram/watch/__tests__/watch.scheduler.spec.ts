@@ -1013,6 +1013,20 @@ describe('WatchScheduler.runDaily — requested sites', () => {
     await scheduler.runDaily();
     expect(requests.forget).toHaveBeenCalledWith('r1');
   });
+
+  it('tells the next requester even when forgetting one fails', async () => {
+    const { subscriptions, telegram, requests, scheduler } = build();
+    subscriptions.listActive.mockResolvedValue([]);
+    requests.supported.mockResolvedValue([request, { ...request, id: 'r2', telegramId: 8 }]);
+    requests.forget.mockRejectedValueOnce(new Error('db down'));
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await scheduler.runDaily();
+
+    expect(telegram.notify).toHaveBeenCalledWith(8, expect.any(String));
+    expect(requests.forget).toHaveBeenCalledWith('r2');
+    expect(sentryCapture()).toHaveBeenCalledWith(expect.objectContaining({ message: 'db down' }));
+  });
 });
 
 describe('WatchScheduler daily job', () => {

@@ -71,8 +71,9 @@ export function salaryText({
   return gross ? `${amount}, до вычета налогов` : amount;
 }
 
-// The length kufar's sale ads arrive cut to (`body_short`), so cards read alike across sources.
-const PREVIEW_CHARS = 150;
+// The length kufar's sale ads arrive cut to (`body_short`, measured: every long one is exactly
+// this long), so cards read alike across sources.
+export const PREVIEW_CHARS = 150;
 
 /** A full description cut to a card-sized preview, marked as cut. */
 export function preview(text: string | undefined): string | undefined {

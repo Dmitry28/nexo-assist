@@ -331,8 +331,14 @@ export class WatchScheduler implements OnModuleInit, OnModuleDestroy {
             continue;
           }
         }
-        await this.requests.forget(request.id);
-        this.logger.log(`Requester told: ${request.host} is supported`);
+        // Its own guard: one failed delete must not keep the remaining requesters untold.
+        await this.requests.forget(request.id).then(
+          () => this.logger.log(`Requester told: ${request.host} is supported`),
+          (err: unknown) => {
+            this.logger.error({ err }, `Forgetting request ${request.id} failed`);
+            Sentry.captureException(err);
+          },
+        );
       }
     } catch (err) {
       this.logger.error({ err }, 'Telling requesters failed');

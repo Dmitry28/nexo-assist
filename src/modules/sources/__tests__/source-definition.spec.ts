@@ -32,6 +32,8 @@ const define = (over: Partial<Paged> = {}): Paged => ({
   ...over,
 });
 
+afterEach(() => jest.restoreAllMocks());
+
 describe('createSourceAdapters', () => {
   const fetchMock = undiciFetchMock();
 
@@ -146,7 +148,6 @@ describe('createSourceAdapters', () => {
     await adapter.fetch('https://a.by/s');
 
     expect(walk).toHaveBeenCalledWith(expect.objectContaining({ useProxy: true, pinPath: true }));
-    walk.mockRestore();
   });
 
   it('stops on an empty cursor token', async () => {

@@ -6,7 +6,7 @@
 src/
 ├── main.ts             # Bootstrap (logger, Swagger, shutdown hooks, fatal handlers, listen)
 ├── app.setup.ts        # configureApp() — helmet, CORS, prefix, versioning; shared by main.ts and e2e
-├── tracing.ts          # OpenTelemetry init (must stay the first import in main.ts)
+├── tracing.ts          # OpenTelemetry init (import order: ENTRY_POINT § Key Files)
 ├── app.module.ts       # Root module: Config, Logger, Throttler, Prometheus, global filter/guard
 ├── config/
 │   ├── configuration.ts   # registerAs('app', ...) — typed AppConfig + single validation point
@@ -63,7 +63,7 @@ Two separate vars — never branch app logic on `NODE_ENV`:
 | Stage      | `APP_ENV`     | Where         | `NODE_ENV` (technical) |
 | ---------- | ------------- | ------------- | ---------------------- |
 | local      | `development` | your machine  | development            |
-| staging    | `staging`     | `dev` branch  | production             |
+| staging    | `staging`     | not deployed  | production             |
 | production | `production`  | `main` branch | production             |
 | test       | `test`        | jest          | test                   |
 
@@ -181,3 +181,5 @@ Update **all of these** in lockstep:
 3. `.env.example` — document it (every variable the code reads, script-only ones included —
    `npm run lint` fails without it: `scripts/lint/check-env-example.js`).
 4. `k8s/configmap.yaml` — add it when the production value must differ from the default.
+5. Credential-like → add it to `ALL_KEYS` in `deploy/secrets.sh` (the Secret, not the ConfigMap);
+   the script refuses a key not on that list.

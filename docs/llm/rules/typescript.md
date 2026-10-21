@@ -3,12 +3,12 @@
 ## Type Safety
 
 **Avoid type assertions (`as`)** — narrow instead (type guards, `in`/`typeof`/`instanceof`,
-discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`. If you reach for
+discriminated unions). Unavoidable cases: `as const`, `as unknown as Type`, and a partial test
+double cast where it is built (`({ … }) as Subscription` in `src/__tests__/helpers/`). If you reach for
 `as`, fix the source type or coerce at the boundary — never cast at the call site.
 
 **Reuse types smartly:**
 
-- Entity fields in locals/params come from the entity, not primitives: `User['id']`, not `string`.
 - Extract function parameter types: `Parameters<typeof function>[0]`.
 - Keep only used props in interfaces — never add fields speculatively.
 - Use `Partial<T>`, `Pick<T, K>`, `Omit<T, K>` instead of re-declaring shapes.

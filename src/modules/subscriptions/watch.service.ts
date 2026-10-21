@@ -9,7 +9,7 @@ import { watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from './entities/subscription.entity';
 import { isEmpty } from './findings';
 import type { Findings, Removal } from './findings';
-import { listingText, matchesKeywords, readKeywords } from './keyword-filter';
+import { listingMatches, readKeywords } from './keyword-filter';
 import { hasPriceChanged, replacesSnapshot } from './price-change';
 import type { PriceChange } from './price-change';
 import {
@@ -26,7 +26,8 @@ import {
 const MASS_PRICE_CHANGE_MIN = 10;
 const MASS_REMOVAL_MIN = 3;
 
-const isMass = (hits: number, of: number, floor: number): boolean => hits >= floor && hits * 2 > of;
+const isMass = ({ hits, of, floor }: { hits: number; of: number; floor: number }): boolean =>
+  hits >= floor && hits * 2 > of;
 
 const partition = <T>(items: T[], keep: (item: T) => boolean): [T[], T[]] => [
   items.filter(keep),
@@ -156,7 +157,7 @@ export class WatchService {
       if (before && hasPriceChanged(before, listing)) priceChanges.push({ before, after: listing });
       else if (!before || replacesSnapshot(before, listing)) refreshed.push(listing);
     }
-    if (isMass(priceChanges.length, compared, MASS_PRICE_CHANGE_MIN)) {
+    if (isMass({ hits: priceChanges.length, of: compared, floor: MASS_PRICE_CHANGE_MIN })) {
       this.warn(sub, `Mass price change for ${sub.source}: ${priceChanges.length} of ${compared}`);
       refreshed.push(...priceChanges.map((change) => change.after));
       priceChanges = [];
@@ -189,8 +190,8 @@ export class WatchService {
   private async keepWanted(sub: Subscription, found: Findings): Promise<Findings> {
     const phrases = readKeywords(sub.keywords);
     if (phrases === null) return found;
-    const wanted = (listing: Parameters<typeof listingText>[0]): boolean =>
-      matchesKeywords(listingText(listing), phrases);
+    const wanted = (listing: Parameters<typeof listingMatches>[0]): boolean =>
+      listingMatches(listing, phrases);
     const [listings, unwanted] = partition(found.listings, wanted);
     const [priceChanges, unwantedChanges] = partition(found.priceChanges, (c) => wanted(c.after));
     const [removed, unwantedRemovals] = partition(found.removed, (r) => wanted(r.last));
@@ -253,7 +254,7 @@ export class WatchService {
     );
     // Rows kept, so this warns every run until the page is fixed or the rows age out — on purpose:
     // deleting them would bring the hidden listings back as «new» once the page shows them again.
-    if (isMass(gone.length, stillThere + gone.length, MASS_REMOVAL_MIN)) {
+    if (isMass({ hits: gone.length, of: stillThere + gone.length, floor: MASS_REMOVAL_MIN })) {
       this.warn(
         sub,
         `Mass removal for ${sub.source}: ${gone.length} of ${stillThere + gone.length}`,
@@ -284,7 +285,7 @@ export class WatchService {
     const phrases = readKeywords(sub.keywords);
     return phrases === null
       ? listings
-      : listings.filter((listing) => matchesKeywords(listingText(listing), phrases));
+      : listings.filter((listing) => listingMatches(listing, phrases));
   }
 
   /**
@@ -348,11 +349,13 @@ export class WatchService {
     // a partial list as the whole one. Page 1 still works and the run stays green, so without
     // this the breakage has no trace at all.
     if (!result.complete) this.warn(sub, `Partial fetch for ${sub.source}`);
+    // A broken adapter, not a transient: reported, so it outlives the pod's logs.
     if (listings.length > MAX_LISTINGS) {
-      this.logger.warn(
-        `${sub.source} returned ${listings.length} listings for one search — over the ` +
-          `${MAX_LISTINGS} window MAX_SEEN_PER_SUBSCRIPTION (${MAX_SEEN_PER_SUBSCRIPTION}) is ` +
-          `sized for. Bound the adapter by it, or pruned listings start coming back as new.`,
+      this.warn(
+        sub,
+        `${sub.source} returned ${listings.length} listings, over the ${MAX_LISTINGS}-listing window ` +
+          `MAX_SEEN_PER_SUBSCRIPTION (${MAX_SEEN_PER_SUBSCRIPTION}) is sized for — bound the ` +
+          `adapter by it, or pruned listings start coming back as new`,
       );
     }
     return result;

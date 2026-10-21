@@ -17,10 +17,7 @@
 ## Checklist
 
 - [ ] Code follows project conventions (`docs/llm/rules/`)
-- [ ] `npm run lint && npm run typecheck && npm test` pass locally
+- [ ] Full checks of `/verify-task-result` pass locally (`test:e2e` included)
 - [ ] Tests added/updated
-- [ ] New env variable? Declared in `env.validation.ts`, documented in `.env.example`, and
-      wired where it belongs — `configuration.ts` + `k8s/configmap.yaml` for ordinary settings,
-      but a credential-like value skips `AppConfig` (the bootstrap logs it) and goes in the
-      Secret via `deploy/secrets.sh`. Full procedure: `docs/llm/rules/architecture.md`
+- [ ] New env variable? Wired per `docs/llm/rules/architecture.md` § Adding a New Env Variable
 - [ ] No secrets or sensitive data committed

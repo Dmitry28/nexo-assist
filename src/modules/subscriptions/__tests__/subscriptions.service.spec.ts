@@ -293,6 +293,25 @@ describe('SubscriptionsService.remove', () => {
   });
 });
 
+describe('SubscriptionsService.setKeywords', () => {
+  it('scopes the lookup to the caller, so nobody can filter a stranger’s subscription', async () => {
+    const { subs, service } = build();
+    subs.findOneBy.mockResolvedValue(null);
+
+    await expect(service.setKeywords('sub-1', 999, 'дом')).resolves.toBe(false);
+    expect(subs.findOneBy).toHaveBeenCalledWith({ id: 'sub-1', user: { telegramId: 999 } });
+    expect(subs.update).not.toHaveBeenCalled();
+  });
+
+  it('saves the filter once ownership is confirmed', async () => {
+    const { subs, service } = build();
+    subs.findOneBy.mockResolvedValue(active());
+
+    await expect(service.setKeywords('sub-1', 42, 'дом')).resolves.toBe(true);
+    expect(subs.update).toHaveBeenCalledWith({ id: 'sub-1' }, { keywords: 'дом' });
+  });
+});
+
 describe('SubscriptionsService.pause', () => {
   it('pauses an active row only, so a second pause cannot move the first timestamp', async () => {
     const { subs, service } = build();

@@ -35,7 +35,8 @@ export async function downloadPhoto(url: string, site: string): Promise<InputFil
     signal: AbortSignal.timeout(PHOTO_TIMEOUT_MS),
   });
   const type = res.headers.get('content-type')?.split(';')[0].trim() ?? '';
-  const extension = EXTENSIONS[type];
+  // Own keys only: a header like `constructor` must not find Object.prototype's.
+  const extension = Object.hasOwn(EXTENSIONS, type) ? EXTENSIONS[type] : undefined;
   if (!res.ok || extension === undefined) {
     // An unread body holds the connection open.
     await res.body?.cancel();

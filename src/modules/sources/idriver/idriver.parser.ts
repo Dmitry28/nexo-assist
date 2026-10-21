@@ -4,7 +4,7 @@ import type { HTMLElement } from 'node-html-parser';
 import { matchesHost } from '@/common/url';
 
 import { detail, listingDetails } from '../listing-details';
-import { elementText } from '../scraping/html';
+import { cardListings, elementText } from '../scraping/html';
 import type { Protection } from '../scraping/ladder';
 import { asPositiveNumber } from '../scraping/next-data';
 import { ruDate } from '../scraping/ru-date';
@@ -36,12 +36,8 @@ export const PROTECTION: Protection = {
  * costs a paid render. The page passed `usable`, so no cards is an empty catalogue, not a block.
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
-  const byId = new Map<string, Listing>();
-  for (const card of parse(html).querySelectorAll('li[itemtype="https://schema.org/Offer"]')) {
-    const listing = toListing(card);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  return { listings: [...byId.values()] };
+  const cards = parse(html).querySelectorAll('li[itemtype="https://schema.org/Offer"]');
+  return { listings: cardListings(cards, toListing, 'idriver') };
 }
 
 function toListing(card: HTMLElement): Listing | undefined {

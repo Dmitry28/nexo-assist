@@ -43,5 +43,11 @@ export const matchesKeywords = (text: string, phrases: string[]): boolean => {
 };
 
 /** The text of a listing the filter reads: what a reader sees of it — title, text, place. */
-export const listingText = (listing: Pick<Listing, 'title' | 'description' | 'address'>): string =>
+const listingText = (listing: Pick<Listing, 'title' | 'description' | 'address'>): string =>
   [listing.title, listing.description, listing.address].filter(Boolean).join(' ');
+
+/** Whether a listing passes a subscription's keyword filter. */
+export const listingMatches = (
+  listing: Parameters<typeof listingText>[0],
+  phrases: string[],
+): boolean => matchesKeywords(listingText(listing), phrases);

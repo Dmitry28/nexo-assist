@@ -87,7 +87,7 @@ spec:
                 - ALL
       containers:
         - name: app
-          image: nexo-assist:latest # set by your CD pipeline (e.g. registry/nexo-assist:<sha>)
+          image: nexo-assist:latest # pinned by kustomization.yaml (CD sets the sha)
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

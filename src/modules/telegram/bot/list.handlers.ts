@@ -14,7 +14,7 @@ import {
 
 import { callbackParam } from './callback-param';
 import { formatSubscriptionList, formatSubscriptionMenu } from './list.format';
-import { NO_LINK_PREVIEW, PROMPT, PROTECTED_LIMIT_TEXT } from './telegram.format';
+import { NO_LINK_PREVIEW, NO_SUBSCRIPTIONS, PROTECTED_LIMIT_TEXT } from './telegram.format';
 
 // Number buttons per keyboard row in /list (at most MAX_LIST_BUTTONS of them, list.format.ts).
 const LIST_BUTTONS_PER_ROW = 5;
@@ -113,7 +113,7 @@ export class ListHandlers {
     if (userId === undefined) return;
     const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
-      await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
+      await ctx.reply(NO_SUBSCRIPTIONS);
       return;
     }
     const { text, keyboard } = this.list(subs);
@@ -136,7 +136,8 @@ export class ListHandlers {
     const target = await this.callbackTarget(ctx);
     if (!target) return;
     const removed = await this.subscriptions.remove(target.id, target.userId);
-    await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено');
+    // Guarded: a tap answered late («query is too old») must not skip the re-render below.
+    await ctx.answerCallbackQuery(removed ? 'Удалено' : 'Уже удалено').catch(() => undefined);
     // Nothing changed on a repeated tap — an identical edit is a Telegram 400 (see unchanged).
     if (removed) await this.editToList(ctx);
   }
@@ -160,7 +161,7 @@ export class ListHandlers {
         throw err;
       }
     }
-    await ctx.answerCallbackQuery(answer);
+    await ctx.answerCallbackQuery(answer).catch(() => undefined);
     // A refused resume leaves the menu as it was — re-rendering it would be an identical edit.
     if (resumed) await this.editToMenu(ctx, target);
   }
@@ -205,10 +206,11 @@ export class ListHandlers {
 
   private async editToList(ctx: Context): Promise<void> {
     const userId = ctx.from?.id;
+    // A button tap always has a sender; nothing to list without one.
     if (userId === undefined) return;
     const subs = await this.subscriptions.listByUser(userId);
     if (subs.length === 0) {
-      await ctx.editMessageText(`Пока нет ни одной подписки. ${PROMPT}`).catch(unchanged);
+      await ctx.editMessageText(NO_SUBSCRIPTIONS).catch(unchanged);
       return;
     }
     const { text, keyboard } = this.list(subs);
@@ -245,7 +247,7 @@ export class ListHandlers {
     const userId = ctx.from?.id;
     const id = callbackParam(ctx);
     if (userId === undefined || id === undefined) {
-      await ctx.answerCallbackQuery();
+      await ctx.answerCallbackQuery().catch(() => undefined);
       return null;
     }
     return { userId, id };

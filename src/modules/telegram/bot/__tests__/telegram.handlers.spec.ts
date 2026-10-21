@@ -26,7 +26,7 @@ import { WatchStatus } from '@/modules/telegram/watch/watch.status';
 
 import type { CheckHandlers } from '../check.handlers';
 import { ListHandlers } from '../list.handlers';
-import { HELP_MESSAGE } from '../telegram.format';
+import { HELP_MESSAGE, PAGE_UNSUPPORTED } from '../telegram.format';
 import { TelegramHandlers } from '../telegram.handlers';
 
 import { makeCtx } from './fixtures/bot-ctx';
@@ -132,6 +132,13 @@ describe('TelegramHandlers', () => {
     await bot.onText(ctx);
     expect(requests.request).toHaveBeenCalledWith('https://example.com/x', 1);
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining(text));
+  });
+
+  it('refuses a page of a site we read without filing it as a new site', async () => {
+    const ctx = makeCtx({ text: 'https://cars.av.by/filter?brands[0][brand]=6', userId: 1 });
+    await bot.onText(ctx);
+    expect(requests.request).not.toHaveBeenCalled();
+    expect(ctx.reply).toHaveBeenCalledWith(PAGE_UNSUPPORTED);
   });
 
   it('subscribes via the button: adds + baselines, edits the confirmation in', async () => {

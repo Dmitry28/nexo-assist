@@ -148,6 +148,22 @@ describe('ListHandlers', () => {
       expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('Пока нет'));
     });
 
+    // A tap queued behind a long handler is answered too late — the removal still shows.
+    it.each(['remove:s1', 'resume:s1'])(
+      're-renders after %s even when the tap can no longer be answered',
+      async (data) => {
+        subscriptions.listByUser.mockResolvedValue([]);
+        const entry = bot.callbacks.find((c) => c.pattern.test(data));
+        if (!entry) throw new Error(`no handler for ${data}`);
+        const ctx = makeCtx({ userId: 1, match: data.match(entry.pattern) ?? undefined });
+        ctx.answerCallbackQuery.mockRejectedValue(new Error('query is too old'));
+
+        await entry.fn(ctx);
+
+        expect(ctx.editMessageText).toHaveBeenCalledWith(expect.stringContaining('Пока нет'));
+      },
+    );
+
     // An identical edit is a Telegram 400 («message is not modified») — one Sentry event per tap.
     it('answers «Уже удалено» on a repeated tap without editing the message again', async () => {
       subscriptions.remove.mockResolvedValue(false);

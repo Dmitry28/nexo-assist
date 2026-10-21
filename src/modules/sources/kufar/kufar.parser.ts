@@ -1,7 +1,7 @@
 import { matchesHost } from '@/common/url';
 
 import { detail, listingDetails } from '../listing-details';
-import { markCut } from '../listing-text';
+import { markCut, PREVIEW_CHARS } from '../listing-text';
 import {
   asArray,
   asCoordinates,
@@ -146,7 +146,7 @@ export function mapAd(ad: RawKufarAd): Listing {
     // A titleless ad must degrade to a label, not take the whole digest down with it: the
     // formatter reads `.length` off this (realt.parser.ts falls back the same way).
     title: asText(ad.subject) ?? UNTITLED_LISTING,
-    description: markCut(asText(ad.body_short), BODY_SHORT_CHARS),
+    description: markCut(asText(ad.body_short), PREVIEW_CHARS),
     // Kufar counts in 1/100 of the currency (1385000 → 13850 BYN).
     priceByn: asPrice(ad.price_byn, { minorUnits: true }),
     priceUsd: asPrice(ad.price_usd, { minorUnits: true }),
@@ -206,10 +206,6 @@ function propertyType(ad: RawKufarAd): string | undefined {
     asText(param(ad.ad_parameters, 'garage_parking_type', 'vl'))
   );
 }
-
-// kufar's own cut for a listing preview, measured on a live page: every long `body_short` is
-// exactly this many characters, and it cuts mid-word with nothing to show for it.
-const BODY_SHORT_CHARS = 150;
 
 // One line per parameter, each under its own label. Lumping them together produced «Удобства:
 // Центральное» — true of the heating, unreadable as a fact.

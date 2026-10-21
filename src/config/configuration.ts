@@ -38,7 +38,7 @@ export interface AppConfig {
   watchMinDelayMs: number;
   /** Extra random pause (0..this) added to the base, in ms. */
   watchJitterMs: number;
-  /** Postgres connection URL (local docker by default; Neon in staging/prod). */
+  /** Postgres connection URL (local docker by default; Supabase in production). */
   databaseUrl: string;
 }
 

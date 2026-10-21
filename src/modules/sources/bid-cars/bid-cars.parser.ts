@@ -2,9 +2,16 @@ import { parse } from 'node-html-parser';
 import type { HTMLElement } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
-import { elementText, linkPath } from '../scraping/html';
+import { cardListings, elementText, linkPath } from '../scraping/html';
 import { fetchHtml, hasProxy } from '../scraping/http';
-import { asNumber, asRecord, asText, parseJson, requireArray } from '../scraping/next-data';
+import {
+  asCoordinates,
+  asRecord,
+  asText,
+  asTexts,
+  parseJson,
+  requireArray,
+} from '../scraping/next-data';
 import { SearchRewrittenError, SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 import type { Get, SearchPage } from '../source-definition';
@@ -67,12 +74,8 @@ async function tryBidCars(url: string, get: Get): Promise<string | undefined> {
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
   if (!isUsable(html)) return { listings: fallbackListings(html) };
-  const byId = new Map<string, Listing>();
-  for (const card of parse(html).querySelectorAll('div.item-horizontal.lots-search')) {
-    const listing = toListing(card);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  return { listings: [...byId.values()] };
+  const cards = parse(html).querySelectorAll('div.item-horizontal.lots-search');
+  return { listings: cardListings(cards, toListing, 'bid-cars') };
 }
 
 function toListing(card: HTMLElement): Listing | undefined {
@@ -163,9 +166,6 @@ function asFallbackListing(value: unknown): Listing {
   if (row === undefined || externalId === undefined || link === undefined || title === undefined) {
     throw new SourceUnavailableError('bid-cars: fallback listing missing id/link/title');
   }
-  const images = Array.isArray(row.images)
-    ? row.images.filter((image): image is string => typeof image === 'string')
-    : [];
   const details = Array.isArray(row.details)
     ? row.details.flatMap((item) => {
         const line = asRecord(item);
@@ -175,8 +175,6 @@ function asFallbackListing(value: unknown): Listing {
       })
     : [];
   const pin = asRecord(row.coordinates);
-  const lat = asNumber(pin?.lat);
-  const lon = asNumber(pin?.lon);
   return {
     externalId,
     link,
@@ -185,8 +183,8 @@ function asFallbackListing(value: unknown): Listing {
     address: asText(row.address),
     seller: asText(row.seller),
     listTime: asText(row.listTime) ?? '',
-    images,
+    images: asTexts(row.images),
     details,
-    coordinates: lat === undefined || lon === undefined ? undefined : { lat, lon },
+    coordinates: asCoordinates([pin?.lon, pin?.lat]),
   };
 }

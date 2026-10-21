@@ -24,7 +24,7 @@ import { TelegramHandlers } from './telegram.handlers';
 export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(TelegramService.name);
   private bot?: Bot;
-  private shuttingDown = false;
+  private isShuttingDown = false;
 
   constructor(
     @Inject(configuration.KEY) private readonly appConfig: AppConfig,
@@ -37,7 +37,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     if (this.appConfig.isTest) return;
     // Reset in case a shutdown already ran in this process: otherwise a genuinely dead polling
     // loop would be swallowed below and the pod would linger looking healthy.
-    this.shuttingDown = false;
+    this.isShuttingDown = false;
 
     const token = this.appConfig.telegramBotToken;
     if (!token) {
@@ -74,7 +74,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         // A shutdown aborts start()'s setup, so grammY rejects here on the way out. Exiting on
         // that would kill the rest of the shutdown (the TypeORM close, an in-flight markSeen)
         // and report a crash exit for an orderly stop.
-        if (this.shuttingDown) {
+        if (this.isShuttingDown) {
           this.logger.log('Bot polling stopped by shutdown');
           return;
         }
@@ -93,7 +93,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   // Telegram API hangs shutdown until Kubernetes' grace period runs out and SIGKILLs us. Stop
   // with a timeout/abort.
   async onApplicationShutdown(): Promise<void> {
-    this.shuttingDown = true;
+    this.isShuttingDown = true;
     const bot = this.bot;
     // Cleared before the stop, so a run still in flight gets notify()'s throw instead of sending
     // into a transport being torn down — a throw leaves the listings unsent and unmarked, and
@@ -130,7 +130,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     // is an orderly stop, and they read identically in Sentry otherwise.
     if (!this.bot) {
       throw new Error(
-        this.shuttingDown
+        this.isShuttingDown
           ? 'Bot is shutting down — cannot deliver messages'
           : 'Bot is disabled — cannot deliver messages',
       );

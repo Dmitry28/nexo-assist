@@ -88,6 +88,17 @@ describe('bid.cars fetch', () => {
     await expect(adapter.fetch(sample)).rejects.toBeInstanceOf(SourceUnavailableError);
   });
 
+  it('reads IAAI as down, not empty, when no lot carries a stock number', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const renamed = fixture('iaai', 'iaai-search.html').replaceAll('Stock #', 'Ref');
+    fetchMock.mockImplementation(closedBidCars(renamed));
+
+    const { listings } = await adapter.fetch(sample);
+
+    expect(listings.map((row) => row.externalId)).toEqual(['1-46840646', '1-77707195']);
+    expect(warn).toHaveBeenCalled();
+  });
+
   it('keeps IAAI lots inside the pasted years', async () => {
     fetchMock.mockImplementation(closedBidCars(fixture('iaai', 'iaai-search.html')));
 
