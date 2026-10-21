@@ -17,7 +17,7 @@ describe('detail', () => {
     expect(detail('Тип', '   ')).toBeUndefined();
   });
 
-  it.each(['Не указано', 'не указан', 'НЕ УКАЗАНА', 'n/a'])(
+  it.each(['Не указано', 'не указан', 'НЕ УКАЗАНА', 'n/a', '-'])(
     'drops the placeholder %s whatever its case',
     (placeholder) => {
       expect(detail('Год постройки', placeholder)).toBeUndefined();

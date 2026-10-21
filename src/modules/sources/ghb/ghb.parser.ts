@@ -3,7 +3,7 @@ import type { HTMLElement } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
 import { rangeText } from '../listing-text';
-import { elementText, linkPath } from '../scraping/html';
+import { cardListings, elementText, linkPath } from '../scraping/html';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 import type { SearchPage } from '../source-definition';
@@ -37,14 +37,10 @@ const REGISTRATION = /онлайн\s+регистрац|дата\s+начала\
  * the page always carries objects (if ghb ever sells out, polls fail — acceptable for now).
  */
 export function parsePage(html: string): Omit<SearchPage<never>, 'next'> {
-  const byId = new Map<string, Listing>();
-  for (const anchor of parse(html).querySelectorAll('h3 a')) {
-    const listing = toListing(anchor);
-    if (listing && !byId.has(listing.externalId)) byId.set(listing.externalId, listing);
-  }
-  if (byId.size === 0)
+  const listings = cardListings(parse(html).querySelectorAll('h3 a'), toListing, 'ghb');
+  if (listings.length === 0)
     throw new SourceUnavailableError('ghb: no price-list items — page layout changed?');
-  return { listings: [...byId.values()] };
+  return { listings };
 }
 
 function toListing(anchor: HTMLElement): Listing | undefined {

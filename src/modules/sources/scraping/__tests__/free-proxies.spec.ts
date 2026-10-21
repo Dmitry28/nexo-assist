@@ -165,6 +165,8 @@ describe('freeProxyRung', () => {
 });
 
 describe('freeProxyRung — failures', () => {
+  afterEach(() => jest.useRealTimers());
+
   beforeEach(() => resetFreeProxies());
 
   // A redirect seen only through a stranger's proxy says something about that IP, not the URL.
@@ -203,6 +205,5 @@ describe('freeProxyRung — failures', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('githubusercontent'))).toBe(
       true,
     );
-    jest.useRealTimers();
   });
 });

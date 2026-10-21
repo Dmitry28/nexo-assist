@@ -2,7 +2,7 @@ import { parse } from 'node-html-parser';
 
 import { detail, listingDetails } from '../listing-details';
 import { elementText } from '../scraping/html';
-import { asPositiveNumber } from '../scraping/next-data';
+import { asPositiveNumber, asPrice } from '../scraping/next-data';
 import { SourceUnavailableError, UNTITLED_LISTING } from '../source-adapter';
 import type { Listing } from '../source-adapter';
 import type { SearchPage } from '../source-definition';
@@ -61,14 +61,14 @@ function toListing(row: string, complex: string): Listing | undefined {
     link: `https://${HOST}${link[1]}`,
     title:
       rooms !== undefined && area !== undefined ? `${rooms}-комн., ${area} м²` : UNTITLED_LISTING,
-    priceByn: money(field(cells, 'ЦЕНА квартиры')),
+    priceByn: asPrice(field(cells, 'ЦЕНА квартиры'), { minorUnits: false }),
     address: complex,
     listTime: '',
     images: image ? [`https://${HOST}${image}`] : [],
     details: listingDetails(
       detail('Площадь', area, 'м²'),
       detail('Комнат', rooms),
-      detail('Цена за м²', money(field(cells, 'ЦЕНА ЗА М2')), 'BYN'),
+      detail('Цена за м²', asPrice(field(cells, 'ЦЕНА ЗА М2'), { minorUnits: false }), 'BYN'),
     ),
   };
 }
@@ -81,6 +81,3 @@ const field = (cells: string, label: string): number | undefined => {
   )?.[1];
   return asPositiveNumber(raw?.replace(/\s/g, '').replace(',', '.'));
 };
-
-const money = (value: number | undefined): number | undefined =>
-  value === undefined ? undefined : Math.round(value);
