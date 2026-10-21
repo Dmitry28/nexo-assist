@@ -1,4 +1,4 @@
-import { isGoneItem, matchAdOn, parseItem } from '../kufar/kufar.parser';
+import { HOST as KUFAR_HOST, isGoneItem, matchAdOn, parseItem } from '../kufar/kufar.parser';
 import { parseNextData } from '../scraping/next-data';
 import { UnwatchableItemError } from '../source-adapter';
 import { defineSource } from '../source-definition';
@@ -31,5 +31,8 @@ export const kufarTravel = defineSource({
       return { ...parseItem(html, 'kufar-travel'), link: url };
     },
     isGone: isGoneItem,
+    // Since 2026-10-21 a /vi/ page 301s to www.kufar.by/item/<id> — the same ad view, so the
+    // redirect is followed within kufar.by; anything off it is still refused.
+    host: KUFAR_HOST,
   },
 });

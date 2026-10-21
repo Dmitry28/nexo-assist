@@ -3,7 +3,16 @@ import { defineSource } from '../source-definition';
 import { HOST, isGoneItem, matchAdOn, parseItem, parsePage } from './kufar.parser';
 
 // Only re.kufar.by's ads are measured — another kufar subdomain's ad stays a «search» link.
-const matchItem = matchAdOn(`re.${HOST}`);
+const matchReAd = matchAdOn(`re.${HOST}`);
+// kufar's own entry to any ad since 2026-10-21, what a reader now sees after a redirect: realty
+// 301s on to re.kufar.by/vi/, a per-night ad stays here — the same ad view either way, read
+// within kufar.by. Kept in this form (an id alone does not say which subdomain owns the ad).
+const ITEM_PAGE = /^\/item\/(\d+)\/?$/;
+function matchItem(url: string): { id: string; url: string } | null {
+  const { hostname, pathname } = new URL(url);
+  const id = hostname === `www.${HOST}` ? ITEM_PAGE.exec(pathname)?.[1] : undefined;
+  return id ? { id, url: `https://www.${HOST}/item/${id}` } : matchReAd(url);
+}
 
 /** kufar.by — sale and long-term rent (re.kufar.by); its per-night rentals are kufar-travel. */
 export const kufar = defineSource({
