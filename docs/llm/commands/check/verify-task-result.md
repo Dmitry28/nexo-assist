@@ -32,7 +32,7 @@ All commands are read-only and safe — no approval needed. Run for the final ve
 1. `npm run typecheck`
 2. `npm run lint`
 3. `npm test`
-4. `npm run test:e2e` — needs Postgres (`docker compose up -d`). `npm test` excludes it and
+4. `npm run test:e2e` — needs Postgres (`npm run db:up`). `npm test` excludes it and
    typecheck misses a stale e2e assertion (`expect(aNumber).toEqual({…})` is legal TypeScript),
    so a changed exported signature or return type fails only here — or in CI.
 5. `npm run check:dead-code`

@@ -100,6 +100,6 @@ Report the CI result, then ask. `git push --force-with-lease` on your own unmerg
 (that is how a mistake stays out of `dev`'s history; plain `--force` is denied in settings);
 force-pushing `dev` or `main` is not.
 
-NOTE: `.claude/settings.json` prompts only on `git push` and `gh pr merge` — `git commit` is
-allowed without a prompt on purpose (the prompts were noise). Commit approval is therefore a
+NOTE: `.claude/settings.json` prompts on push, merge and destructive commands, not on `git commit` —
+it is allowed without a prompt on purpose (the prompts were noise). Commit approval is therefore a
 rule you follow, not a gate the harness enforces: still show the diff and wait.

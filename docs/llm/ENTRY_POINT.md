@@ -39,7 +39,7 @@ Before claiming a task done, run the full checks of
 Full `src/` layout and layer rules → [rules/architecture.md](rules/architecture.md#project-structure).
 Easy to break:
 
-- `src/tracing.ts` must stay the **first** import in `main.ts` (OpenTelemetry patches modules on load).
+- `src/sentry.ts`, then `src/tracing.ts`, must stay the **first** imports in `main.ts` (both patch modules on load).
 - `src/config/env.validation.ts` is the single source of env defaults — the app fails fast on boot.
 - `src/app.setup.ts` (`configureApp()`) is shared by `main.ts` and e2e, so tests hit production routes.
 

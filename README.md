@@ -205,7 +205,7 @@ docker build -t nexo-assist .
 docker run -p 3000:3000 --env-file .env nexo-assist
 
 # Full local dev stack — Postgres + app with hot-reload (runs migrations, watches src/)
-npm run dev:docker            # = docker compose up --build
+npm run dev:docker
 ```
 
 Multi-stage build, runs as non-root, ships only production dependencies, with a `HEALTHCHECK`.
@@ -227,13 +227,12 @@ which rolls that exact commit out to the cluster.
 Manifests live in `k8s/` (Kustomize). See `k8s/README.md` for the manifest reference
 and [`docs/DEPLOY.md`](docs/DEPLOY.md) for a step-by-step deploy + DevOps learning guide.
 
-```bash
-kubectl apply -k k8s/
-```
+Deploys go through CD; the manual fallback (pin the image first — the committed tag is a
+placeholder) is in [`k8s/README.md`](k8s/README.md).
 
 Includes liveness/readiness/startup probes, resource requests+limits, non-root +
 read-only-rootfs security context, and Prometheus scrape annotations. Runs as a
-single replica — long-polling bot (one poller per token; in-memory pending prompts — see the NOTE in the manifest).
+single replica — one poller per token and a per-process run slot (see the NOTE in the manifest).
 
 ## Conventions
 

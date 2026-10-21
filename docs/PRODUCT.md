@@ -70,7 +70,7 @@ start; more frequent once throttling/dedupe land).
   English; per-profile language is Phase 7.
 - Buttons: Следить / Отмена / Показать текущие. A «Следить» prompt stays tappable for 24 hours
   and only until the next restart; after that the button answers «Кнопка устарела» and the link is
-  pasted again. `/list` lists every subscription in one message — a short linked label each
+  pasted again. `/list` lists the subscriptions in one message (as many as fit; the rest are counted) — a short linked label each
   («kufar.by · grodno/kupit/dom», ⏸ when paused, its filter under it) — and a grid of number
   buttons; a number opens that subscription's menu: ❌ remove, 🔎 filter (not on a watched single
   listing), ▶️ resume when paused, ↩ back.
@@ -104,7 +104,9 @@ start; more frequent once throttling/dedupe land).
 - Deployment: **single replica** (why — PRODUCT_TECH.md, «Известные ограничения»); production
   refuses to boot without `TELEGRAM_BOT_TOKEN`; a dead polling loop exits the process so the
   orchestrator restarts it.
-- Unsupported link → refused and filed as a source request (§ Volume and limits).
+- Unsupported link → refused and filed as a source request (§ Volume and limits). A link to a
+  site we read, but not to a search or a listing (a home or lot page), is refused without a
+  request — the site is not new.
 
 Below this line, «User flow», «How it works inside» and «Architecture» describe the **target**
 design; «Volume and limits» describes what is **already shipped** (limits, pausing, alerts).
