@@ -28,7 +28,7 @@ export const toSnapshot = ({
   priceText,
 }: Listing): ListingSnapshot => ({ link, title, priceByn, priceUsd, priceText });
 
-const optionalNumber = (value: unknown): boolean =>
+const optionalNumber = (value: unknown): value is number | undefined =>
   value === undefined || (typeof value === 'number' && Number.isFinite(value));
 
 /** A stored snapshot, or undefined for a row that has none or one this code cannot read. */
@@ -41,8 +41,8 @@ export function asSnapshot(value: unknown): ListingSnapshot | undefined {
   return {
     link,
     title,
-    priceByn: priceByn as number | undefined,
-    priceUsd: priceUsd as number | undefined,
+    priceByn,
+    priceUsd,
     priceText,
   };
 }

@@ -28,12 +28,12 @@ export interface DeliveryResult {
   recordError?: unknown;
 }
 
-/** How a caller puts a delivery on the wire: a card per listing, a digest for the tail. */
 // Consecutive failed sends that end a delivery. Small on purpose: it only has to tell "this one
 // listing is bad" (isolated failures) from "the channel is not working right now" (every send
 // fails), and the undelivered remainder goes out next run either way.
 const MAX_CONSECUTIVE_FAILURES = 3;
 
+/** How a caller puts a delivery on the wire: a card per listing, a digest for the tail. */
 export interface DeliveryTargets {
   card: (message: ListingMessage) => Promise<unknown>;
   /** Plain text, NOT HTML — the digest is not escaped (see telegram.format.ts). */

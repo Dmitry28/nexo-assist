@@ -360,6 +360,21 @@ describe('WatchService.poll — removals', () => {
     expect(subscriptions.deleteSeen).toHaveBeenCalledWith('sub-1', ['2']);
   });
 
+  // Over half, yet under MASS_REMOVAL_MIN: a short list losing two is two sales, not a redesign.
+  it('removes a few gone at once from a short list rather than calling it mass', async () => {
+    const { subscriptions, watch } = soldList();
+    const gone = [2, 3].map((i) => ({ externalId: String(i), snapshot: last(i) }));
+    subscriptions.findGone.mockResolvedValue(gone);
+
+    await expect(watch.poll(baselined())).resolves.toMatchObject({
+      kind: 'fresh',
+      removed: [
+        { externalId: '2', last: last(2) },
+        { externalId: '3', last: last(3) },
+      ],
+    });
+  });
+
   it('reports instead of removing when over half the list vanished at once', async () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const { subscriptions, watch } = soldList();
@@ -661,5 +676,10 @@ describe('WatchService — the seen-set cap assumption', () => {
     await watch.check(baselined());
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MAX_SEEN_PER_SUBSCRIPTION'));
+    // Reported, not only logged: a broken adapter must outlive the pod's logs.
+    expect(sentryMessage()).toHaveBeenCalledWith(
+      expect.stringContaining('MAX_SEEN_PER_SUBSCRIPTION'),
+      'warning',
+    );
   });
 });

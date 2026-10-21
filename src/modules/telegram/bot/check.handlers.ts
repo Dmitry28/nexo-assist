@@ -19,7 +19,12 @@ import { isAdmin } from './admin';
 import type { CardSender } from './send-card';
 import { sendCard } from './send-card';
 import { deliverAndRecord } from './telegram.deliver';
-import { NO_LINK_PREVIEW, PROMPT, formatCurrentListings, searchLabel } from './telegram.format';
+import {
+  NO_LINK_PREVIEW,
+  NO_SUBSCRIPTIONS,
+  formatCurrentListings,
+  searchLabel,
+} from './telegram.format';
 
 // Refusal for both on-demand pollers (/check, which claims the slot, and the «Показать текущие»
 // button, which only peeks at it) — one wording so the two cannot drift. Worded for either
@@ -60,7 +65,7 @@ export class CheckHandlers {
 
     const all = await this.subscriptions.listByUser(userId);
     if (all.length === 0) {
-      await ctx.reply(`Пока нет ни одной подписки. ${PROMPT}`);
+      await ctx.reply(NO_SUBSCRIPTIONS);
       return;
     }
     // Skip paused ones, like the daily run does: reporting listings for a search that

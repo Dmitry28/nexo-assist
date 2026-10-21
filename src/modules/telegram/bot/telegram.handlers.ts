@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InlineKeyboard } from 'grammy';
 import type { Bot, Context } from 'grammy';
 
-import { extractUrl } from '@/common/url';
+import { extractUrl, matchesHost } from '@/common/url';
 import type { AppConfig } from '@/config/configuration';
 import configuration from '@/config/configuration';
 import { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
@@ -13,7 +13,7 @@ import {
   UnsupportedSearchError,
 } from '@/modules/sources/source-adapter';
 import { SourceRegistry } from '@/modules/sources/source-registry';
-import { siteName, watchedItem } from '@/modules/sources/sources';
+import { SOURCES, siteName, watchedItem } from '@/modules/sources/sources';
 import type { Subscription } from '@/modules/subscriptions/entities/subscription.entity';
 import {
   DuplicateSubscriptionError,
@@ -36,6 +36,7 @@ import { PendingLinks } from './pending-links';
 import {
   HELP_MESSAGE,
   NO_LINK_PREVIEW,
+  PAGE_UNSUPPORTED,
   PROMPT,
   PROTECTED_LIMIT_TEXT,
   formatStats,
@@ -92,7 +93,7 @@ export class TelegramHandlers {
     bot.on('message:text', (ctx) => this.onText(ctx));
     bot.callbackQuery(/^subscribe:(.+)$/, (ctx) => this.onSubscribe(ctx));
     bot.callbackQuery(/^cancel:(.+)$/, (ctx) => this.onCancel(ctx));
-    // TODO [L]: show: (and list.handlers' open/remove/resume/filter) pass the tapped id straight to
+    // TODO [L]: show: (and list.handlers' remove/resume/filter) pass the tapped id straight to
     // a scoped query, so it reaches a Postgres `uuid` column and raises 22P02 — one Sentry issue per
     // malformed tap via bot.catch. Match the uuid shape instead, so a malformed tap doesn't match.
     bot.callbackQuery(/^show:(.+)$/, (ctx) => this.check.onShowCurrent(ctx, callbackParam(ctx)));
@@ -113,6 +114,11 @@ export class TelegramHandlers {
     }
     const adapter = this.registry.match(url);
     if (!adapter) {
+      // A site we read, on a page we don't (a lot page, a home page): no request — it is not new.
+      if (SOURCES.some(({ host }) => matchesHost({ url, host }))) {
+        await ctx.reply(PAGE_UNSUPPORTED);
+        return;
+      }
       const filed = await this.requests.request(url, userId);
       // The host only — the link is the user's, and logs are kept. A link `new URL` refuses
       // (extractUrl takes any `http…` run) must still get its reply.
