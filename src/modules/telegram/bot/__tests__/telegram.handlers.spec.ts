@@ -3,12 +3,13 @@ import type { Bot } from 'grammy';
 
 import { makeAppConfig } from '@/__tests__/helpers/app-config';
 import { makeListing } from '@/__tests__/helpers/listing';
-import { sentryCapture } from '@/__tests__/helpers/sentry';
+import { sentryCapture, sentryScope } from '@/__tests__/helpers/sentry';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { makeSubscription } from '@/__tests__/helpers/subscription';
 import type { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   ListingGoneError,
+  PageNotFoundError,
   SearchRewrittenError,
   UnsupportedSearchError,
   UnwatchableItemError,
@@ -217,6 +218,8 @@ describe('TelegramHandlers', () => {
       expect.stringContaining('Сайт сейчас не отвечает'),
       expect.anything(),
     );
+    // Swallowed so the user is answered — so it must be reported.
+    expect(sentryScope().setTag).toHaveBeenCalledWith('action', 'subscribe');
   });
 
   it('watches a pasted ad by its canonical link and names its title and price', async () => {
@@ -274,6 +277,21 @@ describe('TelegramHandlers', () => {
     expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
     expect(ctx.editMessageText).toHaveBeenCalledWith(
       expect.stringContaining('уже снято'),
+      expect.anything(),
+    );
+    expect(sentryCapture()).not.toHaveBeenCalled();
+  });
+
+  it('drops the subscription when the site answers 404 for the search', async () => {
+    watch.baseline.mockRejectedValue(new PageNotFoundError('https://re.kufar.by/l/x', ''));
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const { nonce } = await pasteLink('https://re.kufar.by/l/x', 5);
+
+    const ctx = await pressButton(`subscribe:${nonce}`, 5);
+
+    expect(subscriptions.remove).toHaveBeenCalledWith('sub-1', 5);
+    expect(ctx.editMessageText).toHaveBeenCalledWith(
+      expect.stringContaining('Такой страницы на сайте нет'),
       expect.anything(),
     );
     expect(sentryCapture()).not.toHaveBeenCalled();

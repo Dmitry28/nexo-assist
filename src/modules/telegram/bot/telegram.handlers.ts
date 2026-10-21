@@ -8,6 +8,7 @@ import configuration from '@/config/configuration';
 import { SourceRequestsService } from '@/modules/source-requests/source-requests.service';
 import {
   ListingGoneError,
+  PageNotFoundError,
   SearchRewrittenError,
   UnwatchableItemError,
   UnsupportedSearchError,
@@ -189,14 +190,15 @@ export class TelegramHandlers {
     }
 
     // NOTE: catch only the baseline — a failed message edit must fall through to bot.catch.
-    // On failure the subscription is kept (except a rewritten search, below); the daily run
-    // baselines it silently.
+    // On failure the subscription is kept, unless the error says every poll would fail the same
+    // way (the instanceof list below); the daily run baselines it silently.
     const baseline = await this.watch.baseline(sub).catch((err: unknown) => {
       if (
         err instanceof SearchRewrittenError ||
         err instanceof UnsupportedSearchError ||
         err instanceof ListingGoneError ||
-        err instanceof UnwatchableItemError
+        err instanceof UnwatchableItemError ||
+        err instanceof PageNotFoundError
       ) {
         return err;
       }
@@ -228,6 +230,19 @@ export class TelegramHandlers {
       await ctx.editMessageText(searchRewrittenNotice({ from: candidate.url, to: baseline.to }), {
         link_preview_options: NO_LINK_PREVIEW,
       });
+      return;
+    }
+    if (baseline instanceof PageNotFoundError) {
+      // Not kept: a search page the site answers 404 for fails every poll, and the user is here
+      // now to send a working link. No Sentry — the link is user input, the log keeps a trace.
+      this.logger.log(`Rejected a link the site answers 404 for: ${sub.url}`);
+      await this.subscriptions.remove(sub.id, candidate.userId);
+      await ctx.editMessageText(
+        `Такой страницы на сайте нет — проверьте ссылку.\n${candidate.url}`,
+        {
+          link_preview_options: NO_LINK_PREVIEW,
+        },
+      );
       return;
     }
     if (baseline instanceof ListingGoneError) {

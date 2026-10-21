@@ -106,10 +106,12 @@ export class SourceRequestsService {
     this.queue = next;
     if (!(await next)) return false;
     try {
-      await this.requests.upsert({ telegramId, host: requestHost(url), url }, [
-        'telegramId',
-        'host',
-      ]);
+      // createdAt set explicitly: an upsert leaves unset columns alone, and `expire` counts the
+      // 180 days from the user's latest ask, not their first.
+      await this.requests.upsert(
+        { telegramId, host: requestHost(url), url, createdAt: new Date() },
+        ['telegramId', 'host'],
+      );
     } catch (err) {
       // Filed all the same: the site still gets added, only this user is not told when.
       this.logger.warn({ err }, 'Source request filed, but the requester not remembered');
@@ -142,7 +144,10 @@ export class SourceRequestsService {
   private async file(url: string, token: string): Promise<boolean> {
     this.rollDay();
     if (this.filed.has(url)) return true;
-    if (this.linksToday >= MAX_LINKS_PER_DAY) return false;
+    if (this.linksToday >= MAX_LINKS_PER_DAY) {
+      this.logger.warn(`Source request not handled — ${MAX_LINKS_PER_DAY} links today`);
+      return false;
+    }
     this.linksToday++;
     try {
       const host = requestHost(url);
