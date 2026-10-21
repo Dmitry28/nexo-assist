@@ -6,7 +6,11 @@ import { Logger } from '@nestjs/common';
 import { sourceAdapter } from '@/__tests__/helpers/sources';
 import { undiciFetchMock } from '@/__tests__/helpers/undici';
 
-import { SourceUnavailableError, UnsupportedSearchError } from '../../source-adapter';
+import {
+  PaidRungsUnavailableError,
+  SourceUnavailableError,
+  UnsupportedSearchError,
+} from '../../source-adapter';
 
 const fixture = (folder: string, name: string): string =>
   readFileSync(join(__dirname, '..', '..', folder, '__tests__', 'fixtures', name), 'utf8');
@@ -30,6 +34,8 @@ const closedBidCars = (iaai: string): ((url: unknown) => Promise<Response>) => {
 describe('bid.cars fetch', () => {
   const adapter = sourceAdapter('bid-cars');
   const fetchMock = undiciFetchMock();
+
+  afterEach(() => jest.restoreAllMocks());
 
   it('reads bid.cars when the page opens and does not ask the auctions', async () => {
     fetchMock.mockResolvedValue(new Response(fixture('bid-cars', 'bid-cars-search.html')));
@@ -88,15 +94,25 @@ describe('bid.cars fetch', () => {
     await expect(adapter.fetch(sample)).rejects.toBeInstanceOf(SourceUnavailableError);
   });
 
-  it('reads IAAI as down, not empty, when no lot carries a stock number', async () => {
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  // Spent paid rungs are the run's unpaid alert, not «Copart down» hidden behind IAAI's lots.
+  it('fails the poll when Copart needs a paid rung that has no key', async () => {
+    fetchMock.mockImplementation((url: unknown) => {
+      const host = new URL(String(url)).host;
+      if (host.endsWith('iaai.com')) {
+        return Promise.resolve(new Response(fixture('iaai', 'iaai-search.html')));
+      }
+      return Promise.resolve(new Response('Just a moment…', { status: 403 }));
+    });
+
+    await expect(adapter.fetch(sample)).rejects.toBeInstanceOf(PaidRungsUnavailableError);
+  });
+
+  // Loud even while Copart answers: a house read as merely «down» would hide the break for good.
+  it('fails the poll when no IAAI lot carries a stock number', async () => {
     const renamed = fixture('iaai', 'iaai-search.html').replaceAll('Stock #', 'Ref');
     fetchMock.mockImplementation(closedBidCars(renamed));
 
-    const { listings } = await adapter.fetch(sample);
-
-    expect(listings.map((row) => row.externalId)).toEqual(['1-46840646', '1-77707195']);
-    expect(warn).toHaveBeenCalled();
+    await expect(adapter.fetch(sample)).rejects.toThrow(/no lot carries a stock number/);
   });
 
   it('keeps IAAI lots inside the pasted years', async () => {

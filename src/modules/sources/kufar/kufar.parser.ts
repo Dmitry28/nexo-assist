@@ -22,8 +22,8 @@ import type { SearchPage } from '../source-definition';
 /**
  * Raw ad shape from Kufar's `__NEXT_DATA__` JSON — only the fields we read.
  * NOTE: every field here is a promise about untyped JSON, not a guarantee — the blob is cast,
- * not validated (extractPage only checks that `ads` is an array). So `subject`, which the
- * digest dereferences, is read defensively in mapAd.
+ * not validated (extractPage checks only that `ads` is an array of items with an id). So
+ * `subject`, which the digest dereferences, is read defensively in mapAd.
  */
 interface RawKufarAd {
   ad_id: number;
@@ -60,11 +60,6 @@ const IMAGE_CDN_BASE = 'https://rms.kufar.by/v1/gallery';
 /** The source's host — every search and every listing link must be on it (or a subdomain). */
 export const HOST = 'kufar.by';
 
-interface RawPagination {
-  label: string;
-  token: string | null;
-}
-
 /** One page of a Kufar search: ads + the cursor token for the next page (null = last). */
 export interface KufarPage {
   ads: RawKufarAd[];
@@ -90,8 +85,10 @@ export function extractPage(html: string): KufarPage {
   );
   // No pagination block, or one of another shape, simply means no next page — unlike `ads`,
   // whose absence is the signal that the page is not a search result at all.
-  const pagination = asArray<RawPagination>(listing?.pagination) ?? [];
-  const nextCursor = pagination.find((p) => p.label === 'next')?.token ?? null;
+  const pagination = asArray<unknown>(listing?.pagination) ?? [];
+  // Elements unchecked too: a null among them must read as no next page, not a TypeError.
+  const nextCursor =
+    asText(pagination.map(asRecord).find((p) => p?.label === 'next')?.token) ?? null;
   return { ads, nextCursor };
 }
 
@@ -191,7 +188,9 @@ function link(ad: RawKufarAd): string {
 
 /** One parameter by key, taking its raw value (`v`) or its display label (`vl`). */
 function param(params: RawParam[] | undefined, key: string, field: 'v' | 'vl' = 'v'): unknown {
-  return asArray<RawParam>(params)?.find((p) => p.p === key)?.[field];
+  return asArray<unknown>(params)
+    ?.map(asRecord)
+    .find((p) => p?.p === key)?.[field];
 }
 
 // The object type lives under a different key per category. Verified live on two searches: a
