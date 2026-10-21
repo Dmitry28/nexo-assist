@@ -40,6 +40,8 @@ import {
   PROTECTED_LIMIT_TEXT,
   formatStats,
   searchRewrittenNotice,
+  SITE_REQUESTED,
+  SITE_UNSUPPORTED,
   unwatchableNotice,
 } from './telegram.format';
 
@@ -115,12 +117,7 @@ export class TelegramHandlers {
       // The host only — the link is the user's, and logs are kept. A link `new URL` refuses
       // (extractUrl takes any `http…` run) must still get its reply.
       this.logger.log(`Unsupported site ${hostOf(url)} — request filed: ${filed}`);
-      await ctx.reply(
-        filed
-          ? 'Этот сайт пока не поддерживается — передал заявку на его добавление. Напишу, когда ' +
-              `добавлю. ${PROMPT}`
-          : `Этот сайт пока не поддерживается. ${PROMPT}`,
-      );
+      await ctx.reply(filed ? SITE_REQUESTED : SITE_UNSUPPORTED);
       return;
     }
 

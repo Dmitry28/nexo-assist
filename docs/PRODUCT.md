@@ -156,7 +156,7 @@ is per subscription (a new subscriber gets a baseline, not a flood).
   link (minus any login), never who sent it; a site whose issue the owner closed is not filed again — the repo is public. The user is told the request was passed on only
   when it was (`GITHUB_ISSUES_TOKEN` set and GitHub answered) — and then remembered in our database
   (who, which link; never in the issue), and told once by the daily run when a source reads that
-  link («✅ Теперь умею…», resend to subscribe); the request is then deleted — or after 180 days
+  link («✅ Хорошая новость: теперь я умею следить за…», resend to subscribe); the request is then deleted — or after 180 days
   unanswered. Decision — PRODUCT_PLAN.md Фаза 6.
 - **A link we cannot watch as sent** (a bid.cars filter we cannot apply, a kufar-travel
   hotel) is refused on subscribe; one kept from before is paused by the next run at once, with the
