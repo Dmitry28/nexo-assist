@@ -11,12 +11,9 @@ health checks, and a full lint/format/test pipeline. Product spec:
 ## Using the bot
 
 Send the bot a search link from a supported site with your filters already applied;
-it offers a "Следить" button and, from then on, sends the listings that appeared since the
-last check, once a day — a card per listing with its photos, price in both currencies, the
-source's own details and a map pin where there is one; past 30 in one delivery the rest arrives
-as a compact list. Delivery
-rules and what the bot stores: [docs/PRODUCT.md](docs/PRODUCT.md). The bot speaks Russian — its
-beta audience does. Fixed pages (a price list, a notice board) work too — the full list of sites is in
+it offers a "Следить" button and from then on sends, once a day, what appeared since the last
+check. Fixed pages (a price list, a notice board) work too. The bot speaks Russian — its beta
+audience does. Supported sites, delivery rules and what the bot stores:
 [docs/PRODUCT.md](docs/PRODUCT.md).
 
 | Command  | What it does                                                                |
@@ -73,9 +70,8 @@ environment, and Telegram delivers updates to a single long-polling consumer per
 production token must never be used locally. Left unset, the app runs with the bot disabled.
 
 - API base URL: `http://localhost:3000/api/v1`
-- Swagger UI: `http://localhost:3000/api/docs` (non-production only) — **currently renders
-  blank**: helmet's default CSP blocks the inline script `@nestjs/swagger` serves. Whether to
-  scope a CSP exception or drop Swagger is an open decision (marker in `src/main.ts`).
+- Swagger UI: `http://localhost:3000/api/docs` (non-production only) — currently blank (TODO in
+  `src/main.ts`).
 - Liveness: `http://localhost:3000/api/v1/health/live`
 - Readiness: `http://localhost:3000/api/v1/health/ready`
 - Metrics (Prometheus): `http://localhost:3000/api/v1/metrics`

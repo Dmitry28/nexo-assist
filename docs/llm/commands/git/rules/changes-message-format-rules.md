@@ -50,6 +50,8 @@ refactor: drop the unused legacy env vars
 
 ## 2. PR Description Format
 
+**Title:** `<type>(<scope>): <description>` — as a commit header (§ 1), max 70 chars.
+
 ```
 ## Summary
 

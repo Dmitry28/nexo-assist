@@ -26,9 +26,8 @@ start; more frequent once throttling/dedupe land).
   iaai.com (up to the 500-listing window; the link’s `Keyword`; through our proxy)** — via the adapter
   registry. copart.com refuses every IP we have (Imperva), so its search goes up the fetch
   ladder as a POST and is read through a paid service (ScrapingAnt / ScraperAPI) when the free
-  rungs fail — so a Copart search and a bid.cars one (its Copart walk) — 6 credits a poll each — count
-  against the same daily paid-credit budget as the protected sites: about 50 such searches
-  bot-wide, past which a new one is refused. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
+  rungs fail — so Copart and bid.cars searches (its Copart walk) share a daily paid-credit budget of
+  their own: about 50 such searches bot-wide, past which a new one is refused. A paged search is fetched newest-first, and a run looks at its **newest 500 listings**
   (up to 20 pages, paced) — a pasted sort or page number is overridden; a search that gains more than that
   between two runs loses the rest (the owner is told via Sentry). A protected site is read as its
   first page only (a page with nothing seen before tells the owner the same way; each page may be paid; a run fetches a search once, however many users watch
@@ -40,7 +39,7 @@ start; more frequent once throttling/dedupe land).
   searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
   source publishes one (the real-estate sources do). Past **30 cards** in one delivery the rest
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
-  Messages are paced one per second. A lone photo Telegram cannot fetch is downloaded by the bot
+  A lone photo Telegram cannot fetch is downloaded by the bot
   and uploaded as a file — that is how idriver's photos arrive. Media that still fails falls
   back to the text card; a refused pin is ignored — the listing already arrived.
 - **Price changes** on listings already delivered come after the cards as a text digest

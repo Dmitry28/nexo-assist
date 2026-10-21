@@ -101,12 +101,12 @@ used, saying why in the schema docblock. Precedents: `sources/scraping/http.ts`,
 
 ## Adding a New Feature Module
 
-Mirror an existing module (`subscriptions/`) — the rest is standard Nest. What is ours:
+Mirror `subscriptions/` — the rest is standard Nest. What is ours:
 
-- DTOs in `dto/` (`class-validator` + `@ApiProperty`), entities in `entities/`; **map entities to
-  DTOs at the controller boundary** — never return a raw entity.
-- Throw Nest HTTP exceptions; the global `AllExceptionsFilter` shapes the response.
-- Schema changes only via a generated migration (see below).
+- Entities in `entities/`; schema changes only via a generated migration (see below).
+- An HTTP feature (none yet; only `health/` and `metrics/` have controllers): DTOs in `dto/`
+  (`class-validator` + `@ApiProperty`), **mapped from entities at the controller boundary** —
+  never a raw entity; Nest HTTP exceptions, shaped by the global `AllExceptionsFilter`.
 
 ## Adding a Source
 

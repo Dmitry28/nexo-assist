@@ -4,7 +4,7 @@ One loop for all tasks. Plan depth scales with complexity — a simple fix needs
 
 ## 1. Plan
 
-- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps ("where is X", "what calls Y", "how does Z work across modules") go to a subagent.
+- Gather context: read existing code, docs, related files — verify theory before making claims. Broad sweeps go to a subagent: `compressed-locator` for "where is X" / "what calls Y", Explore for "how does Z work across modules".
 - Describe the solution; for complex tasks add non-goals, milestones, acceptance criteria.
 - **Self-validate**: are all edge cases covered? are all claims grounded in actual code/docs? Does it work right for both the user and the admin?
 - For complex tasks, document key architectural decisions: what was chosen vs. rejected and why (prevents re-deliberation).

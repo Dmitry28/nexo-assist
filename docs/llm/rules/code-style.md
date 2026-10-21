@@ -32,7 +32,7 @@ function send(params: { message: string; channel: string; retries: number }) {}
 ## NestJS Specifics
 
 - One class per file.
-- Config: inject the typed `AppConfig` via `@Inject(configuration.KEY)` (see [architecture.md](architecture.md#config-access)) — never `process.env` or string-path `ConfigService.get()` inside modules.
+- Config access → [architecture.md § Config Access](architecture.md#config-access).
 - Use the `@/*` path alias for intra-`src` imports across folders.
 
 ## Conditions
