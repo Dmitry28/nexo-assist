@@ -5,7 +5,6 @@
 1. **Skills are thin wrappers** — `.claude/skills/<name>/SKILL.md` contains only frontmatter + a one-line link to content.
 2. **Content co-located** — rules live in `docs/llm/rules/`, command instructions in `docs/llm/commands/`.
 3. **One link only** — a skill references one main doc; that doc can link to others internally.
-4. **Reusable across IDEs** — works in Claude Code, Cursor, etc.
 
 ## Content Quality
 
@@ -99,4 +98,4 @@ session). Specific — file types, domain terms, action verbs — and phrased as
 
 1. Create content file in `docs/llm/rules/` or `docs/llm/commands/`.
 2. Create skill wrapper in `.claude/skills/<name>/SKILL.md` — the frontmatter is the single source for the skill's description/triggers; no separate registration anywhere.
-3. **Final pass** — re-read the content file: correct (verified, no recall)? DRY (link instead of duplicate)? concise (cut what loses nothing)? clear to a new contributor? If any "no" — revise before committing. Sloppy skills compound — they get followed and copied.
+3. **Final pass** — re-read the content file against § Content Quality. Sloppy skills compound — they get followed and copied.

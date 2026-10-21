@@ -10,14 +10,13 @@ CLAUDE.md / AGENTS.md ─► docs/llm/ENTRY_POINT.md   (always-loaded context)
 .claude/agents/*      ─► .claude/skills/*          (isolated runners on cheap models)
 ```
 
-Single source of truth: content lives here in `docs/llm/`; skills and agents only point at it. Skill descriptions/triggers live in each `.claude/skills/<name>/SKILL.md` frontmatter — they are not duplicated here.
+Single source of truth: content lives here in `docs/llm/`; skills and agents only point at it.
 
 ## Structure
 
 - `ENTRY_POINT.md` — always-loaded context; its Quick Reference table lists every rule.
 - `rules/` — background knowledge, one doc per topic.
-- `commands/` — instructions behind user-invocable skills (`/git-commit`, `/review-code`,
-  `/logic-review`, `/pr-description`, `/verify-task-result`, `/refine`).
+- `commands/` — instructions behind user-invocable skills.
 - `mcp.example.json` — MCP servers reference.
 
 ## MCP Servers

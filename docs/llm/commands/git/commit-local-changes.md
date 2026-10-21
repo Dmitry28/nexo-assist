@@ -14,7 +14,7 @@ No approval yet → stop and show the diff instead.
 ## Instructions
 
 1. Generate the message per [rules/changes-message-format-rules.md](rules/changes-message-format-rules.md).
-2. Run `git commit -m "<type>: <message>"` — **never HEREDOC**.
+2. Run `git commit -m "<type>(<scope>): <description>"` — **never HEREDOC**.
 
 ## After committing
 

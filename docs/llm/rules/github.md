@@ -30,6 +30,8 @@
 
 - Message format → [../commands/git/rules/changes-message-format-rules.md](../commands/git/rules/changes-message-format-rules.md).
 - Generate a commit with `/git-commit`, a PR description with `/pr-description`.
+- The pre-commit hook (husky + lint-staged) runs ESLint `--fix` + Prettier on staged `.ts` and
+  Prettier on staged docs/configs (globs: `lint-staged` in `package.json`).
 - Correcting a PR or issue comment → **edit the existing one**, never post a second.
 - Stage every file of the change, then check the commit with `git show --stat HEAD` — why:
   [commit-local-changes.md § After committing](../commands/git/commit-local-changes.md#after-committing).

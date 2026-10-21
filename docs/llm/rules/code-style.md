@@ -8,8 +8,8 @@
 
 ## Constants
 
-- Magic numbers and strings extracted to constants with descriptive names.
-- Group related defaults into a `DEFAULTS` object (except booleans).
+- Magic numbers and strings extracted to constants with descriptive names. Env defaults live only
+  in `src/config/env.validation.ts`.
 
 ## Function Parameters
 
