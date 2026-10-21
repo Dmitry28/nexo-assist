@@ -101,6 +101,24 @@ describe('kufar-travel source', () => {
       ]);
     });
 
+    const moved = (location: string) => new Response(null, { status: 301, headers: { location } });
+
+    it("follows kufar's redirect to www.kufar.by/item — the same ad view", async () => {
+      fetchMock
+        .mockResolvedValueOnce(moved('https://www.kufar.by/item/1089976321'))
+        .mockResolvedValueOnce(new Response(item, { status: 200 }));
+
+      const { listings } = await adapter.fetch(ITEM);
+
+      expect(listings).toEqual([expect.objectContaining({ externalId: '1089976321', link: ITEM })]);
+    });
+
+    it('still refuses a redirect off kufar.by', async () => {
+      fetchMock.mockResolvedValueOnce(moved('https://evil.example/1089976321'));
+
+      await expect(adapter.fetch(ITEM)).rejects.toThrow('Redirected off');
+    });
+
     it('refuses a hotel — its link lands on a page without an ad', async () => {
       fetchMock.mockResolvedValue(new Response(hotel, { status: 200 }));
 

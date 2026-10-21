@@ -115,6 +115,8 @@ interface ItemDefinition {
   parse(html: string, url: string): Listing | typeof GONE;
   /** Whether a 404 page is the site saying the listing is gone — not a broken or moved URL. */
   isGone(notFoundHtml: string): boolean;
+  /** The domain item pages may live and redirect on, when wider than the source's own host. */
+  host?: string;
 }
 
 /** A site that numbers its pages, counting from `first`; `next` says whether another follows. */
@@ -234,7 +236,7 @@ async function fetchItem(
   url: string,
 ): Promise<FetchResult> {
   try {
-    const html = await fetchHtml({ url, host: def.host, useProxy: def.useProxy });
+    const html = await fetchHtml({ url, host: item.host ?? def.host, useProxy: def.useProxy });
     const listing = item.parse(html, url);
     return listing === GONE
       ? { listings: [], complete: true, capped: false, gone: true }

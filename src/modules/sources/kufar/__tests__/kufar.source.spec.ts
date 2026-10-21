@@ -68,6 +68,8 @@ describe('kufar source', () => {
       ['https://re.kufar.by/vi/1004282653', ITEM],
       ['https://re.kufar.by/vi/grodno/kupit/dom/1004282653?rank=3&searchId=x', ITEM],
       ['https://re.kufar.by/l/grodno/kupit/dom', undefined],
+      // kufar's own ad entry since 2026-10-21 — what a reader sees after its redirect.
+      ['https://www.kufar.by/item/1004282653/', 'https://www.kufar.by/item/1004282653'],
       // Only re.kufar.by is measured — another subdomain's ad stays a search link.
       ['https://auto.kufar.by/vi/1004282653', undefined],
     ])('reads %s as the item %s', (url, canonical) => {
