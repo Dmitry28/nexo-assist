@@ -265,7 +265,7 @@ export class EnvironmentVariables {
 
   /**
    * Postgres connection URL. Defaults to the local docker database (`npm run db:up`);
-   * staging/prod inject a Neon URL (SSL, pooled endpoint).
+   * production injects a Supabase URL (SSL, pooler).
    */
   @IsString()
   @IsOptional()

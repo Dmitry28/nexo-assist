@@ -62,6 +62,7 @@ const chat = { id: userId, type: 'private' as const };
 let nextUpdateId = 1;
 let nextMessageId = 1000;
 const now = (): number => Math.floor(Date.now() / 1000);
+const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 const queue: Params[] = [];
 const sent: SentMessage[] = [];
 // The handler of the latest update is done when the bot polls again (grammY handles a batch,
@@ -233,9 +234,9 @@ function replyTo(text: string): Params {
 void (async () => {
   const server = createServer((req, res) => {
     handle(req, res).catch((err: unknown) => {
-      console.error(`fake Bot API: ${(err as Error).message}`);
+      console.error(`fake Bot API: ${errorText(err)}`);
       res.statusCode = 400;
-      res.end(JSON.stringify({ ok: false, description: (err as Error).message }));
+      res.end(JSON.stringify({ ok: false, description: errorText(err) }));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -276,7 +277,7 @@ void (async () => {
     }
   } catch (err) {
     failed = true;
-    console.error(`✗ ${(err as Error).message}`);
+    console.error(`✗ ${errorText(err)}`);
   } finally {
     await app.close();
     server.close();

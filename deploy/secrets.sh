@@ -37,6 +37,7 @@ for key in "${KEYS[@]}"; do
 done
 
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }
+command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
 [[ -r "$KUBECONFIG" ]] || { echo "kubeconfig not found: $KUBECONFIG" >&2; exit 1; }
 kubectl get nodes >/dev/null 2>&1 || {
   echo "cluster unreachable — is the tunnel up? run ./deploy/tunnel.sh" >&2; exit 1

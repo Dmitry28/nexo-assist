@@ -15,7 +15,12 @@ import configuration from './config/configuration';
 import { SENTRY_FLUSH_MS } from './modules/telegram/report';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  // NOTE: abortOnError off — Nest's default exits on an init failure (bad env, an unreachable
+  // database) before the promise rejects, which would skip the Sentry report in the catch below.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    abortOnError: false,
+  });
 
   // Use pino as the framework logger.
   const logger = app.get(Logger);

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 
-import { DEFAULT_DATABASE_URL } from '@/config/env.validation';
+import { AppEnv, DEFAULT_DATABASE_URL } from '@/config/env.validation';
 
 // Standalone DataSource for the TypeORM CLI (migrations) and the runtime migration step —
 // separate from the Nest TypeOrmModule wiring in app.module. Globs are __dirname-relative and
@@ -16,7 +16,8 @@ const ext = __filename.endsWith('.js') ? 'js' : 'ts';
 // initContainer runs before the app starts, sent the database password in the clear. The CA is
 // mounted for both containers via NODE_EXTRA_CA_CERTS, so verification works here too.
 // APP_ENV is read directly: the CLI runs outside Nest, so there is no AppConfig to inject.
-const isDeployed = process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging';
+const isDeployed =
+  process.env.APP_ENV === AppEnv.Production || process.env.APP_ENV === AppEnv.Staging;
 
 export default new DataSource({
   type: 'postgres',
