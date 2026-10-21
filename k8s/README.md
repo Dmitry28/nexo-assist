@@ -49,9 +49,8 @@ npm run k8s:secrets   # deploy/secrets.sh — hidden input, values stay out of s
 ```
 
 The provider's root CA is **not** one of them — it ships as
-[`db-ca-configmap.yaml`](db-ca-configmap.yaml), so `apply -k` is enough. A root certificate is
-public (the server presents it to every client), and having it in git is what makes recreating
-the cluster a single command. Replace it from the provider's console when they rotate it.
+[`db-ca-configmap.yaml`](db-ca-configmap.yaml), so `apply -k` is enough; why it lives in git and
+when it expires — [PRODUCT_TECH.md § «Конфигурация и секреты»](../docs/PRODUCT_TECH.md).
 
 Never commit real secrets. Keeping them encrypted in git (SOPS + age) is planned — see
 [PRODUCT_PLAN.md](../docs/PRODUCT_PLAN.md); full context in
