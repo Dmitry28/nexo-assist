@@ -7,10 +7,11 @@ LLM configuration and rules for nexo-assist — used by Claude Code and compatib
 ```
 CLAUDE.md / AGENTS.md ─► docs/llm/ENTRY_POINT.md   (always-loaded context)
 .claude/skills/*      ─► docs/llm/rules|commands/* (thin wrappers around these docs)
-.claude/agents/*      ─► .claude/skills/*          (isolated runners on cheap models)
 ```
 
-Single source of truth: content lives here in `docs/llm/`; skills and agents only point at it.
+Single source of truth: content lives here in `docs/llm/`; skills only point at it. The one
+agent, `.claude/agents/compressed-locator.md`, is self-contained (it wraps no skill): a read-only locator on a
+cheap model.
 
 ## Structure
 

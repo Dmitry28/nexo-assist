@@ -1,6 +1,6 @@
 ---
 name: compressed-locator
-description: Read-only code locator. Returns compact `path:line — symbol — note` rows for "where is X defined", "what calls Y", "all uses of Z", "map this directory". Use for broad sweeps and multi-module audits where verbose exploration output would burn main-context tokens. Refuses to suggest fixes or edit files.
+description: Read-only locator — compact `path:line — symbol — note` rows for "where is X", "what calls Y", "all uses of Z". Use for broad sweeps where full exploration output would flood the context.
 tools: Read, Grep, Glob, Bash
 model: haiku
 ---

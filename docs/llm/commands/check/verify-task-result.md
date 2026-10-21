@@ -2,9 +2,7 @@
 
 ## Determine Changed Files
 
-Collect all locally changed files:
-
-`dev` is the branch PRs target ([github.md](../../rules/github.md#branch-flow)).
+Collect all files changed vs `origin/dev` (the PR target, [github.md](../../rules/github.md#branch-flow)):
 
 ```bash
 git diff origin/dev...HEAD --name-only
@@ -16,14 +14,15 @@ Deduplicate and use the combined list.
 
 ## Step 1 — Quick checks (always)
 
-| Changed files | Command                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------- |
-| `.ts`         | `npx eslint <files> --no-fix`                                                               |
-| `.ts`         | `npm run typecheck`                                                                         |
-| `*.spec.ts`   | `npx jest <test-file>`                                                                      |
-| any           | `npm run format:check` — if fails, run `npx prettier --write <failing-files>`, then recheck |
+| Changed files | Command                       |
+| ------------- | ----------------------------- |
+| `.ts`         | `npx eslint <files> --no-fix` |
+| `.ts`         | `npm run typecheck`           |
+| `*.spec.ts`   | `npx jest <test-file>`        |
+| any           | `npm run format:check`        |
 
-Report ✅ pass or ❌ fail with relevant error output.
+Report ✅ pass or ❌ fail with relevant error output. Report only — never fix: inside `/git-commit` a
+fix would change the approved diff.
 
 ## Step 2 — Full checks
 

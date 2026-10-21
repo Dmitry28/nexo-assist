@@ -13,9 +13,7 @@ symmetric difference and would list commits merged into `dev` after this branch 
 
 ## Output Format
 
-Follow [changes-message-format-rules.md](rules/changes-message-format-rules.md) for the PR description format.
-
-**PR Title:** `<type>: <brief description>` — lowercase, imperative mood, max 70 chars.
+Follow [changes-message-format-rules.md](rules/changes-message-format-rules.md) § 2 for the PR title and description.
 
 ## Output Rules
 
