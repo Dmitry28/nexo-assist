@@ -98,17 +98,16 @@ export function listingMessage(
 }
 
 /**
- * Send one listing: its photos carry the card. A lone photo Telegram refuses by URL is uploaded
- * as a file instead (uploadInstead); otherwise refused media falls back to a plain message.
+ * Send one listing: its photos carry the card. Photos Telegram refuses by URL are uploaded as
+ * files instead (uploadInstead); what still fails falls back to a plain message.
  * Resolves once the listing has reached the user in some form — callers mark seen on that, so
  * anything that leaves it undelivered throws instead.
  *
- * NOTE: kufar's image CDN does answer 302 (`rms.kufar.by` → a `rms8…` shard) — verified live on
- * an ad, so the prototype's warning about `WEBPAGE_MEDIA_EMPTY` in a media group is about a real
- * redirect. What is still unobserved is Telegram failing on it. We therefore do not pre-resolve
- * (up to ten HEAD requests per card, against a shard host we would then be pinning): the fallback
- * below keeps the listing arriving, and `onPhotoFallback` counts how often that happens — a
- * metric, because a pod's log cannot answer "is this systematic?".
+ * NOTE: kufar's image CDN answers 302 (`rms.kufar.by` → a `rms2…` shard), and Telegram sometimes
+ * fails on it — seen in prod 2026-10-23…25, mostly one item of an album (`WEBPAGE_CURL_FAILED`).
+ * We do not pre-resolve (up to ten HEAD requests per card, against a shard host we would then be
+ * pinning): the upload below follows the redirect itself, and `onPhotoFallback` counts the cards
+ * that still go out as text — a metric, because a pod's log cannot answer "is this systematic?".
  */
 export async function sendCard(
   sender: CardSender,
@@ -128,9 +127,8 @@ export async function sendCard(
     const refused = err instanceof GrammyError && err.error_code === 400;
     if (
       refused &&
-      photos.length === 1 &&
       site !== undefined &&
-      (await uploadInstead({ sender, caption, url: photos[0], site, logger }))
+      (await uploadInstead({ sender, caption, photos, site, logger }))
     ) {
       return pin(sender, coordinates, logger);
     }
@@ -150,10 +148,10 @@ export async function sendCard(
 }
 
 /**
- * A lone photo Telegram could not fetch by URL, sent again as a file we downloaded — some CDNs
- * refuse Telegram's fetcher but serve us (photo-upload.ts). Whether it landed; a blocked chat
- * still throws, like every send. Groups keep the text fallback: one photo per card is what the
- * sources that need this publish.
+ * Photos Telegram could not fetch by URL, sent again as files we downloaded — some CDNs refuse
+ * Telegram's fetcher but serve us (photo-upload.ts). A photo the site does not serve is dropped;
+ * none left means the text fallback. Whether the card landed; a blocked chat still throws, like
+ * every send.
  * TODO [L]: a source that always refuses Telegram (idriver) pays a doomed URL send and a pace
  * per card before the upload — a per-source «upload first» flag, if run time starts to matter.
  * NOTE: a card saved this way is not a photo fallback — `onPhotoFallback` counts text cards only,
@@ -162,28 +160,39 @@ export async function sendCard(
 async function uploadInstead({
   sender,
   caption,
-  url,
+  photos,
   site,
   logger,
 }: {
   sender: CardSender;
   caption: string;
-  url: string;
+  photos: string[];
   site: string;
   logger: Logger;
 }): Promise<boolean> {
+  const downloads = await Promise.all(
+    photos.map((url) =>
+      downloadPhoto(url, site).catch((err: unknown) => {
+        // Not a warn: a photo the site itself does not serve (a 404) is routine, and the
+        // text fallback that follows warns and counts already. This line says why it missed.
+        logger.log({ err }, `Photo not uploaded: ${url}`);
+        return undefined;
+      }),
+    ),
+  );
+  const files = downloads.filter((file) => file !== undefined);
+  if (files.length === 0) return false;
   try {
-    const file = await downloadPhoto(url, site);
     // Paced: the refused send counted against the per-chat limit.
     await wait(SEND_DELAY_MS);
-    await sender.photo(file, caption);
-    logger.log(`Photo uploaded after Telegram refused its URL: ${url}`);
+    await withPhotos(sender, caption, files);
+    logger.log(
+      `${files.length} of ${photos.length} photos uploaded after Telegram refused: ${photos[0]}`,
+    );
     return true;
   } catch (err) {
     if (isBotBlocked(err)) throw err;
-    // Not a warn: a photo the site itself does not serve (a 404) is routine, and the
-    // text fallback that follows warns and counts already. This line says why the upload missed.
-    logger.log({ err }, `Photo not uploaded: ${url}`);
+    logger.log({ err }, `Photos not uploaded: ${photos[0]}`);
     return false;
   }
 }
@@ -203,7 +212,11 @@ async function pin(
     .catch((err: unknown) => logger.warn({ err }, 'Location pin failed'));
 }
 
-function withPhotos(sender: CardSender, caption: string, photos: string[]): Promise<unknown> {
+function withPhotos(
+  sender: CardSender,
+  caption: string,
+  photos: Array<string | InputFile>,
+): Promise<unknown> {
   if (photos.length === 0) return sender.html(caption);
   if (photos.length === 1) return sender.photo(photos[0], caption);
   // Telegram shows the caption of the FIRST item as the group's caption and ignores the rest.
