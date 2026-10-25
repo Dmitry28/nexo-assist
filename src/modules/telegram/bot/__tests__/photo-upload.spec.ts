@@ -11,17 +11,44 @@ const MAX = 10 * 1024 * 1024;
 const reply = (body: Uint8Array<ArrayBuffer>, headers: Record<string, string> = {}, status = 200) =>
   new Response(body, { status, headers: { 'content-type': 'image/webp', ...headers } });
 
+const redirect = (location: string) => new Response(null, { status: 302, headers: { location } });
+
 describe('downloadPhoto', () => {
   const fetchMock = undiciFetchMock();
 
-  it('returns the bytes as a named file, typed by its extension, without following redirects', async () => {
+  it('returns the bytes as a named file, typed by its extension, following no redirect itself', async () => {
     fetchMock.mockResolvedValueOnce(reply(new Uint8Array([1, 2, 3])));
 
     const file = await downloadPhoto(PHOTO, SITE);
 
     expect(file).toBeInstanceOf(InputFile);
     expect(file.filename).toBe('photo.webp');
-    expect(fetchMock).toHaveBeenCalledWith(PHOTO, expect.objectContaining({ redirect: 'error' }));
+    expect(fetchMock).toHaveBeenCalledWith(PHOTO, expect.objectContaining({ redirect: 'manual' }));
+  });
+
+  it('follows one redirect on the same site', async () => {
+    fetchMock
+      .mockResolvedValueOnce(redirect('https://img2.idriver.by/1.webp'))
+      .mockResolvedValueOnce(reply(new Uint8Array([1])));
+
+    await expect(downloadPhoto(PHOTO, SITE)).resolves.toBeInstanceOf(InputFile);
+    expect(fetchMock).toHaveBeenLastCalledWith('https://img2.idriver.by/1.webp', expect.anything());
+  });
+
+  it('refuses a redirect off the site', async () => {
+    fetchMock.mockResolvedValueOnce(redirect('https://evil.example/1.webp'));
+
+    await expect(downloadPhoto(PHOTO, SITE)).rejects.toThrow('photo off idriver.by');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a second redirect', async () => {
+    fetchMock
+      .mockResolvedValueOnce(redirect('https://img2.idriver.by/1.webp'))
+      .mockResolvedValueOnce(redirect('https://img3.idriver.by/1.webp'));
+
+    await expect(downloadPhoto(PHOTO, SITE)).rejects.toThrow('photo HTTP 302');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([

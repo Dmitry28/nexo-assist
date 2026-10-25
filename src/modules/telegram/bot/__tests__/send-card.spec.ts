@@ -104,7 +104,7 @@ describe('sendCard', () => {
     expect(onPhotoFallback).toHaveBeenCalledTimes(1);
   });
 
-  describe('a lone photo Telegram could not fetch', () => {
+  describe('photos Telegram could not fetch', () => {
     const fetchMock = undiciFetchMock();
     const ownPhoto = 'https://img77.site.by/1.webp';
     const image = (status = 200, type = 'image/webp') =>
@@ -130,6 +130,25 @@ describe('sendCard', () => {
       expect(sender.photo).toHaveBeenLastCalledWith(expect.any(InputFile), 'card');
       expect(sender.html).not.toHaveBeenCalled();
       expect(onPhotoFallback).not.toHaveBeenCalled();
+    });
+
+    // kufar: one shard of an album failing Telegram must not cost the whole card its photos.
+    it('re-sends an album as files, dropping a photo the site does not serve', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const sender = stubSender();
+      sender.group.mockRejectedValueOnce(refusedUrl());
+      fetchMock.mockImplementation((url: string) =>
+        Promise.resolve(url.endsWith('/2.webp') ? image(404) : image()),
+      );
+      const album = [1, 2, 3].map((i) => `https://img77.site.by/${i}.webp`);
+
+      await settlePaced(send(sender, album));
+
+      const [media] = sender.group.mock.calls[1] as [Array<{ media: unknown; caption?: string }>];
+      expect(media).toHaveLength(2);
+      expect(media[0]).toMatchObject({ media: expect.any(InputFile), caption: 'card' });
+      expect(sender.html).not.toHaveBeenCalled();
     });
 
     // idriver's «фото по запросу» placeholder is a real JPEG behind a 404 (measured).
