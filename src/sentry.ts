@@ -41,6 +41,8 @@ if (process.env.SENTRY_DSN && reportsFromThisStage) {
     dsn: process.env.SENTRY_DSN,
     // Which deployment the event came from, so staging noise never looks like production.
     environment: stage,
+    // The image's commit (Dockerfile): which deploy brought an error in, and which one fixed it.
+    release: process.env.SENTRY_RELEASE,
     tracesSampleRate: 0,
     // The fetch integration records every outgoing request — the paid anti-bot services' keys
     // ride in their query strings (sources/scraping/providers.ts).
