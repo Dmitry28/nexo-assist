@@ -39,8 +39,9 @@ start; more frequent once throttling/dedupe land).
   searches it came from** (source plus the search URL's path — a reader may be watching dozens) — plus a map pin when the
   source publishes one (the real-estate sources do). Past **30 cards** in one delivery the rest
   goes out as a compact text digest in the same run, so nothing is deferred and nothing is lost.
-  A lone photo Telegram cannot fetch is downloaded by the bot
-  and uploaded as a file — that is how idriver's photos arrive. Media that still fails falls
+  Photos Telegram cannot fetch are downloaded by the bot and uploaded as files — that is how
+  idriver's photos arrive, and kufar's when Telegram trips on its CDN redirect; a photo the site
+  does not serve is dropped from the album. Media that still fails falls
   back to the text card; a refused pin is ignored — the listing already arrived.
 - **Price changes** on listings already delivered come after the cards as a text digest
   «💸 Цена изменилась: N» — title, `old → new`, link. Only a seller's change: exchange-rate drift
