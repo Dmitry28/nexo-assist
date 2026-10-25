@@ -137,6 +137,7 @@ jobs:
           context: .
           target: runtime
           platforms: ${{ matrix.platform }}
+          build-args: GIT_SHA=${{ github.sha }}
           # `cacheonly` on a PR: build everything, publish nothing.
           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', steps.img.outputs.name) }}
           # Per-arch scope — one shared scope would have the two legs evict each other.
