@@ -78,7 +78,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "typeorm": "^1.1.1",
-    "undici": "^8.10.2"
+    "undici": "^8.12.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -118,5 +118,13 @@
     "*.{md,json,yml,yaml,mjs,js}": [
       "prettier --write"
     ]
+  },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "^2.5.0"
+    },
+    "@nestjs/swagger": {
+      "js-yaml": "^5.5.0"
+    }
   }
 }
