@@ -171,6 +171,11 @@ export class EnvironmentVariables {
   @IsOptional()
   SENTRY_ENABLED?: string;
 
+  /** The commit the image was built from — baked in by the Dockerfile, never set by hand. */
+  @IsString()
+  @IsOptional()
+  SENTRY_RELEASE?: string;
+
   /**
    * Watchdog ping URL for the dead-man's switch — required in production: unset, nothing would
    * report the app dying, which is the silence the switch exists to remove. Read where it's used

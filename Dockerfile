@@ -25,6 +25,10 @@ USER node
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node --from=build /app/package.json ./package.json
+# The commit this image was built from — Sentry's release (src/sentry.ts). Last, so a new sha
+# rebuilds only this layer.
+ARG GIT_SHA
+ENV SENTRY_RELEASE=$GIT_SHA
 EXPOSE 3000
 # NOTE: health path must match API_PREFIX/API_VERSION (defaults in src/config/env.validation.ts);
 # the k8s probes and docker-compose healthcheck hardcode the same path.
